@@ -1,0 +1,807 @@
+---
+title: "Spatial Texts SMI"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+
+library("rstan")
+library(bayesplot)
+library(mvtnorm)
+library(dplyr)
+library(gridExtra)
+library(ExtDist)
+library(gtable)
+options(mc.cores=4)
+
+```
+
+Set parameters
+
+```{r}
+eta = 0
+n_float = 50
+type = 2 #type 1 = fix remaining floating at their fit-technique locations, type 2 = ignore remaining floating 
+n_items = 25 #if n_items = 8, will use the 8 items used in the smaller data set
+n_iter = 2000
+descr= 'l0.5_Q10' # used in the name of the MCMC output file
+run_MCMC = TRUE # False will only work if the MCMC file has already been produced
+```
+
+Read in the data 
+
+```{r}
+data_coarsened_all_items = readRDS('coarsened_all_items')
+
+data.loc <- data_coarsened_all_items$data.loc
+data.y <- data_coarsened_all_items$data.m
+unique_forms = unique(data_coarsened_all_items$data.items)
+data.n_forms = c(sapply(unique_forms, function(x)sum(data_coarsened_all_items$data.items==x)))
+
+#actual floating profiles
+to.float <- c(1,2,3,4,5,16,17,23,26,29,30,32,36,38,43,45,46,49,51,52,54,55,56,60,61,62,65,68,69,70,71,73,75,79,80,99,100,106,110,114,115,130,136,140,154,164,165,167,168,169,175,177,180,181,183,184,186,188,189,192,193,194,196,198,200,201,202,204,206,207,210,212,213,215,217,219,220,221,222,223,225,226,227,234,235,236,237,238,240,243,246,247,257,259,260,277,278,287,299,300,302,303,314,316,319,320,322,325,357,358,361,365,382,398,405,410,411,419,422,423,425,426,432,434,435,454,461,473,474,476,477,479,488,491,492,494,495,496,497,498,500,501,503,504,505,506,507,508,509,510,511,512,514,515,516,517,519,527,529,530,531,534,536,537,539,540,541,549,550,551,552,553,554,556,557,558,559,560,561,577,578,579,580,581,582,583,584,587,588,591,593,597,603,605,652,661,676,677,678,699,704,709,714,715,717,718,726,729,730,736,737,738,742,752,755,761,763,764,766,767,804,901,905,908,910,912,913,927,1002,1300,1352,4218,4239,4245,4285,4286,4289,4675,4682,4685,7550,7591,7592,7593,7600,7610,7980) 
+
+# alternative selection of floating profiles that are better mixed with the anchor profiles
+# to.float <- c(1,5,23,29,30,32,38,45,51,54,55,61,65,68,70,71,73,110,114,115,130,136,140,154, 164,165,167,168,169,175,177,180,181,186,188,192,196,201,206,210,212,213,217,220,221,223,225,234, 235,236,237,238,246,257,259,278,287,299,300,302,303,319,325,358,361,365,419,422,423,425,434,435, 479,488,492,498,504,505,506,507,510,511,515,516,517,531,534,537,540,549,554,558,559,561,577,578, 579,580,581,587,603,676,714,717,718,730,738,742,752,767,910,1002,4218,4285,4286,4675,4682,4685,7550,7591,7600,7610,7980) 
+
+if (type == 1){
+  to.float <- to.float[1:n_float]
+}
+float_indexes = which(data.loc[,1] %in% to.float)
+
+#generate the inducing points
+inducing_points = expand.grid(seq(0,1, length.out=11),  seq(0,0.9, length.out=10))
+n_inducing_points = NROW(inducing_points)
+
+#select which items will be used for inference
+if (n_items == 8){
+  #select the 8 items that were in the smaller data
+  items_used = c(26,24,4,23,65,71,20,12)
+} else {
+  #select the n_items most commonly occurring items in the data
+  item_prevalence = c()
+  for (i in 1:length(data.n_forms)){
+    item_prevalence = c(item_prevalence, sum(data.y[(sum(data.n_forms[0:(i-1)])+1):sum(data.n_forms[1:i]),]))
+  }
+  items_used = sort(item_prevalence, index.return=TRUE, decreasing=TRUE)$ix[1:n_items]
+}
+items_used = sort(items_used)
+
+#obtain the indexes of the y data corresponding to these items
+y_form_indexes= c()
+for (i in items_used){
+  y_form_indexes = c(y_form_indexes,(sum(data.n_forms[0:(i-1)])+1):sum(data.n_forms[1:i]))
+}
+
+#sort y data into anchor profiles followed by floating profiles
+y.sort = cbind(data.y[y_form_indexes,-float_indexes], data.y[y_form_indexes,float_indexes[1:n_float]])
+
+#split floating and anchor data and scale the data onto [0,1] x [0,0.9]
+data.loc.float = sweep(data.loc[float_indexes[1:n_float],2:3], 2, c(350,275)) / 200
+data.loc.anchor = sweep(data.loc[-float_indexes,2:3],2, c(350,275)) / 200
+
+```
+
+Prior simulation
+
+```{r}
+squared_exp_kernel = function(array1, array2, sigma=1, l=1){
+  n1 <- NROW(array1)
+  n2 <- NROW(array2)
+  cov <- array(NA, dim=c(n1,n2))
+  for (i in 1:n1){
+    for (j in 1:n2){
+      cov[i,j]= sigma^2 * exp(-sum((array1[i,] - array2[j,])^2)/(2* l^2))
+    }
+  }
+  return(cov)
+}
+
+softmax <- function(par){
+  n.par <- length(par)
+  par1 <- sort(par, decreasing = TRUE)
+  Lk <- par1[1]
+  for (k in 1:(n.par-1)) {
+    Lk <- max(par1[k+1], Lk) + log1p(exp(-abs(par1[k+1] - Lk))) 
+  }
+  val <- exp(par - Lk)
+  return(val)
+}
+
+n_forms = sum(data.n_forms[items_used])
+sim.loc.float = cbind(runif(n_float, 0, 1), runif(n_float, 0, 0.9)) #sample floating locations from uniform distribution on [0,1] x [0,0.9]
+
+#evaluate the 10 gaussian processes at the floating, anchor, and inducing points
+all_points = rbind(as.matrix(inducing_points), data.loc.anchor, sim.loc.float) 
+n_locs_total = NROW(all_points)
+loc_cov = squared_exp_kernel(as.matrix(all_points), as.matrix(all_points), 1, 0.5) 
+gaussf.sim = rmvnorm(10, rep(0,NROW(loc_cov)), loc_cov)
+
+#sample from priors for a and W, and evaluate phi at the floating and anchor profiles
+a.sim = rnorm(n_forms,0,1)
+W.sim = rLaplace(n_forms * 10,0,0.1)
+dim(W.sim) = c(n_forms, 10)
+a.sim[cumsum(c(1, data.n_forms[items_used])[-(n_items+1)])] = 0 #set first a for each item to 0
+phi.sim = array(0, dim=c(n_forms, n_locs_total - n_inducing_points))
+pos = 1
+for (i in 1:n_items){
+  softinput = sweep(- W.sim[pos:(pos+data.n_forms[items_used][i]-1),] %*% gaussf.sim[,(n_inducing_points+1):n_locs_total], 1, a.sim[pos:(pos+data.n_forms[items_used][i]-1)])
+  phi.sim[pos:(pos+data.n_forms[items_used][i]-1),] = apply(softinput, MARGIN=2, FUN = softmax)
+  pos = pos + data.n_forms[items_used][i]
+}
+
+y.sim = array(0, dim= c(n_forms, n_locs_total))
+mu.sim = rgamma(n_items, 2,2) #sample from prior for mu
+zeta.sim = rbeta(n_items, 1,1) #sample from prior for zeta
+
+#sample from model for y
+pos = 1
+for (i in 1:n_items){
+    for (f in pos:(pos+data.n_forms[items_used][i]-1)){
+      for (l in 1:(n_locs_total-n_inducing_points)){
+        zeta_flag = rbinom(1, 1, zeta.sim[i])
+        if (zeta_flag == 1){
+          y.sim[f,l] = 0
+        }
+        else {
+          y.sim[f,l] = rbinom(1,1, 1 - exp(-mu.sim[i] * phi.sim[f,l]))
+        }
+      }
+    }
+  pos = pos + data.n_forms[items_used][i];
+}
+
+#plot the occurrence of various forms for the first item
+par(mfrow=c(4,6), mar=c(0,0,0,0))
+for (form in 1:23){
+  lp_locs = rbind(data.loc.anchor, sim.loc.float)
+  form_appeared = which(y.sim[form,] == 1)
+  plot(lp_locs[form_appeared,1],lp_locs[form_appeared,2], xlim=c(0,1), ylim=c(0,0.9), xlab='', ylab='', xaxt='n', yaxt='n')
+}
+
+#rowSums(y.sim) #number of occurrences of each form
+
+#plot phi for the 23 forms of the first item
+par(mfrow=c(4,6), mar=c(0,0,0,0))
+rbPal <- colorRampPalette(c('blue','red'))
+for (i in 1:23){
+  cols <- rbPal(50)[as.numeric(cut(c(0,phi.sim[i,],0.25),breaks = 50))]
+  plot(lp_locs[,1], lp_locs[,2], col=cols[2:(n_locs_total-n_inducing_points+1)], xlim=c(0,1), ylim=c(0,0.9), xlab='', ylab='', xaxt='n', yaxt='n')
+}
+
+```
+
+Data Summary Plots
+```{r}
+#Plot locations of the anchor and floating profiles
+plot(data.loc[float_indexes[1:n_float],2], data.loc[float_indexes[1:n_float],3], 
+                                  xlim=c(350,550), ylim=c(275,455), col='red', pch=1, cex=0.8, xaxs="i", yaxs="i", xlab='Easting', ylab='Northing')
+points(data.loc[-float_indexes,2], data.loc[-float_indexes,3], col='blue', pch=3, cex=0.8)
+
+#Plot usage at anchor profiles of four forms of the first item 
+#SUCH_anchor_locations.png, 650 x 400
+plot_form_occurences = function(form, colour){
+  form.appears = which(y.sort[form,1:120] == 1)
+  plot(anchor.loc[form.appears,1], anchor.loc[form.appears,2], xlim=c(350,550), ylim=c(275,455), col=colour, pch=16, main = rownames(y.sort)[form], xlab='Easting', ylab='Northing')
+}
+
+anchor.loc = data.loc[-float_indexes,c(2,3)]
+par(mfrow=c(2,2),mar = rep(2, 4))
+plot_form_occurences(11, 'red')
+plot_form_occurences(14, 'dark green')
+plot_form_occurences(16, 'blue')
+plot_form_occurences(22, 'orange')
+
+```
+
+Stan Model to target the power posterior.
+Evaluation of the gaussian process at anchor/floating locations is based on 'Analytical Form of Joint Predictive Inference' from
+https://mc-stan.org/docs/2_19/stan-users-guide/fit-gp-section.html, but we take the mean of the distribution. 
+
+```{stan output.var="module1_smi"}
+
+data {
+  int<lower=0> n_items;
+  int<lower=0> n_forms_total;
+  int<lower=0> n_forms[n_items];
+  int<lower=0> n_anchor;
+  int<lower=0> n_floating;
+  int<lower=0> n_inducing;
+  int<lower=0> n_locs; // number of anchor and floating points
+  int<lower=0, upper=1> y[n_locs, n_forms_total]; //data, with first n_anchor rows corresponding to the anchor points
+  row_vector[2] inducing_locs[n_inducing];
+  row_vector[2] anchor_locs[n_anchor];
+  int<lower=0> Q; // number of Gaussian processes
+  real eta_smi;
+  real<lower=0> gp_magnitude;
+  real<lower=0> gp_length_scale;
+}
+
+transformed data {
+  real delta = 1e-9;
+  vector[n_locs] eta_vect = append_row(rep_vector(1, n_anchor), rep_vector(eta_smi, n_floating));
+  
+  matrix[n_inducing, n_inducing] K_ind;
+  matrix[n_inducing, n_inducing] L_K_ind;
+  matrix[n_inducing, n_anchor] K_ind_anc;
+  
+  K_ind = cov_exp_quad(inducing_locs, gp_magnitude, gp_length_scale) + diag_matrix(rep_vector(delta, n_inducing));
+  L_K_ind = cholesky_decompose(K_ind);
+  K_ind_anc = cov_exp_quad(inducing_locs, anchor_locs, gp_magnitude, gp_length_scale);
+}
+
+parameters {
+  real<lower=0> mu[n_items];
+  real<lower=0, upper=1> zeta[n_items];
+  matrix<lower=0>[n_forms_total, Q] W;
+  vector[n_forms_total - n_items] a;
+  matrix[n_inducing, Q] std_normal_ind;
+  real<lower=0,upper=1> x_floating[n_floating];
+  real<lower=0,upper=0.9> y_floating[n_floating];
+}
+
+transformed parameters {
+  matrix[n_forms_total,n_locs] phi;
+  matrix[n_inducing, Q] gaussf_ind;
+  matrix[n_anchor, Q] gaussf_anc;
+  matrix[n_floating, Q] gaussf_flt;
+  matrix[n_locs, Q] gaussf;
+  row_vector[2] floating_locs[n_floating];
+  vector[n_forms_total] a_complete;
+  
+  floating_locs[,1] = x_floating;
+  floating_locs[,2] = y_floating;
+  {
+    int pos = 1;
+    matrix[n_inducing, n_floating] K_ind_flt;
+    K_ind_flt = cov_exp_quad(inducing_locs, floating_locs, gp_magnitude, gp_length_scale);
+    
+    for (q in 1:Q){
+      vector[n_inducing] K_ind_div_Y_ind;
+      
+      gaussf_ind[,q] = L_K_ind * std_normal_ind[,q];
+      
+      K_ind_div_Y_ind = mdivide_left_tri_low(L_K_ind, gaussf_ind[,q]);
+      K_ind_div_Y_ind = mdivide_right_tri_low(K_ind_div_Y_ind', L_K_ind)';
+      
+      gaussf_anc[,q] = K_ind_anc' * K_ind_div_Y_ind;
+      gaussf_flt[,q] = K_ind_flt' * K_ind_div_Y_ind;
+    }
+    
+    gaussf[1:n_anchor,] = gaussf_anc;
+    gaussf[(n_anchor+1):n_locs,] = gaussf_flt;
+    
+    for (i in 1:n_items){
+      a_complete[pos] = 0;
+      a_complete[(pos+1):(pos+n_forms[i]-1)] = a[(pos+1-i):(pos+n_forms[i]-i-1)];
+      for (l in 1:n_locs){
+        phi[pos:(pos+n_forms[i]-1),l] = softmax(- a_complete[pos:(pos+n_forms[i]-1)] - W[pos:(pos+n_forms[i]-1),]* gaussf[l,]');
+      }
+      pos = pos + n_forms[i];
+    }
+  }
+}
+
+model {
+  int pos = 1;
+  
+  // Prior:
+  a ~ std_normal();
+  for (i in 1:n_inducing){
+    std_normal_ind[i,] ~ normal(0,1);
+  }
+  to_vector(W) ~ double_exponential(0,0.1);
+  
+  x_floating ~ uniform(0,1);
+  y_floating ~ uniform(0,0.9);
+  
+  mu ~ gamma(2,2); 
+  zeta ~ beta(1,1);
+  
+  // Model:
+  for (i in 1:n_items){
+    for (f in pos:(pos+n_forms[i]-1)){
+      for (l in 1:n_locs){
+        if (y[l,f] == 0){
+          target += eta_vect[l] * log_sum_exp(bernoulli_lpmf(1 | zeta[i]),
+                            bernoulli_lpmf(0 | zeta[i])
+                              + bernoulli_lpmf( y[l,f] | 1 - exp(-mu[i] * phi[f,l])));
+        }
+        else {
+          target += eta_vect[l] * bernoulli_lpmf(0 | zeta[i]) + eta_vect[l] * bernoulli_lpmf( y[l,f] | 1 - exp(-mu[i] * phi[f,l]));
+        }
+      }
+    }
+    pos = pos + n_forms[i];
+  }
+}
+
+generated quantities {
+  // calculate log likelihoods so that we can estimate the ELPD
+  real log_lik[n_anchor, n_forms_total];
+  int pos = 1;
+  
+  for (i in 1:n_items){
+    for (f in pos:(pos+n_forms[i]-1)){
+      for (l in 1:n_anchor){
+        if (y[l,f] == 0){
+          log_lik[l,f] = log_sum_exp(bernoulli_lpmf(1 | zeta[i]),
+                            bernoulli_lpmf(0 | zeta[i]) + bernoulli_lpmf( y[l,f] | 1 - exp(-mu[i] * phi[f,l])));
+        }
+        else {
+          log_lik[l,f] = bernoulli_lpmf(0 | zeta[i]) + bernoulli_lpmf( y[l,f] | 1 - exp(-mu[i] * phi[f,l]));
+        }
+      }
+    }
+    pos = pos + n_forms[i];
+  }
+}
+
+```
+
+
+```{r, echo=FALSE}
+
+output_name = paste0('Fits/Module 1/fit_smi_', descr, '_iter', n_iter, '_eta', eta, '_items', n_items, '_float', n_float, '_type', type)
+
+if (run_MCMC == TRUE){
+  text_data <- list(n_items = length(data.n_forms[items_used]), 
+                n_forms_total = sum(data.n_forms[items_used]),
+                n_forms = data.n_forms[items_used],
+                n_locs = NROW(data.loc.anchor) + NROW(data.loc.float),
+                n_anchor = NROW(data.loc.anchor),
+                n_floating = NROW(data.loc.float),
+                n_inducing = n_inducing_points,
+                y = t(y.sort), 
+                anchor_locs = data.loc.anchor,
+                inducing_locs = inducing_points,
+                gp_magnitude = 1, 
+                gp_length_scale = 0.5,
+                Q= 10, 
+                eta_smi = eta)
+  smi_fit_part1 = sampling(module1_smi, data = text_data, iter=n_iter, chains=3, sample_file = output_name)
+  saveRDS(smi_fit_part1, output_name)
+} else {
+  smi_fit_part1 = readRDS(output_name)
+  # or read from csv files
+  # smi_fit_part1 = read_stan_csv(c(paste0(output_name, '_1.csv'), paste0(output_name, '_2.csv'), paste0(output_name, '_3.csv')), col_major = TRUE)
+}
+
+```
+
+Or just read the file directly 
+
+```{r}
+#smi_fit_part1 = readRDS('/home/manderso/Documents/StatML 2021-22/MiniProject 1/Spatial Texts Stan/Github/Fits/Module 1/fit_smi_l0.5_Q10_iter2000_eta0_items25_float50_type2')
+```
+
+Convergence Diagnostics
+
+```{r}
+#Print the Rhat values for mu, zeta, phi and \tilde{X_{\bar{A}}}
+Rhat = summary(smi_fit_part1, pars = c('mu', 'zeta', 'floating_locs', 'phi'))$summary[,10]
+Rhat[rev(order(Rhat))]
+
+#if trace plot needs to be done manually:
+#samples_singleparam = as.array(smi_fit_part1, pars='phi[100,16]')
+#plot(1:1000,samples_singleparam[,1,], type='l', col='green', ylim=c(0,1))
+#lines(1:1000,samples_singleparam[,2,], col='red')
+#lines(1:1000,samples_singleparam[,3,], col='blue')
+
+# mu_trace 900 x 350, mu_dens 500 x 350
+plot_pars = 'mu[1]'
+for (i in 2:8){
+  plot_pars = c(plot_pars, paste0('mu[', i, ']'))
+}
+mcmc_trace(smi_fit_part1, pars=plot_pars,facet_args=list(ncol=4, labeller = ggplot2::label_parsed))
+mcmc_areas(smi_fit_part1, pars=plot_pars) + scale_y_discrete(labels=c('mu[1]' = expression(mu[1]), 'mu[2]' = expression(mu[2]), 'mu[3]' = expression(mu[3]), 'mu[4]' = expression(mu[4]), 'mu[5]' = expression(mu[5]), 'mu[6]' = expression(mu[6]), 'mu[7]' = expression(mu[7]), 'mu[8]' = expression(mu[8])))
+
+# zeta_trace 900 x 350, zeta_dens 500 x 350
+plot_pars = 'zeta[1]'
+for (i in 2:8){
+  plot_pars = c(plot_pars, paste0('zeta[', i, ']'))
+}
+mcmc_trace(smi_fit_part1, pars=plot_pars,facet_args=list(ncol=4, labeller = ggplot2::label_parsed))
+mcmc_areas(smi_fit_part1, pars=plot_pars) + scale_y_discrete(labels=c('zeta[1]' = expression(zeta[1]), 'zeta[2]' = expression(zeta[2]), 'zeta[3]' = expression(zeta[3]), 'zeta[4]' = expression(zeta[4]), 'zeta[5]' = expression(zeta[5]), 'zeta[6]' = expression(zeta[6]), 'zeta[7]' = expression(zeta[7]), 'zeta[8]' = expression(zeta[8])))
+
+#phi_trace 900 x 350
+plot_pars = c('phi[1,1]', 'phi[1,20]', 'phi[7,1]', 'phi[7,20]','phi[35,1]', 'phi[35,20]', 'phi[36,1]', 'phi[36,20]')
+smi_fit_renamed = smi_fit_part1
+par_indexes = c()
+for (i in 1:8){
+  par_indexes = c(par_indexes, which(names(smi_fit_renamed) == plot_pars[i]))
+}
+plot_pars_renamed = c('phi["1,1"](1)', 'phi["1,1"](20)', 'phi["1,7"](1)', 'phi["1,7"](20)','phi["2,1"](1)', 'phi["2,1"](20)', 'phi["2,2"](1)', 'phi["2,2"](20)')
+names(smi_fit_renamed)[par_indexes] = plot_pars_renamed
+mcmc_trace(smi_fit_renamed, pars=plot_pars_renamed, facet_args=list(ncol=4, labeller = ggplot2::label_parsed))
+
+```
+
+Plot the Phi Fields 
+
+```{r}
+
+n_alliter = n_iter/2 * 3
+Q = 10
+n_forms_total = sum(data.n_forms[items_used])
+
+softmax <- function(par){
+  n.par <- length(par)
+  par1 <- sort(par, decreasing = TRUE)
+  Lk <- par1[1]
+  for (k in 1:(n.par-1)) {
+    Lk <- max(par1[k+1], Lk) + log1p(exp(-abs(par1[k+1] - Lk))) 
+  }
+  val <- exp(par - Lk)
+  return(val)
+}
+
+gaussf_ind = as.array(smi_fit_part1, pars='gaussf_ind')
+dim(gaussf_ind) = c(n_alliter, n_inducing_points,Q)
+W = as.array(smi_fit_part1, pars='W')
+dim(W) = c(n_alliter, n_forms_total,Q)
+a_complete = as.array(smi_fit_part1, pars='a_complete')
+dim(a_complete) = c(n_alliter, n_forms_total)
+n_locs = NROW(data.loc.anchor) + NROW(data.loc.float)
+n_forms= data.n_forms
+
+phi_inducing = array(0, dim = c(n_alliter, n_forms_total,n_inducing_points))
+softinput = array(0, dim = c(n_alliter, n_forms_total,n_inducing_points))
+
+for (j in 1:n_alliter){
+  pos = 1
+  for (i in 1:8){
+      for (l in 1:n_inducing_points){
+        softinput[j, pos:(pos+n_forms[i]-1),l] = - a_complete[j, pos:(pos+n_forms[i]-1)] - W[j, pos:(pos+n_forms[i]-1),] %*% gaussf_ind[j,l,]
+        phi_inducing[j, pos:(pos+n_forms[i]-1),l] = softmax(softinput[j, pos:(pos+n_forms[i]-1),l])
+      }
+  pos = pos + n_forms[i];
+  }
+}
+
+mean_phi_inducing = apply(phi_inducing, c(2,3), mean)
+
+plot_phi_fields <- function(form){
+  df = data.frame(
+    mean_phi_inducing = mean_phi_inducing[form,],
+    inducing.x = inducing_points[,1],
+    inducing.y = inducing_points[,2]
+  )
+  df2 = data.frame(
+    loc.x = data.loc.anchor[,1],
+    loc.y = data.loc.anchor[,2],
+    form.appears = y.sort[form,1:NROW(data.loc.anchor)] == 1
+  )
+  ggplot(df, aes(x=inducing.x, y=inducing.y)) + geom_tile(aes(fill=mean_phi_inducing)) + 
+  geom_point(data=df2, aes(x=loc.x,y=loc.y, color=form.appears)) +
+  scale_fill_gradientn(limits = c(0,0.6), colours=c("white", "#00AEFF"), name = 'Posterior mean of phi') + 
+  scale_x_continuous(NULL, expand = c(0, -0.05))+ scale_y_continuous(NULL, expand = c(0, -0.05)) + 
+  scale_color_manual(values=c("black","blue"), name = 'Form appears') +
+  ggtitle(paste0('Item 1, Form ',form)) + theme(plot.title = element_text(hjust = 0.5))
+}
+
+legend = gtable_filter(ggplot_gtable(ggplot_build(plot_phi_fields(6))), "guide-box")
+
+grid.arrange(arrangeGrob(plot_phi_fields(6) + theme(legend.position='none'), plot_phi_fields(7)+ theme(legend.position='none'), plot_phi_fields(10) + theme(legend.position='none'), plot_phi_fields(12) + theme(legend.position='none'), ncol=2, nrow=2), legend, ncol=2, widths = c(1.1,0.3))
+```
+
+
+If eta = 1, can plot locations directly without running the nested MCMC chains: 
+
+```{r}
+locations = as.array(smi_fit_part1, pars='floating_locs')
+dim(locations) = c((n_iter/2) * 3, 50,2)
+
+plot_density_tiles <- function(location_samples, fittech_location){
+  df = data.frame(location_samples)
+  ggplot(df, aes(x=X1, y=X2) ) +
+    scale_x_continuous(lim=c(-0.05,1.05), expand = c(0, -0.05)) +
+    scale_y_continuous(lim=c(-0.05,0.95), expand = c(0, -0.05)) + 
+    geom_bin2d(bins=c(22,20)) +
+    theme_bw() +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+          legend.position='none', plot.margin=unit(c(0,0,0, 0),"cm"),
+          axis.ticks.x = element_blank(), axis.text.x = element_blank(), 
+          axis.ticks.y = element_blank(), axis.text.y = element_blank()) + 
+    xlab('') + ylab('') +
+    scale_fill_continuous(low="white", high="#00AEFF") + coord_fixed() + 
+    geom_point(x=fittech_location[1], y=fittech_location[2], col='red', shape=4, size=3)
+}
+
+#plot posterior samples of the first 10 locations compared with the fit-technique estimates
+estloc_plots <- vector('list', 10)
+for (i in 1:10) {
+    estloc_plots[[i]] <- local({
+        i <- i
+        p <- plot_density_tiles(locations[,i,], data.loc.float[i,])
+        print(p)
+    })
+}
+grid.arrange(grobs = estloc_plots, ncol = 5, nrow=2)
+
+```
+
+Estimate the ELPD using the WAIC:
+
+```{r, echo=FALSE}
+
+log_lik = extract(smi_fit_part1, 'log_lik')[[1]][,1:120,]
+dim(log_lik) = c((n_iter/2 * 3), 120 * sum(data.n_forms[items_used]))
+loo::waic(log_lik)
+
+```
+
+Stan model for nested MCMC chains:
+
+```{stan output.var="module2_smi"}
+
+data {
+  int<lower=0> n_items;
+  int<lower=0> n_forms_total;
+  int<lower=0> n_forms[n_items]; //number of items per form
+  int<lower=0> n_floating;
+  int<lower=0> n_inducing;
+  int<lower=0, upper=1> y[n_floating, n_forms_total]; 
+  row_vector[2] inducing_locs[n_inducing];
+  int<lower=0> Q; // number of Gaussian processes
+  real gp_magnitude;
+  real gp_length_scale;
+  real<lower=0> mu[n_items];
+  real<lower=0, upper=1> zeta[n_items];
+  matrix[n_forms_total, Q] W;
+  matrix[n_inducing, Q] gaussf_ind; // values of gaussian processes at inducing points
+  vector[n_forms_total] a_complete;
+}
+
+transformed data {
+  real delta = 1e-9;
+
+  matrix[n_inducing, n_inducing] K_ind;
+  matrix[n_inducing, n_inducing] L_K_ind;
+  matrix[n_inducing, Q] K_ind_div_Y_ind;
+  
+  K_ind = cov_exp_quad(inducing_locs, gp_magnitude, gp_length_scale) + diag_matrix(rep_vector(delta, n_inducing));
+  L_K_ind = cholesky_decompose(K_ind);
+  for (q in 1:Q){
+    K_ind_div_Y_ind[,q] = mdivide_left_tri_low(L_K_ind, gaussf_ind[,q]);
+    K_ind_div_Y_ind[,q] = mdivide_right_tri_low(K_ind_div_Y_ind[,q]', L_K_ind)';
+  }
+}
+
+parameters {
+  matrix[n_floating, Q] std_normal_flt;
+  real<lower=0,upper=1> x_floating[n_floating];
+  real<lower=0,upper=0.9> y_floating[n_floating];
+}
+
+transformed parameters {
+  matrix[n_forms_total,n_floating] phi;
+  matrix[n_floating, Q] gaussf_flt;
+  row_vector[2] floating_locs[n_floating];
+  
+  floating_locs[,1] = x_floating;
+  floating_locs[,2] = y_floating;
+  {
+    int pos = 1;
+    matrix[n_inducing, n_floating] K_ind_flt;
+    K_ind_flt = cov_exp_quad(inducing_locs, floating_locs, gp_magnitude, gp_length_scale);
+    
+    for (q in 1:Q){
+      gaussf_flt[,q] = K_ind_flt' * K_ind_div_Y_ind[,q];
+    }
+    
+    for (i in 1:n_items){
+      for (l in 1:n_floating){
+        phi[pos:(pos+n_forms[i]-1),l] = softmax(- a_complete[pos:(pos+n_forms[i]-1)] -W[pos:(pos+n_forms[i]-1),]* gaussf_flt[l,]');
+      }
+      pos = pos + n_forms[i];
+    }
+  }
+}
+
+model {
+  int pos = 1;
+  
+  // Priors:
+  x_floating ~ uniform(0,1);
+  y_floating ~ uniform(0,0.9);
+  to_vector(std_normal_flt) ~ std_normal();
+  
+  // Model: 
+  for (i in 1:n_items){
+    for (f in pos:(pos+n_forms[i]-1)){
+      for (l in 1:n_floating){
+        if (y[l,f] == 0){
+          target += log_sum_exp(bernoulli_lpmf(1 | zeta[i]),
+                            bernoulli_lpmf(0 | zeta[i]) + bernoulli_lpmf( y[l,f] | 1 - exp(-mu[i] * phi[f,l])));
+        }
+        else {
+          target += bernoulli_lpmf(0 | zeta[i]) + bernoulli_lpmf( y[l,f] | 1 - exp(-mu[i] * phi[f,l]));
+        }
+      }
+    }
+    pos = pos + n_forms[i];
+  }
+}
+
+```
+
+Run nested MCMC chains.
+Since the phi fields are independent conditioned on the values at inducing points, we can just run for 10 locations to generate plots. 
+
+```{r}
+n_float_mod2 = 10
+
+mcmc1_draws = seq(1,(n_iter/2 * 3),2) #take every second draw from the first MCMC chain
+n_nested = length(mcmc1_draws)
+  
+output_file = paste0('Fits/Module 2 Floating/module2_float', n_float_mod2, '_iter', n_nested, '_items', n_items,'_type', type, 'eta_', eta)
+
+if (run_MCMC == TRUE){
+  locations = array(0, dim = c(n_nested, n_float_mod2,2))
+  
+  i = 1
+  for (iteration in mcmc1_draws){
+    print(iteration)
+    text_data <- list(n_items = length(data.n_forms[items_used]), 
+                  n_forms_total = sum(data.n_forms[items_used]),
+                  n_forms = data.n_forms[items_used],
+                  n_floating = n_float_mod2, 
+                  n_inducing = n_inducing_points,
+                  y = t(data.y[y_form_indexes,float_indexes[1:n_float_mod2]]), 
+                  inducing_locs = inducing_points,
+                  mu = extract(smi_fit_part1, pars='mu')[[1]][iteration,],
+                  zeta = extract(smi_fit_part1, pars='zeta')[[1]][iteration,],
+                  gaussf_ind = extract(smi_fit_part1, pars='gaussf_ind')[[1]][iteration,,],
+                  W = extract(smi_fit_part1, pars='W')[[1]][iteration,,],
+                  a_complete = extract(smi_fit_part1, pars='a_complete')[[1]][iteration,],
+                  gp_magnitude = 1, 
+                  gp_length_scale = 0.5,
+                  Q= 10)
+    
+    smi_fit_part2 = sampling(module2_smi, data = text_data, iter=1500, chains=1, warmup=500)
+    locations[i,,] = extract(smi_fit_part2)$floating_locs[1000,,]
+    i = i + 1
+  }
+  saveRDS(locations, output_file)
+} else {
+  locations = readRDS(output_file)
+}
+
+```
+
+Or read file directly
+```{r}
+#locations = readRDS('/home/manderso/Documents/StatML 2021-22/MiniProject 1/Spatial Texts Stan/HPC/mod2att2_float50_iter600_items25_type2_eta0.2')
+```
+
+Plot posterior samples
+```{r, echo=FALSE}
+
+plot_density_tiles <- function(location_samples, fittech_location){
+  df = data.frame(location_samples)
+  ggplot(df, aes(x=X1, y=X2) ) +
+    scale_x_continuous(lim=c(-0.05,1.05), expand = c(0, -0.05)) +
+    scale_y_continuous(lim=c(-0.05,0.95), expand = c(0, -0.05)) + 
+    geom_bin2d(bins=c(22,20)) +
+    theme_bw() +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+          legend.position='none', plot.margin=unit(c(0,0,0, 0),"cm"),
+          axis.ticks.x = element_blank(), axis.text.x = element_blank(), 
+          axis.ticks.y = element_blank(), axis.text.y = element_blank()) + 
+    xlab('') + ylab('') +
+    scale_fill_continuous(low="white", high="#00AEFF") + coord_fixed() + 
+    geom_point(x=fittech_location[1], y=fittech_location[2], col='red', shape=4, size=3)
+}
+
+#plot the posterior samples of the first 10 anchor locations compared to the fit-technique locations
+estloc_plots <- vector('list', 10)
+for (i in 1:10) {
+    estloc_plots[[i]] <- local({
+        i <- i
+        p1 <- plot_density_tiles(locations[,i,], data.loc.float[i,])
+        print(p1)
+    })
+}
+
+grid.arrange(grobs = estloc_plots, ncol = 5, nrow=2)
+
+
+```
+
+
+Run nested MCMC chains, now estimating the locations of the anchor profiles so that we can take the MSE
+
+```{r}
+
+mcmc1_draws = seq(1,(n_iter/2 * 3), 3)
+n_nested = length(mcmc1_draws)
+  
+output_file = paste0('Fits/Module 2 Anchor/mod2_anchor', 120, '_iter', n_nested, '_items', n_items,'_type', type, '_eta', eta)
+
+if (run_MCMC == TRUE){
+  locations = array(0, dim = c(n_nested, 120, 2))
+  
+  i = 1
+  for (iteration in mcmc1_draws){
+    print(iteration)
+    text_data <- list(n_items = length(data.n_forms[items_used]), 
+                  n_forms_total = sum(data.n_forms[items_used]),
+                  n_forms = data.n_forms[items_used],
+                  n_floating = n_float_mod2, 
+                  n_inducing = n_inducing_points,
+                  y = t(y.sort[,1:120]), 
+                  inducing_locs = inducing_points,
+                  mu = extract(smi_fit_part1, pars='mu')[[1]][iteration,],
+                  zeta = extract(smi_fit_part1, pars='zeta')[[1]][iteration,],
+                  gaussf_ind = extract(smi_fit_part1, pars='gaussf_ind')[[1]][iteration,,],
+                  W = extract(smi_fit_part1, pars='W')[[1]][iteration,,],
+                  a_complete = extract(smi_fit_part1, pars='a_complete')[[1]][iteration,],
+                  gp_magnitude = 1, 
+                  gp_length_scale = 0.5,
+                  Q= 10)
+    
+    smi_fit_part2 = sampling(module2_smi, data = text_data, iter=1500, chains=1, warmup=500)
+    locations[i,,] = extract(smi_fit_part2)$floating_locs[1000,,]
+    i = i + 1
+  }
+  saveRDS(locations, output_file)
+} else {
+  locations = readRDS(output_file)
+}
+```
+
+Or just read from file:
+
+```{r}
+#locations = readRDS('/home/manderso/Documents/StatML 2021-22/MiniProject 1/Spatial Texts Stan/HPC/mod2_anchor120_iter600_items25_type2_eta0.2')
+```
+
+Calculate MSE
+
+```{r}
+dist_to_anchor = function(location_sample){
+  sqrt(rowSums((location_sample - data.loc.anchor)^2))
+}
+
+mean(apply(apply(locations, 1, dist_to_anchor), 1, mean))
+
+```
+
+Plot the above
+
+```{r, echo=FALSE}
+
+plot_density_tiles <- function(location_samples, fittech_location){
+  df = data.frame(location_samples)
+  ggplot(df, aes(x=X1, y=X2) ) +
+    scale_x_continuous(lim=c(-0.05,1.05), expand = c(0, -0.05)) +
+    scale_y_continuous(lim=c(-0.05,0.95), expand = c(0, -0.05)) + 
+    geom_bin2d(bins=c(22,20)) +
+    theme_bw() +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+          legend.position='none', plot.margin=unit(c(0,0,0, 0),"cm"),
+          axis.ticks.x = element_blank(), axis.text.x = element_blank(), 
+          axis.ticks.y = element_blank(), axis.text.y = element_blank()) + 
+    xlab('') + ylab('') +
+    scale_fill_continuous(low="white", high="#00AEFF") + coord_fixed() + 
+    geom_point(x=fittech_location[1], y=fittech_location[2], col='red', shape=4, size=3)
+}
+
+#plot the posterior samples of the first 10 anchor locations compared to the fit-technique locations
+estloc_plots <- vector('list', 10)
+for (i in 1:10) {
+    estloc_plots[[i]] <- local({
+        i <- i
+        p1 <- plot_density_tiles(locations[,i,], data.loc.anchor[i,])
+        print(p1)
+    })
+}
+
+grid.arrange(grobs = estloc_plots, ncol = 5, nrow=2)
+
+
+```
+
+
