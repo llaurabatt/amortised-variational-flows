@@ -206,24 +206,6 @@ class CouplingConditioner(hk.Module):
     return out
 
 
-def make_conditioner(
-    # input_dim: int,
-    output_dim: int,
-    hidden_sizes: Sequence[int],
-    num_bijector_params: int,
-) -> hk.Sequential:
-  """Creates an MLP conditioner for each layer of the flow."""
-  return hk.Sequential([
-      hk.Flatten(preserve_dims=-1),
-      hk.nets.MLP(hidden_sizes, activate_final=True),
-      # We initialize this linear layer to zero so that the flow is initialized
-      # to the identity function.
-      hk.Linear(
-          output_dim * num_bijector_params, w_init=jnp.zeros, b_init=jnp.zeros),
-      hk.Reshape((output_dim,) + (num_bijector_params,), preserve_dims=-1),
-  ])
-
-
 def nsf_global_params(
     num_forms_tuple: Tuple,
     num_base_gps: int,
@@ -287,8 +269,9 @@ def nsf_global_params(
             output_dim=math.prod(event_shape),
             hidden_sizes=hidden_sizes,
             num_bijector_params=num_bijector_params,
-            name='nsf_global_params',
-        ))
+            name='conditioner_global_params',
+        ),
+    )
     flow_layers.append(layer)
     # Flip the mask after each layer.
     mask = jnp.logical_not(mask)
@@ -339,7 +322,7 @@ def nsf_locations(
     loc_x_range: Tuple[float],
     loc_y_range: Tuple[float],
     **_,
-) -> distrax.Transformed:
+) -> distributions.ConditionalTransformed:
   """Creates the Rational Quadratic Flow for the unknown locations of profiles
   in the LALME model.
   """
@@ -385,8 +368,228 @@ def nsf_locations(
             output_dim=math.prod(event_shape),
             hidden_sizes=hidden_sizes,
             num_bijector_params=num_bijector_params,
-            name='nsf_locations',
-        ))
+            name='conditioner_locations',
+        ),
+    )
+    flow_layers.append(layer)
+    # Flip the mask after each layer.
+    mask = jnp.logical_not(mask)
+
+  # Last layer: Map values to parameter domain
+  # all locations to the [0,1] square
+  flow_layers.append(distrax.Block(distrax.Sigmoid(), 1))
+  # profiles x's go to [0,loc_x_max]
+  # profiles y's go to [0,loc_y_max]
+  if loc_x_range == (0., 1.):
+    loc_x_range_bijector = distrax.Block(tfb.Identity(), 1)
+  else:
+    loc_x_range_bijector = distrax.Block(
+        distrax.ScalarAffine(
+            shift=loc_x_range[0], scale=loc_x_range[1] - loc_x_range[0]), 1)
+
+  if loc_y_range == (0., 1.):
+    loc_y_range_bijector = distrax.Block(tfb.Identity(), 1)
+  else:
+    loc_y_range_bijector = distrax.Block(
+        distrax.ScalarAffine(
+            shift=loc_y_range[0], scale=loc_y_range[1] - loc_y_range[0]), 1)
+
+  block_bijectors = [loc_x_range_bijector, loc_y_range_bijector]
+  block_sizes = [num_profiles, num_profiles]
+  flow_layers.append(
+      bijectors.Blockwise(bijectors=block_bijectors, block_sizes=block_sizes))
+
+  # Chain all layers together
+  flow = bijectors.ConditionalChain(flow_layers[::-1])
+
+  # base_distribution = distrax.Independent(
+  #     distrax.Uniform(low=jnp.zeros(event_shape), high=jnp.ones(event_shape)),
+  #     reinterpreted_batch_ndims=len(event_shape))
+
+  base_distribution = distrax.MultivariateNormalDiag(
+      loc=jnp.zeros(event_shape), scale_diag=jnp.ones(event_shape))
+
+  return distributions.ConditionalTransformed(base_distribution, flow)
+
+
+def meta_nsf_global_params(
+    num_forms_tuple: Tuple,
+    num_base_gps: int,
+    num_inducing_points: int,
+    num_layers: int,
+    hidden_sizes_conditioner: Sequence[int],
+    hidden_sizes_conditioner_eta: Sequence[int],
+    num_bins: int,
+    spline_range: Tuple[float],
+    **_,
+) -> distributions.ConditionalTransformed:
+  """Creates the Rational Quadratic Flow model.
+
+  Args:
+  range_min: the lower bound of the spline's range. Below `range_min`, the
+    bijector defaults to a linear transformation.
+  range_max: the upper bound of the spline's range. Above `range_max`, the
+    bijector defaults to a linear transformation.
+  """
+
+  num_items = len(num_forms_tuple)
+
+  gamma_inducing_dim = num_base_gps * num_inducing_points
+  mixing_weights_dim = sum(
+      [num_base_gps * num_forms_i for num_forms_i in num_forms_tuple])
+  mixing_offset_dim = sum(num_forms_tuple)
+  mu_dim = num_items
+  zeta_dim = num_items
+
+  flow_dim = (
+      gamma_inducing_dim + mixing_weights_dim + mixing_offset_dim + mu_dim +
+      zeta_dim)
+
+  event_shape = (flow_dim,)
+
+  flow_layers = []
+
+  # Number of parameters required by the bijector (rational quadratic spline)
+  num_bijector_params = 3 * num_bins + 1
+
+  def bijector_fn(params: Array):
+    return distrax.RationalQuadraticSpline(
+        params, range_min=spline_range[0], range_max=spline_range[1])
+
+  # Alternating binary mask.
+  mask = jnp.arange(0, math.prod(event_shape)) % 2
+  mask = jnp.reshape(mask, event_shape)
+  mask = mask.astype(bool)
+
+  # Number of parameters for the rational-quadratic spline:
+  # - `num_bins` bin widths
+  # - `num_bins` bin heights
+  # - `num_bins + 1` knot slopes
+  # for a total of `3 * num_bins + 1` parameters.
+
+  for _ in range(num_layers):
+    layer = bijectors.EtaConditionalMaskedCoupling(
+        mask=mask,
+        bijector=bijector_fn,
+        conditioner_eta=CouplingConditioner(
+            output_dim=math.prod(event_shape),
+            hidden_sizes=hidden_sizes_conditioner_eta,
+            num_bijector_params=num_bijector_params,
+            name='conditioner_eta_global_params',
+        ),
+        conditioner=CouplingConditioner(
+            output_dim=math.prod(event_shape),
+            hidden_sizes=hidden_sizes_conditioner,
+            num_bijector_params=num_bijector_params,
+            name='conditioner_global_params',
+        ),
+    )
+    flow_layers.append(layer)
+    # Flip the mask after each layer.
+    mask = jnp.logical_not(mask)
+
+  # Last layer: Map values to parameter domain
+  # Layer 2: Map values to parameter domain
+  block_bijectors = [
+      # gamma: Identity [-Inf,Inf]
+      distrax.Block(tfb.Identity(), 1),
+      # mixing_weights: Identity [-Inf,Inf]
+      distrax.Block(tfb.Identity(), 1),
+      # mixing_offset: Identity [-Inf,Inf]
+      distrax.Block(tfb.Identity(), 1),
+      # mu: Softplus [0,Inf]
+      distrax.Block(tfb.Softplus(), 1),
+      # zeta: Sigmoid [0,1]
+      distrax.Block(distrax.Sigmoid(), 1),
+  ]
+  block_sizes = [
+      gamma_inducing_dim,
+      mixing_weights_dim,
+      mixing_offset_dim,
+      mu_dim,
+      zeta_dim,
+  ]
+  flow_layers.append(
+      bijectors.Blockwise(bijectors=block_bijectors, block_sizes=block_sizes))
+
+  # Chain all layers together
+  flow = bijectors.ConditionalChain(flow_layers[::-1])
+
+  # base_distribution = distrax.Independent(
+  #     distrax.Uniform(low=jnp.zeros(event_shape), high=jnp.ones(event_shape)),
+  #     reinterpreted_batch_ndims=len(event_shape))
+
+  base_distribution = distrax.MultivariateNormalDiag(
+      loc=jnp.zeros(event_shape), scale_diag=jnp.ones(event_shape))
+
+  return distributions.ConditionalTransformed(base_distribution, flow)
+
+
+def meta_nsf_locations(
+    num_profiles: int,
+    num_layers: int,
+    hidden_sizes_conditioner: Sequence[int],
+    hidden_sizes_conditioner_eta: Sequence[int],
+    num_bins: int,
+    spline_range: Tuple[float],
+    loc_x_range: Tuple[float],
+    loc_y_range: Tuple[float],
+    **_,
+) -> distributions.ConditionalTransformed:
+  """Creates the Rational Quadratic Flow for the unknown locations of profiles
+in the LALME model.
+"""
+
+  flow_dim = 2 * num_profiles
+
+  event_shape = (flow_dim,)
+
+  flow_layers = []
+
+  # # Layer: Affine transformation
+  # loc = hk.get_parameter("loc", event_shape, init=jnp.zeros)
+  # # loc = 10*jnp.ones(event_shape)
+  # log_scale = hk.get_parameter("log_scale", event_shape, init=jnp.zeros)
+  # # log_scale = jnp.zeros(event_shape)
+  # flow_layers.append(
+  #     distrax.Block(distrax.ScalarAffine(shift=loc, log_scale=log_scale), 1))
+  # # flow_layers.append(tfb.Shift(loc)(tfb.Scale(log_scale=log_scale)))
+
+  # Number of parameters required by the bijector (rational quadratic spline)
+  num_bijector_params = 3 * num_bins + 1
+
+  def bijector_fn(params: Array):
+    return distrax.RationalQuadraticSpline(
+        params, range_min=spline_range[0], range_max=spline_range[1])
+
+  # Alternating binary mask.
+  mask = jnp.arange(0, math.prod(event_shape)) % 2
+  mask = jnp.reshape(mask, event_shape)
+  mask = mask.astype(bool)
+
+  # Number of parameters for the rational-quadratic spline:
+  # - `num_bins` bin widths
+  # - `num_bins` bin heights
+  # - `num_bins + 1` knot slopes
+  # for a total of `3 * num_bins + 1` parameters.
+
+  for _ in range(num_layers):
+    layer = bijectors.ConditionalMaskedCoupling(
+        mask=mask,
+        bijector=bijector_fn,
+        conditioner_eta=CouplingConditioner(
+            output_dim=math.prod(event_shape),
+            hidden_sizes=hidden_sizes_conditioner_eta,
+            num_bijector_params=num_bijector_params,
+            name='conditioner_eta_locations',
+        ),
+        conditioner=CouplingConditioner(
+            output_dim=math.prod(event_shape),
+            hidden_sizes=hidden_sizes_conditioner,
+            num_bijector_params=num_bijector_params,
+            name='conditioner_locations',
+        ),
+    )
     flow_layers.append(layer)
     # Flip the mask after each layer.
     mask = jnp.logical_not(mask)
