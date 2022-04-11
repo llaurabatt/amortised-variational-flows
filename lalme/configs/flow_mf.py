@@ -65,11 +65,8 @@ def get_config():
   config.num_samples_elbo = 20
   config.num_samples_gamma_profiles = 10
 
-  # Number of steps using a random influence eta
-  config.random_eta_steps = 0
-
   # How often to evaluate the model.
-  config.eval_steps = int(config.training_steps / 20)
+  config.eval_steps = int(config.training_steps / 10)
 
   config.num_samples_eval = 100
 
@@ -79,7 +76,7 @@ def get_config():
   config.log_img_steps = int(config.training_steps / 10)
 
   # How often to save model checkpoints.
-  config.checkpoint_steps = int(config.training_steps / 4)
+  config.checkpoint_steps = int(config.training_steps / 2)
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
 

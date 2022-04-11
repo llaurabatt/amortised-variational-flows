@@ -64,7 +64,7 @@ def get_config():
   config.num_samples_gamma_profiles = 5
 
   # How often to evaluate the model.
-  config.eval_steps = int(config.training_steps / 20)
+  config.eval_steps = int(config.training_steps / 10)
   config.num_samples_eval = 100
 
   config.include_random_anchor = True
@@ -84,7 +84,7 @@ def get_config():
   )
 
   # How often to save model checkpoints.
-  config.checkpoint_steps = int(config.training_steps / 4)
+  config.checkpoint_steps = int(config.training_steps / 2)
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
 

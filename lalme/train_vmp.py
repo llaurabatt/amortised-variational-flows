@@ -24,7 +24,8 @@ from tensorflow_probability.substrates import jax as tfp
 import plot
 from train_flow import (get_inducing_points, load_data, q_distr_global,
                         q_distr_loc_floating, q_distr_loc_random_anchor,
-                        sample_all_flows, elbo_fn, compute_error_locations)
+                        sample_all_flows, elbo_estimate,
+                        error_locations_estimate)
 
 from modularbayes import metaposterior
 from modularbayes import utils
@@ -125,9 +126,9 @@ def loss(
       flow_kwargs=flow_kwargs,
       sample_shape=(num_samples_flow,),
       include_random_anchor=include_random_anchor,
-      num_samples_gamma_profiles=num_samples_gamma_profiles,
       kernel_name=kernel_name,
       kernel_kwargs=kernel_kwargs,
+      num_samples_gamma_profiles=num_samples_gamma_profiles,
       gp_jitter=gp_jitter,
   ))(
       params_flow_vmap_list)
@@ -278,10 +279,10 @@ def log_images(
       flow_kwargs=config.flow_kwargs,
       sample_shape=(config.num_samples_plot,),
       include_random_anchor=config.include_random_anchor,
-      num_samples_gamma_profiles=(config.num_samples_gamma_profiles
-                                  if use_gamma_anchor else 0),
       kernel_name=config.kernel_name,
       kernel_kwargs=config.kernel_kwargs,
+      num_samples_gamma_profiles=(config.num_samples_gamma_profiles
+                                  if use_gamma_anchor else 0),
       gp_jitter=config.gp_jitter,
   ))(
       params_flow_vmap_list)
@@ -390,9 +391,9 @@ def log_images(
           flow_kwargs=config.flow_kwargs,
           sample_shape=(config.num_samples_eval,),
           include_random_anchor=config.include_random_anchor,
-          num_samples_gamma_profiles=config.num_samples_gamma_profiles,
           kernel_name=config.kernel_name,
           kernel_kwargs=config.kernel_kwargs,
+          num_samples_gamma_profiles=config.num_samples_gamma_profiles,
           gp_jitter=config.gp_jitter,
       ))(
           params_flow_eta_grid_eval)

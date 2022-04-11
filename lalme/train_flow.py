@@ -345,9 +345,9 @@ def sample_all_flows(
     flow_kwargs: Dict[str, Any],
     sample_shape: Union[IntLike, Sequence[IntLike]],
     include_random_anchor: bool,
+    kernel_name: Optional[str],
+    kernel_kwargs: Optional[Dict[str, Any]],
     num_samples_gamma_profiles: int = 0,
-    kernel_name: Optional[str] = None,
-    kernel_kwargs: Optional[Dict[str, Any]] = None,
     gp_jitter: Optional[float] = None,
 ) -> Dict[str, Any]:
 
@@ -412,12 +412,35 @@ def sample_all_flows(
   return q_distr_out
 
 
-def elbo_fn(
-    q_distr_out: Dict[str, Any],
+def elbo_estimate(
+    params_tuple: Tuple[hk.Params],
+    batch: Optional[Batch],
+    prng_key: PRNGKey,
+    num_samples: int,
+    flow_name: str,
+    flow_kwargs: Dict[str, Any],
     smi_eta: Optional[SmiEta],
-    batch: Batch,
     include_random_anchor: bool,
+    kernel_name: Optional[str] = None,
+    kernel_kwargs: Optional[Dict[str, Any]] = None,
+    num_samples_gamma_profiles: int = 0,
+    gp_jitter: Optional[float] = None,
 ) -> Dict[str, Array]:
+
+  # Sample from flow
+  q_distr_out = sample_all_flows(
+      params_tuple=params_tuple,
+      batch=batch,
+      prng_key=prng_key,
+      flow_name=flow_name,
+      flow_kwargs=flow_kwargs,
+      sample_shape=(num_samples,),
+      include_random_anchor=include_random_anchor,
+      kernel_name=kernel_name,
+      kernel_kwargs=kernel_kwargs,
+      num_samples_gamma_profiles=num_samples_gamma_profiles,
+      gp_jitter=gp_jitter,
+  )
 
   is_smi = False if smi_eta is None else True
 
@@ -521,46 +544,11 @@ def elbo_fn(
   return elbo_dict
 
 
-def loss(
-    params_tuple: Tuple[hk.Params],
-    batch: Batch,
-    prng_key: PRNGKey,
-    flow_name: str,
-    flow_kwargs: Dict[str, Any],
-    kernel_name: str,
-    kernel_kwargs: Dict[str, Any],
-    gp_jitter: float,
-    include_random_anchor: bool,
-    num_samples_flow: int,
-    num_samples_gamma_profiles: int,
-    smi_eta: Optional[SmiEta] = None,
-) -> Array:
+def loss(params_tuple: Tuple[hk.Params], *args, **kwargs) -> Array:
   """Define training loss function."""
 
-  prng_seq = hk.PRNGSequence(prng_key)
-
-  # Sample from variational posteriors
-  q_distr_out = sample_all_flows(
-      params_tuple=params_tuple,
-      batch=batch,
-      prng_key=next(prng_seq),
-      flow_name=flow_name,
-      flow_kwargs=flow_kwargs,
-      sample_shape=(num_samples_flow,),
-      include_random_anchor=include_random_anchor,
-      num_samples_gamma_profiles=num_samples_gamma_profiles,
-      kernel_name=kernel_name,
-      kernel_kwargs=kernel_kwargs,
-      gp_jitter=gp_jitter,
-  )
-
   ### Compute ELBO ###
-  elbo_dict = elbo_fn(
-      q_distr_out=q_distr_out,
-      smi_eta=smi_eta,
-      batch=batch,
-      include_random_anchor=include_random_anchor,
-  )
+  elbo_dict = elbo_estimate(params_tuple=params_tuple, *args, **kwargs)
 
   # Our loss is the Negative ELBO
   loss_avg = -(
@@ -600,10 +588,10 @@ def log_images(
       flow_kwargs=config.flow_kwargs,
       sample_shape=(config.num_samples_plot,),
       include_random_anchor=config.include_random_anchor,
-      num_samples_gamma_profiles=(config.num_samples_gamma_profiles
-                                  if use_gamma_anchor else 0),
       kernel_name=config.kernel_name,
       kernel_kwargs=config.kernel_kwargs,
+      num_samples_gamma_profiles=(config.num_samples_gamma_profiles
+                                  if use_gamma_anchor else 0),
       gp_jitter=config.gp_jitter,
   )
 
@@ -629,11 +617,35 @@ def log_images(
   )
 
 
-def compute_error_locations(
-    posterior_sample_dict: Dict[str, Any],
-    dataset: Batch,
+def error_locations_estimate(
+    params_tuple: Tuple[hk.Params],
+    batch: Optional[Batch],
+    prng_key: PRNGKey,
+    num_samples: int,
+    flow_name: str,
+    flow_kwargs: Dict[str, Any],
+    include_random_anchor: bool,
+    kernel_name: Optional[str] = None,
+    kernel_kwargs: Optional[Dict[str, Any]] = None,
+    num_samples_gamma_profiles: int = 0,
+    gp_jitter: Optional[float] = None,
 ) -> Dict[str, Array]:
   """Compute average distance error."""
+
+  # Sample from flow
+  posterior_sample_dict = sample_all_flows(
+      params_tuple=params_tuple,
+      batch=batch,
+      prng_key=prng_key,
+      flow_name=flow_name,
+      flow_kwargs=flow_kwargs,
+      sample_shape=(num_samples,),
+      include_random_anchor=include_random_anchor,
+      kernel_name=kernel_name,
+      kernel_kwargs=kernel_kwargs,
+      num_samples_gamma_profiles=num_samples_gamma_profiles,
+      gp_jitter=gp_jitter,
+  )['posterior_sample']
 
   error_loc_out = {}
 
@@ -641,7 +653,7 @@ def compute_error_locations(
   if 'loc_random_anchor' in posterior_sample_dict:
     predictions = posterior_sample_dict['loc_random_anchor']
     targets = jnp.broadcast_to(
-        dataset['loc'][:dataset['num_profiles_anchor'], :],
+        batch['loc'][:batch['num_profiles_anchor'], :],
         shape=posterior_sample_dict['loc_random_anchor'].shape)
     distances = jnp.linalg.norm(predictions - targets, ord=2, axis=-1)
     error_loc_out['distance_random_anchor'] = distances.mean()
@@ -649,7 +661,7 @@ def compute_error_locations(
   # Floating profiles
   predictions = posterior_sample_dict['loc_floating']
   targets = jnp.broadcast_to(
-      dataset['loc'][dataset['num_profiles_anchor']:, :],
+      batch['loc'][batch['num_profiles_anchor']:, :],
       shape=posterior_sample_dict['loc_floating'].shape)
   distances = jnp.linalg.norm(predictions - targets, ord=2, axis=-1)
   error_loc_out['distance_floating'] = distances.mean()
@@ -865,19 +877,51 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       optimizer=make_optimizer(**config.optim_kwargs),
       loss_fn=loss,
       loss_fn_kwargs={
+          'num_samples': config.num_samples_elbo,
           'flow_name': config.flow_name,
           'flow_kwargs': config.flow_kwargs,
+          'smi_eta': smi_eta,
+          'include_random_anchor': config.include_random_anchor,
           'kernel_name': config.kernel_name,
           'kernel_kwargs': config.kernel_kwargs,
-          'gp_jitter': config.gp_jitter,
-          'include_random_anchor': config.include_random_anchor,
-          'num_samples_flow': config.num_samples_elbo,
           'num_samples_gamma_profiles': config.num_samples_gamma_profiles,
-          'smi_eta': smi_eta,
+          'gp_jitter': config.gp_jitter,
       },
   )
   # globals().update(loss_fn_kwargs)
   update_states_jit = jax.jit(update_states_jit)
+
+  elbo_validation_jit = lambda state_list, batch, prng_key, smi_eta: elbo_estimate(
+      params_tuple=[state.params for state in state_list],
+      batch=batch,
+      prng_key=prng_key,
+      num_samples=config.num_samples_eval,
+      flow_name=config.flow_name,
+      flow_kwargs=config.flow_kwargs,
+      smi_eta=smi_eta,
+      include_random_anchor=config.include_random_anchor,
+      kernel_name=config.kernel_name,
+      kernel_kwargs=config.kernel_kwargs,
+      num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+      gp_jitter=config.gp_jitter,
+  )
+  elbo_validation_jit = jax.jit(elbo_validation_jit)
+
+  error_locations_estimate_jit = lambda state_list, batch, prng_key: error_locations_estimate(
+      params_tuple=[state.params for state in state_list],
+      batch=batch,
+      prng_key=prng_key,
+      num_samples=config.num_samples_eval,
+      flow_name=config.flow_name,
+      flow_kwargs=config.flow_kwargs,
+      include_random_anchor=config.include_random_anchor,
+      kernel_name=config.kernel_name,
+      kernel_kwargs=config.kernel_kwargs,
+      num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+      gp_jitter=config.gp_jitter,
+  )
+  # TODO: This doesn't work after jitting.
+  # error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
 
   if state_list[0].step < config.training_steps:
     logging.info('Training variational posterior...')
@@ -916,31 +960,12 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         step=state_list[0].step,
     )
 
-    # Take randomn values of eta at the beginning of training
-    if (smi_eta
-        is not None) and (state_list[0].step < int(config.random_eta_steps)):
-      smi_eta_step = smi_eta.copy()
-      eta_profiles_rnd = jax.random.beta(
-          key=next(prng_seq),
-          a=0.2,
-          b=0.2,
-          shape=smi_eta['profiles'].shape,
-      )
-      smi_eta_step['profiles'] = jnp.where(
-          jnp.arange(train_ds['num_profiles']) <
-          train_ds['num_profiles_anchor'],
-          1.,
-          eta_profiles_rnd,
-      )
-    else:
-      smi_eta_step = smi_eta
-
     # Training step
     state_list, metrics = update_states_jit(
         state_list=state_list,
         batch=train_ds,
         prng_key=next(prng_seq),
-        smi_eta=smi_eta_step,
+        smi_eta=smi_eta,
     )
 
     summary_writer.scalar(
@@ -954,62 +979,34 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                    metrics["train_loss"])
 
     # Metrics for evaluation
-    if (state_list[0].step > config.random_eta_steps) and (
-        (state_list[0].step) % config.eval_steps == 0):
+    if state_list[0].step % config.eval_steps == 0:
       logging.info("STEP: %5d; training loss: %.3f", state_list[0].step - 1,
                    metrics["train_loss"])
 
-      # Error on posterior location
-      q_distr_out_eval = sample_all_flows(
-          params_tuple=[state.params for state in state_list],
+      # Multi-stage ELBO
+      elbo_dict_eval = elbo_validation_jit(
+          state_list=state_list,
           batch=train_ds,
           prng_key=next(prng_seq),
-          flow_name=config.flow_name,
-          flow_kwargs=config.flow_kwargs,
-          sample_shape=(config.num_samples_eval,),
-          include_random_anchor=config.include_random_anchor,
-          num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-          kernel_name=config.kernel_name,
-          kernel_kwargs=config.kernel_kwargs,
-          gp_jitter=config.gp_jitter,
-      )
-
-      # Compute ELBO
-      elbo_dict_eval = elbo_fn(
-          q_distr_out=q_distr_out_eval,
           smi_eta=smi_eta,
-          batch=train_ds,
-          include_random_anchor=config.include_random_anchor,
       )
-
-      # Add two stages of ELBO to metrics dictionary
-      metrics['elbo_stage_1'] = jnp.nanmean(elbo_dict_eval['stage_1'])
-      metrics['elbo_stage_2'] = jnp.nanmean(elbo_dict_eval['stage_2'])
-      if config.include_random_anchor:
-        metrics['elbo_stage_3'] = jnp.nanmean(elbo_dict_eval['stage_3'])
-
-      # Error on posterior location
-      error_loc_dict = compute_error_locations(
-          posterior_sample_dict=q_distr_out_eval['posterior_sample'],
-          dataset=train_ds,
-      )
-      # Add error location to metrics dictionary
-      metrics['distance_floating'] = error_loc_dict['distance_floating']
-      if config.include_random_anchor:
-        metrics['distance_random_anchor'] = error_loc_dict[
-            'distance_random_anchor']
-
-      # Log metrics to tensorboard
-      metrics_to_log = ['elbo_stage_1', 'elbo_stage_2', 'distance_floating']
-      if config.include_random_anchor:
-        metrics_to_log = metrics_to_log + [
-            'elbo_stage_3', 'distance_random_anchor'
-        ]
-
-      for metric in metrics_to_log:
+      for k, v in elbo_dict_eval.items():
         summary_writer.scalar(
-            tag=metric,
-            value=metrics[metric],
+            tag=f'elbo_{k}',
+            value=v.mean(),
+            step=state_list[0].step,
+        )
+
+      # Estimate posterior distance to true locations
+      error_loc_dict = error_locations_estimate_jit(
+          state_list=state_list,
+          batch=train_ds,
+          prng_key=next(prng_seq),
+      )
+      for k, v in error_loc_dict.items():
+        summary_writer.scalar(
+            tag=k,
+            value=v.mean(),
             step=state_list[0].step,
         )
 
@@ -1058,9 +1055,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 # # For debugging
 # config = get_config()
 # config.flow_kwargs.smi_eta.update({
-#     'profiles_floating': 0.500,
+#     'profiles_floating': 0.001,
 # })
-# # workdir = pathlib.Path.home()/'smi/output/lalme/all_items/mean_field/eta_floating_1.000'
-# workdir = pathlib.Path.home()/'smi/output/lalme/all_items/spline/eta_floating_0.500'
-
+# workdir = pathlib.Path.home()/'spatial-smi/output/all_items/mean_field/eta_floating_0.001'
+# workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/spline/eta_floating_0.500'
 # train_and_evaluate(config, workdir)
