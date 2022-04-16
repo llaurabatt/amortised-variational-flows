@@ -11,6 +11,7 @@ from ml_collections import config_flags
 import tensorflow as tf
 
 import train_flow
+import train_vmp_flow
 import train_vmp_map
 
 FLAGS = flags.FLAGS
@@ -56,6 +57,9 @@ def main(argv):
 
   elif FLAGS.config.method == 'vmp_map':
     train_vmp_map.train_and_evaluate(FLAGS.config, FLAGS.workdir)
+
+  elif FLAGS.config.method == 'vmp_flow':
+    train_vmp_flow.train_and_evaluate(FLAGS.config, FLAGS.workdir)
 
 
 if __name__ == '__main__':

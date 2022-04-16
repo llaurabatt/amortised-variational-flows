@@ -578,7 +578,7 @@ in the LALME model.
   # for a total of `3 * num_bins + 1` parameters.
 
   for _ in range(num_layers):
-    layer = modularbayes.ConditionalMaskedCoupling(
+    layer = modularbayes.EtaConditionalMaskedCoupling(
         mask=mask,
         bijector=bijector_fn,
         conditioner_eta=CouplingConditioner(
