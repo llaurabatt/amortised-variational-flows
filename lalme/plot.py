@@ -17,9 +17,10 @@ from tensorflow_probability.substrates import jax as tfp
 
 import log_prob_fun
 
-from modularbayes import utils
-from modularbayes.typing import (Any, Array, Batch, Dict, Kernel, List, Mapping,
-                                 Optional, PRNGKey, SummaryWriter, Tuple)
+from modularbayes import log1mexpm, plot_to_image, normalize_images
+from modularbayes._src.typing import (Any, Array, Batch, Dict, Kernel, List,
+                                      Mapping, Optional, PRNGKey, SummaryWriter,
+                                      Tuple)
 
 kernels = tfp.math.psd_kernels
 
@@ -64,14 +65,14 @@ def plot_linguistic_field(
 
   # Get Probability fields
   # Linear transformation of GPs
-  _phi_prob = np.einsum(
+  phi_prob_ = np.einsum(
       "sbf,sbp->sfp",
       posterior_sample_dict['mixing_weights_list'][item],
       gamma,
   ) + np.expand_dims(
       posterior_sample_dict['mixing_offset_list'][item], axis=-1)
   # softmax transform over the form axis.
-  phi_prob = scipy.special.softmax(_phi_prob, axis=1)
+  phi_prob = scipy.special.softmax(phi_prob_, axis=1)
   # Average over samples
   phi_prob_mean = phi_prob.mean(axis=0)
 
@@ -369,7 +370,7 @@ def plot_profile_location_given_y(
         )
     log_prob_y_item_profile = jnp.stack([
         jnp.where(y_p_i, log_prob_y_eq_1_i,
-                  utils.log1mexpm(-log_prob_y_eq_1_i)).sum(axis=1) for y_p_i,
+                  log1mexpm(-log_prob_y_eq_1_i)).sum(axis=1) for y_p_i,
         log_prob_y_eq_1_i in zip(y_p, log_prob_y_equal_1_pointwise_list)
     ],
                                         axis=1)
@@ -457,8 +458,8 @@ def posterior_samples(
     if workdir_png:
       fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
     if summary_writer:
-      summary_writer.image(plot_name, utils.plot_to_image(fig), step=step)
-    # images.append(utils.plot_to_image(fig))
+      summary_writer.image(plot_name, plot_to_image(fig), step=step)
+    # images.append(plot_to_image(fig))
 
   # Plot linguistic fields
   if show_linguistic_fields:
@@ -479,15 +480,15 @@ def posterior_samples(
       )
       if workdir_png:
         fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-      # summary_writer.image(plot_name, utils.plot_to_image(fig), step=step)
-      images.append(utils.plot_to_image(fig))
+      # summary_writer.image(plot_name, plot_to_image(fig), step=step)
+      images.append(plot_to_image(fig))
 
     if summary_writer:
       plot_name = "lalme_linguistic_fields"
       plot_name = plot_name + ("" if (suffix is None) else ("_" + suffix))
       summary_writer.image(
           tag=plot_name,
-          image=utils.misc.normalize_images(images),
+          image=normalize_images(images),
           step=step,
           max_outputs=len(images),
       )
@@ -509,15 +510,15 @@ def posterior_samples(
       )
       if workdir_png:
         fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-      # summary_writer.image(plot_name, utils.plot_to_image(fig), step=step)
-      images.append(utils.plot_to_image(fig))
+      # summary_writer.image(plot_name, plot_to_image(fig), step=step)
+      images.append(plot_to_image(fig))
 
     if summary_writer:
       plot_name = "lalme_anchor_profiles_locations"
       plot_name = plot_name + ("" if (suffix is None) else ("_" + suffix))
       summary_writer.image(
           tag=plot_name,
-          image=utils.misc.normalize_images(images),
+          image=normalize_images(images),
           step=step,
           max_outputs=len(images),
       )
@@ -539,15 +540,15 @@ def posterior_samples(
       )
       if workdir_png:
         fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-      # summary_writer.image(plot_name, utils.plot_to_image(fig), step=step)
-      images.append(utils.plot_to_image(fig))
+      # summary_writer.image(plot_name, plot_to_image(fig), step=step)
+      images.append(plot_to_image(fig))
 
     if summary_writer:
       plot_name = "lalme_floating_profiles_locations"
       plot_name = plot_name + ("" if (suffix is None) else ("_" + suffix))
       summary_writer.image(
           tag=plot_name,
-          image=utils.misc.normalize_images(images),
+          image=normalize_images(images),
           step=step,
           max_outputs=len(images),
       )
@@ -564,15 +565,15 @@ def posterior_samples(
       )
       if workdir_png:
         fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-      # summary_writer.image(plot_name, utils.plot_to_image(fig), step=step)
-      images.append(utils.plot_to_image(fig))
+      # summary_writer.image(plot_name, plot_to_image(fig), step=step)
+      images.append(plot_to_image(fig))
 
     if summary_writer:
       plot_name = "lalme_mixing_weights"
       plot_name = plot_name + ("" if (suffix is None) else ("_" + suffix))
       summary_writer.image(
           tag=plot_name,
-          image=utils.misc.normalize_images(images),
+          image=normalize_images(images),
           step=step,
           max_outputs=len(images),
       )
@@ -595,4 +596,4 @@ def posterior_samples(
     if workdir_png:
       fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
     if summary_writer:
-      summary_writer.image(plot_name, utils.plot_to_image(fig), step=step)
+      summary_writer.image(plot_name, plot_to_image(fig), step=step)

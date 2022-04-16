@@ -23,11 +23,13 @@ import flows
 import log_prob_fun
 import plot
 
-from modularbayes import utils
-from modularbayes.utils.training import TrainState
-from modularbayes.typing import (Any, Array, Batch, ConfigDict, Dict, IntLike,
-                                 List, Optional, PRNGKey, Sequence, SmiEta,
-                                 SummaryWriter, Tuple, Union)
+from modularbayes._src.utils.training import TrainState
+from modularbayes import (flatten_dict, issymmetric, initial_state_ckpt,
+                          update_states, save_checkpoint)
+from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
+                                      IntLike, List, Optional, PRNGKey,
+                                      Sequence, SmiEta, SummaryWriter, Tuple,
+                                      Union)
 
 kernels = tfp.math.psd_kernels
 
@@ -102,7 +104,7 @@ def get_inducing_points(dataset: Batch, config: ConfigDict):
   dataset['cov_inducing'] = dataset[
       'cov_inducing'] + config.gp_jitter * jnp.eye(config.num_inducing_points)
   # Check that the covarince is symmetric
-  assert utils.issymmetric(dataset['cov_inducing'])
+  assert issymmetric(dataset['cov_inducing'])
 
   # Cholesky factor of covariance
   dataset['cov_inducing_chol'] = jnp.linalg.cholesky(dataset['cov_inducing'])
@@ -116,10 +118,9 @@ def get_inducing_points(dataset: Batch, config: ConfigDict):
   )
   dataset['cov_inducing_inv'] = jnp.matmul(
       cov_inducing_chol_inv.T, cov_inducing_chol_inv, precision='highest')
-  # jnp.matmul(
-  #     dataset['cov_inducing'], dataset['cov_inducing_inv'], precision='highest')
+
   # Check that the inverse is symmetric
-  assert utils.issymmetric(dataset['cov_inducing_inv'])
+  assert issymmetric(dataset['cov_inducing_inv'])
   # Check that there are no NaNs
   assert ~jnp.any(jnp.isnan(dataset['cov_inducing_inv']))
   # Cross covariance between anchor and inducing values
@@ -193,6 +194,7 @@ def q_distr_loc_floating(
     flow_name: str,
     flow_kwargs: Dict[str, Any],
     global_params_base_sample: Array,
+    is_aux: bool,
 ) -> Dict[str, Any]:
   """Sample from the posterior of floating locations
 
@@ -227,7 +229,7 @@ def q_distr_loc_floating(
   ## Posterior for locations of floating profiles ##
   # Define normalizing flow
 
-  num_samples_flow = global_params_base_sample.shape[0]
+  num_samples = global_params_base_sample.shape[0]
   q_distr_out['posterior_sample'] = {}
 
   q_distr_locations = getattr(flows, flow_name + '_locations')(
@@ -236,7 +238,7 @@ def q_distr_loc_floating(
   (locations_sample,
    locations_log_prob) = q_distr_locations.sample_and_log_prob(
        seed=hk.next_rng_key(),
-       sample_shape=(num_samples_flow,),
+       sample_shape=(num_samples,),
        context=global_params_base_sample,
    )
   # Log_probabilities of the sample
@@ -248,32 +250,13 @@ def q_distr_loc_floating(
       flows.split_flow_locations(
           samples=locations_sample,
           num_profiles=flow_kwargs['num_profiles_floating'],
-          is_aux=False,
+          is_aux=is_aux,
           name='loc_floating',
       ))
 
-  if flow_kwargs.is_smi:
-    q_distr_locations_aux = getattr(flows, flow_name + '_locations')(
-        num_profiles=flow_kwargs['num_profiles_floating'], **flow_kwargs)
-    # Sample from flow
-    (locations_aux_sample,
-     locations_aux_log_prob) = q_distr_locations_aux.sample_and_log_prob(
-         seed=hk.next_rng_key(),
-         sample_shape=(num_samples_flow,),
-         context=global_params_base_sample,
-     )
-    # Log_probabilities of the sample
-    q_distr_out['loc_floating_aux_log_prob'] = locations_aux_log_prob
-
-    # Split flow into model parameters
-    # (and add to existing posterior_sample_dict)
-    q_distr_out['posterior_sample'].update(
-        flows.split_flow_locations(
-            samples=locations_aux_sample,
-            num_profiles=flow_kwargs['num_profiles_floating'],
-            is_aux=True,
-            name='loc_floating',
-        ))
+  # log P(beta,tau|sigma)
+  q_distr_out['loc_floating_' + ('aux_' if is_aux else '') +
+              'log_prob'] = locations_log_prob
 
   return q_distr_out
 
@@ -310,7 +293,7 @@ def q_distr_loc_random_anchor(
   ## Posterior for locations of anchor profiles treated as unkbowb locations##
 
   # Define normalizing flow
-  num_samples_flow = global_params_base_sample.shape[0]
+  num_samples = global_params_base_sample.shape[0]
 
   q_distr_locations = getattr(flows, flow_name + '_locations')(
       num_profiles=flow_kwargs['num_profiles_anchor'], **flow_kwargs)
@@ -318,7 +301,7 @@ def q_distr_loc_random_anchor(
   (locations_sample,
    locations_log_prob) = q_distr_locations.sample_and_log_prob(
        seed=hk.next_rng_key(),
-       sample_shape=(num_samples_flow,),
+       sample_shape=(num_samples,),
        context=global_params_base_sample,
    )
 
@@ -368,12 +351,25 @@ def sample_all_flows(
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
       global_params_base_sample=q_distr_out['global_params_base_sample'],
+      is_aux=False,
   )
   q_distr_out['posterior_sample'].update(
       q_distr_out_loc_floating['posterior_sample'])
   q_distr_out['loc_floating_log_prob'] = q_distr_out_loc_floating[
       'loc_floating_log_prob']
+
   if flow_kwargs.is_smi:
+    # Floating profiles locations
+    q_distr_out_loc_floating = hk.transform(q_distr_loc_floating).apply(
+        params_tuple[2],
+        next(prng_seq),
+        flow_name=flow_name,
+        flow_kwargs=flow_kwargs,
+        global_params_base_sample=q_distr_out['global_params_base_sample'],
+        is_aux=True,
+    )
+    q_distr_out['posterior_sample'].update(
+        q_distr_out_loc_floating['posterior_sample'])
     q_distr_out['loc_floating_aux_log_prob'] = q_distr_out_loc_floating[
         'loc_floating_aux_log_prob']
 
@@ -381,7 +377,7 @@ def sample_all_flows(
   if include_random_anchor:
     q_distr_out_loc_random_anchor = hk.transform(
         q_distr_loc_random_anchor).apply(
-            params_tuple[2],
+            params_tuple[3],
             next(prng_seq),
             flow_name=flow_name,
             flow_kwargs=flow_kwargs,
@@ -743,13 +739,14 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
   # Global parameters
   checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints')
+  state_name_list = [
+      'global', 'loc_floating', 'loc_floating_aux', 'loc_random_anchor'
+  ]
   state_list = []
-  state_name_list = []
 
-  state_name_list.append('global')
   state_list.append(
-      utils.initial_state_ckpt(
-          checkpoint_dir=f'{checkpoint_dir}/{state_name_list[-1]}',
+      initial_state_ckpt(
+          checkpoint_dir=f'{checkpoint_dir}/{state_name_list[0]}',
           forward_fn=hk.transform(q_distr_global),
           forward_fn_kwargs={
               'flow_name': config.flow_name,
@@ -769,15 +766,29 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       sample_shape=(config.num_samples_elbo,),
   )['global_params_base_sample']
 
-  state_name_list.append('loc_floating')
   state_list.append(
-      utils.initial_state_ckpt(
-          checkpoint_dir=f'{checkpoint_dir}/{state_name_list[-1]}',
+      initial_state_ckpt(
+          checkpoint_dir=f'{checkpoint_dir}/{state_name_list[1]}',
           forward_fn=hk.transform(q_distr_loc_floating),
           forward_fn_kwargs={
               'flow_name': config.flow_name,
               'flow_kwargs': config.flow_kwargs,
               'global_params_base_sample': global_params_base_sample_init,
+              'is_aux': False,
+          },
+          prng_key=next(prng_seq),
+          optimizer=make_optimizer(**config.optim_kwargs),
+      ))
+
+  state_list.append(
+      initial_state_ckpt(
+          checkpoint_dir=f'{checkpoint_dir}/{state_name_list[2]}',
+          forward_fn=hk.transform(q_distr_loc_floating),
+          forward_fn_kwargs={
+              'flow_name': config.flow_name,
+              'flow_kwargs': config.flow_kwargs,
+              'global_params_base_sample': global_params_base_sample_init,
+              'is_aux': True,
           },
           prng_key=next(prng_seq),
           optimizer=make_optimizer(**config.optim_kwargs),
@@ -787,7 +798,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   #     logdir=workdir, just_logging=jax.host_id() != 0)
   if jax.process_index() == 0 and state_list[0].step < config.training_steps:
     summary_writer = tensorboard.SummaryWriter(workdir)
-    summary_writer.hparams(utils.flatten_dict(config))
+    summary_writer.hparams(flatten_dict(config))
   else:
     summary_writer = None
 
@@ -821,6 +832,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           flow_name=config.flow_name,
           flow_kwargs=config.flow_kwargs,
           global_params_base_sample=global_params_base_sample_init,
+          is_aux=False,
       ),
       columns=(
           "module",
@@ -835,10 +847,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     logging.info(line)
 
   if config.include_random_anchor:
-    state_name_list.append('loc_random_anchor')
     state_list.append(
-        utils.initial_state_ckpt(
-            checkpoint_dir=f'{checkpoint_dir}/{state_name_list[-1]}',
+        initial_state_ckpt(
+            checkpoint_dir=f'{checkpoint_dir}/{state_name_list[3]}',
             forward_fn=hk.transform(q_distr_loc_random_anchor),
             forward_fn_kwargs={
                 'flow_name': config.flow_name,
@@ -866,11 +877,11 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         ),
         filters=("has_params",),
     )
-    summary = tabulate_fn_(state_list[2], next(prng_seq))
+    summary = tabulate_fn_(state_list[3], next(prng_seq))
     for line in summary.split("\n"):
       logging.info(line)
 
-  update_states_jit = lambda state_list, batch, prng_key, smi_eta: utils.update_states(
+  update_states_jit = lambda state_list, batch, prng_key, smi_eta: update_states(
       state_list=state_list,
       batch=batch,
       prng_key=prng_key,
@@ -1012,7 +1023,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
     if state_list[0].step % config.checkpoint_steps == 0:
       for state, state_name in zip(state_list, state_name_list):
-        utils.save_checkpoint(
+        save_checkpoint(
             state=state,
             checkpoint_dir=f'{checkpoint_dir}/{state_name}',
             keep=config.checkpoints_keep,
@@ -1026,7 +1037,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   # Saving checkpoint at the end of the training process
   # (in case training_steps is not multiple of checkpoint_steps)
   for state, state_name in zip(state_list, state_name_list):
-    utils.save_checkpoint(
+    save_checkpoint(
         state=state,
         checkpoint_dir=f'{checkpoint_dir}/{state_name}',
         keep=config.checkpoints_keep,
@@ -1057,6 +1068,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 # config.flow_kwargs.smi_eta.update({
 #     'profiles_floating': 0.001,
 # })
-# workdir = pathlib.Path.home()/'spatial-smi/output/all_items/mean_field/eta_floating_0.001'
+# workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/mean_field/eta_floating_0.001'
 # workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/spline/eta_floating_0.500'
 # train_and_evaluate(config, workdir)

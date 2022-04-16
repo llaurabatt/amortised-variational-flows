@@ -7,9 +7,8 @@ import haiku as hk
 import distrax
 from tensorflow_probability.substrates import jax as tfp
 
-from modularbayes import bijectors
-from modularbayes import distributions
-from modularbayes.typing import Any, Array, Dict, Optional, Sequence, Tuple
+import modularbayes
+from modularbayes._src.typing import Any, Array, Dict, Optional, Sequence, Tuple
 
 tfb = tfp.bijectors
 tfd = tfp.distributions
@@ -44,7 +43,7 @@ def mean_field_global_params(
     num_base_gps: int,
     num_inducing_points: int,
     **_,
-) -> distrax.Transformed:
+) -> modularbayes.Transformed:
   """Mean Field Flow for the global parameters in the LALME model.
 
   This distribution includes the "global" parameters of the LALME model:
@@ -98,7 +97,8 @@ def mean_field_global_params(
       zeta_dim,
   ]
   flow_layers.append(
-      bijectors.Blockwise(bijectors=block_bijectors, block_sizes=block_sizes))
+      modularbayes.Blockwise(
+          bijectors=block_bijectors, block_sizes=block_sizes))
 
   # Chain all layers together
   flow = distrax.Chain(flow_layers[::-1])
@@ -106,7 +106,7 @@ def mean_field_global_params(
   base_distribution = distrax.MultivariateNormalDiag(
       loc=jnp.zeros(event_shape), scale_diag=jnp.ones(event_shape))
 
-  q_distr = distributions.Transformed(base_distribution, flow)
+  q_distr = modularbayes.Transformed(base_distribution, flow)
 
   return q_distr
 
@@ -116,7 +116,7 @@ def mean_field_locations(
     loc_x_range: Tuple[float],
     loc_y_range: Tuple[float],
     **_,
-) -> distrax.Transformed:
+) -> modularbayes.ConditionalTransformed:
   """Mean Field Flow for the unknown locations of profiles in the LALME model.
   """
 
@@ -156,15 +156,16 @@ def mean_field_locations(
   block_bijectors = [loc_x_range_bijector, loc_y_range_bijector]
   block_sizes = [num_profiles, num_profiles]
   flow_layers.append(
-      bijectors.Blockwise(bijectors=block_bijectors, block_sizes=block_sizes))
+      modularbayes.Blockwise(
+          bijectors=block_bijectors, block_sizes=block_sizes))
 
   # Chain all layers together
-  flow = bijectors.ConditionalChain(flow_layers[::-1])
+  flow = modularbayes.ConditionalChain(flow_layers[::-1])
 
   base_distribution = distrax.MultivariateNormalDiag(
       loc=jnp.zeros(event_shape), scale_diag=jnp.ones(event_shape))
 
-  q_distr = distributions.ConditionalTransformed(base_distribution, flow)
+  q_distr = modularbayes.ConditionalTransformed(base_distribution, flow)
 
   return q_distr
 
@@ -215,7 +216,7 @@ def nsf_global_params(
     num_bins: int,
     spline_range: Tuple[float],
     **_,
-) -> distrax.Transformed:
+) -> modularbayes.Transformed:
   """Creates the Rational Quadratic Flow model.
 
   Args:
@@ -298,7 +299,8 @@ def nsf_global_params(
       zeta_dim,
   ]
   flow_layers.append(
-      bijectors.Blockwise(bijectors=block_bijectors, block_sizes=block_sizes))
+      modularbayes.Blockwise(
+          bijectors=block_bijectors, block_sizes=block_sizes))
 
   # Chain all layers together
   flow = distrax.Chain(flow_layers[::-1])
@@ -310,7 +312,7 @@ def nsf_global_params(
   base_distribution = distrax.MultivariateNormalDiag(
       loc=jnp.zeros(event_shape), scale_diag=jnp.ones(event_shape))
 
-  return distributions.Transformed(base_distribution, flow)
+  return modularbayes.Transformed(base_distribution, flow)
 
 
 def nsf_locations(
@@ -322,7 +324,7 @@ def nsf_locations(
     loc_x_range: Tuple[float],
     loc_y_range: Tuple[float],
     **_,
-) -> distributions.ConditionalTransformed:
+) -> modularbayes.ConditionalTransformed:
   """Creates the Rational Quadratic Flow for the unknown locations of profiles
   in the LALME model.
   """
@@ -361,7 +363,7 @@ def nsf_locations(
   # for a total of `3 * num_bins + 1` parameters.
 
   for _ in range(num_layers):
-    layer = bijectors.ConditionalMaskedCoupling(
+    layer = modularbayes.ConditionalMaskedCoupling(
         mask=mask,
         bijector=bijector_fn,
         conditioner=CouplingConditioner(
@@ -397,10 +399,11 @@ def nsf_locations(
   block_bijectors = [loc_x_range_bijector, loc_y_range_bijector]
   block_sizes = [num_profiles, num_profiles]
   flow_layers.append(
-      bijectors.Blockwise(bijectors=block_bijectors, block_sizes=block_sizes))
+      modularbayes.Blockwise(
+          bijectors=block_bijectors, block_sizes=block_sizes))
 
   # Chain all layers together
-  flow = bijectors.ConditionalChain(flow_layers[::-1])
+  flow = modularbayes.ConditionalChain(flow_layers[::-1])
 
   # base_distribution = distrax.Independent(
   #     distrax.Uniform(low=jnp.zeros(event_shape), high=jnp.ones(event_shape)),
@@ -409,7 +412,7 @@ def nsf_locations(
   base_distribution = distrax.MultivariateNormalDiag(
       loc=jnp.zeros(event_shape), scale_diag=jnp.ones(event_shape))
 
-  return distributions.ConditionalTransformed(base_distribution, flow)
+  return modularbayes.ConditionalTransformed(base_distribution, flow)
 
 
 def meta_nsf_global_params(
@@ -422,7 +425,7 @@ def meta_nsf_global_params(
     num_bins: int,
     spline_range: Tuple[float],
     **_,
-) -> distributions.ConditionalTransformed:
+) -> modularbayes.ConditionalTransformed:
   """Creates the Rational Quadratic Flow model.
 
   Args:
@@ -468,7 +471,7 @@ def meta_nsf_global_params(
   # for a total of `3 * num_bins + 1` parameters.
 
   for _ in range(num_layers):
-    layer = bijectors.EtaConditionalMaskedCoupling(
+    layer = modularbayes.EtaConditionalMaskedCoupling(
         mask=mask,
         bijector=bijector_fn,
         conditioner_eta=CouplingConditioner(
@@ -510,10 +513,11 @@ def meta_nsf_global_params(
       zeta_dim,
   ]
   flow_layers.append(
-      bijectors.Blockwise(bijectors=block_bijectors, block_sizes=block_sizes))
+      modularbayes.Blockwise(
+          bijectors=block_bijectors, block_sizes=block_sizes))
 
   # Chain all layers together
-  flow = bijectors.ConditionalChain(flow_layers[::-1])
+  flow = modularbayes.ConditionalChain(flow_layers[::-1])
 
   # base_distribution = distrax.Independent(
   #     distrax.Uniform(low=jnp.zeros(event_shape), high=jnp.ones(event_shape)),
@@ -522,7 +526,7 @@ def meta_nsf_global_params(
   base_distribution = distrax.MultivariateNormalDiag(
       loc=jnp.zeros(event_shape), scale_diag=jnp.ones(event_shape))
 
-  return distributions.ConditionalTransformed(base_distribution, flow)
+  return modularbayes.ConditionalTransformed(base_distribution, flow)
 
 
 def meta_nsf_locations(
@@ -535,7 +539,7 @@ def meta_nsf_locations(
     loc_x_range: Tuple[float],
     loc_y_range: Tuple[float],
     **_,
-) -> distributions.ConditionalTransformed:
+) -> modularbayes.ConditionalTransformed:
   """Creates the Rational Quadratic Flow for the unknown locations of profiles
 in the LALME model.
 """
@@ -574,7 +578,7 @@ in the LALME model.
   # for a total of `3 * num_bins + 1` parameters.
 
   for _ in range(num_layers):
-    layer = bijectors.ConditionalMaskedCoupling(
+    layer = modularbayes.ConditionalMaskedCoupling(
         mask=mask,
         bijector=bijector_fn,
         conditioner_eta=CouplingConditioner(
@@ -616,19 +620,16 @@ in the LALME model.
   block_bijectors = [loc_x_range_bijector, loc_y_range_bijector]
   block_sizes = [num_profiles, num_profiles]
   flow_layers.append(
-      bijectors.Blockwise(bijectors=block_bijectors, block_sizes=block_sizes))
+      modularbayes.Blockwise(
+          bijectors=block_bijectors, block_sizes=block_sizes))
 
   # Chain all layers together
-  flow = bijectors.ConditionalChain(flow_layers[::-1])
-
-  # base_distribution = distrax.Independent(
-  #     distrax.Uniform(low=jnp.zeros(event_shape), high=jnp.ones(event_shape)),
-  #     reinterpreted_batch_ndims=len(event_shape))
+  flow = modularbayes.ConditionalChain(flow_layers[::-1])
 
   base_distribution = distrax.MultivariateNormalDiag(
       loc=jnp.zeros(event_shape), scale_diag=jnp.ones(event_shape))
 
-  return distributions.ConditionalTransformed(base_distribution, flow)
+  return modularbayes.ConditionalTransformed(base_distribution, flow)
 
 
 def split_flow_global_params(

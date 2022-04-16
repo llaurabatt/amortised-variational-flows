@@ -7,7 +7,7 @@ def get_config():
   """Get the hyperparameter configuration."""
   config = ml_collections.ConfigDict()
 
-  config.method = 'vmp'
+  config.method = 'vmp_map'
 
   # Dataset to use
   config.dataset_id = 'coarsen_8_items'
@@ -34,11 +34,6 @@ def get_config():
 
   # Number of training steps to run.
   config.training_steps = 20_000
-
-  # Optimizer for pretrain
-  config.optim_pretrain_kwargs = ml_collections.ConfigDict()
-  config.optim_pretrain_kwargs.grad_clip_value = 1.0
-  config.optim_pretrain_kwargs.learning_rate = 3e-5
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -97,7 +92,7 @@ def get_config():
   config.checkpoints_keep = 1
 
   # Arguments for the Variational Meta-Posterior map
-  config.vmp_map_name = 'VmpMLP'
+  config.vmp_map_name = 'VmpMap'
   config.vmp_map_kwargs = ml_collections.ConfigDict()
   config.vmp_map_kwargs.hidden_sizes = [30] * 5 + [5]
 
@@ -108,13 +103,6 @@ def get_config():
 
   config.lambda_idx_plot = [50 * i for i in range(5)]
   config.constant_lambda_ignore_plot = True
-
-  config.state_global_init = ''
-  config.state_loc_floating_init = ''
-  config.state_loc_random_anchor_init = ''
-
-  config.pretrain_error = 500.
-  config.eps_noise_pretrain = 1e-3
 
   # Initial seed for random numbers.
   config.seed = 123

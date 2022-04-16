@@ -8,10 +8,10 @@ from tensorflow_probability.substrates import jax as tfp
 
 import haiku as hk
 
-from modularbayes import distributions as distr
-from modularbayes import utils
-from modularbayes.typing import (Any, Array, Batch, Dict, List, Optional,
-                                 PRNGKey, SmiEta, Tuple)
+import modularbayes
+from modularbayes import log1mexpm, force_symmetric
+from modularbayes._src.typing import (Any, Array, Batch, Dict, List, Optional,
+                                      PRNGKey, SmiEta, Tuple)
 
 tfd = tfp.distributions
 kernels = tfp.math.psd_kernels
@@ -43,7 +43,7 @@ def log_prob_y_equal_1(
   ]
 
   log_prob_y_equal_1_list = [
-      jnp.log(1 - zeta[i]) + utils.log1mexpm(mu[i] * phi_prob_item)
+      jnp.log(1 - zeta[i]) + log1mexpm(mu[i] * phi_prob_item)
       for i, phi_prob_item in enumerate(phi_prob_item_list)
   ]
 
@@ -103,9 +103,8 @@ def log_prob_y_integrated_over_gamma_profiles(
   # and add over forms
   log_prob_y_item_profile = jnp.stack([
       jnp.where(y_i, log_prob_y_eq_1_i,
-                utils.log1mexpm(-log_prob_y_eq_1_i)).mean(axis=0).sum(axis=1)
-      for y_i, log_prob_y_eq_1_i in zip(batch['y'],
-                                        log_prob_y_equal_1_pointwise_list)
+                log1mexpm(-log_prob_y_eq_1_i)).mean(axis=0).sum(axis=1) for y_i,
+      log_prob_y_eq_1_i in zip(batch['y'], log_prob_y_equal_1_pointwise_list)
   ],
                                       axis=1)
   # assert log_prob_y_item_profile.shape == (num_samples_global,
@@ -287,7 +286,7 @@ def log_prob_joint(
 
   # P(Phi_Z) : Prior on the GPs on inducing points
   log_prob_gamma = distrax.Independent(
-      distr.MultivariateNormalTriL(
+      modularbayes.MultivariateNormalTriL(
           loc=jnp.zeros((1, 1, num_inducing_points)),
           scale_tril=batch['cov_inducing_chol']),
       reinterpreted_batch_ndims=1).log_prob
@@ -404,7 +403,7 @@ def gp_F_given_U(
   # x profiles
   matrix_A = jnp.einsum("rxz,zu->rxu", cov_x_z, cov_z_inv, precision='highest')
   matrix_B = jnp.einsum("rxz,rfz->rxf", matrix_A, cov_x_z, precision='highest')
-  matrix_B = jax.vmap(utils.force_symmetric)(matrix_B)
+  matrix_B = jax.vmap(force_symmetric)(matrix_B)
 
   # Conditional mean
   mean_f_given_u = jnp.einsum(
@@ -425,7 +424,7 @@ def gp_F_given_U(
       jnp.broadcast_to(jnp.eye(cov_f_given_u.shape[-1]), cov_f_given_u.shape))
 
   # assert jnp.all(jax.vmap(jnp.diag)(cov_f_given_u) > 0)
-  # assert jnp.all(jax.vmap(utils.issymmetric)(cov_anchor_given_y))
+  # assert jnp.all(jax.vmap(issymmetric)(cov_anchor_given_y))
   cov_tril_f_given_u = jax.vmap(jnp.linalg.cholesky)(cov_f_given_u)
   # assert ~jnp.any(jnp.isnan(cov_tril_f_given_u))
   # Expand dimension for independent GPs
@@ -434,7 +433,7 @@ def gp_F_given_U(
   assert cov_tril_f_given_u.shape[-2:] == (x_dim, x_dim)
 
   p_f_given_u = distrax.Independent(
-      distr.MultivariateNormalTriL(
+      modularbayes.MultivariateNormalTriL(
           loc=mean_f_given_u, scale_tril=cov_tril_f_given_u),
       reinterpreted_batch_ndims=1)
 

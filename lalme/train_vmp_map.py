@@ -27,12 +27,14 @@ from train_flow import (get_inducing_points, load_data, q_distr_global,
                         sample_all_flows, elbo_estimate,
                         error_locations_estimate)
 
-from modularbayes import metaposterior
-from modularbayes import utils
-from modularbayes.utils.training import TrainState
-from modularbayes.typing import (Any, Array, Batch, ConfigDict, Dict, List,
-                                 Mapping, Optional, PRNGKey, SummaryWriter,
-                                 Tuple, Union)
+import modularbayes
+from modularbayes import (plot_to_image, normalize_images, load_ckpt,
+                          initial_state_ckpt, flatten_dict, update_states,
+                          save_checkpoint)
+from modularbayes._src.utils.training import TrainState
+from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict, List,
+                                      Mapping, Optional, PRNGKey, SummaryWriter,
+                                      Tuple, Union)
 
 kernels = tfp.math.psd_kernels
 
@@ -62,7 +64,7 @@ def make_optimizer(
 @hk.without_apply_rng
 @hk.transform
 def vmp_map(eta, vmp_map_name, vmp_map_kwargs, params_flow_init):
-  return getattr(metaposterior, vmp_map_name)(
+  return getattr(modularbayes, vmp_map_name)(
       **vmp_map_kwargs, params_flow_init=params_flow_init)(
           eta)
 
@@ -152,7 +154,7 @@ def loss(
   }
   # globals().update(vmp_map_kwargs)
 
-  elbo_dict = jax.vmap(lambda q_distr_out_vmap_i, smi_eta_i: elbo_fn(
+  elbo_dict = jax.vmap(lambda q_distr_out_vmap_i, smi_eta_i: elbo_estimate(
       q_distr_out=q_distr_out_vmap_i,
       smi_eta=smi_eta_i,
       batch=batch,
@@ -342,14 +344,14 @@ def log_images(
         fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
 
       if summary_writer:
-        images.append(utils.plot_to_image(fig))
+        images.append(plot_to_image(fig))
 
     # Logging VMP-map plots
     if summary_writer:
       plot_name = 'lalme_vmp_map'
       summary_writer.image(
           tag=plot_name,
-          image=utils.misc.normalize_images(images),
+          image=normalize_images(images),
           step=state_list[0].step,
       )
 
@@ -401,7 +403,7 @@ def log_images(
       # Error on posterior location
       error_loc_dict['eta_floating'].append(float(eta_i))
       error_loc_dict_i = jax.vmap(
-          compute_error_locations,
+          error_locations_estimate,
           in_axes=[0, None])(q_distr_out_i['posterior_sample'], batch)
       error_loc_dict['distance_floating'].append(
           float(error_loc_dict_i['distance_floating']))
@@ -422,7 +424,7 @@ def log_images(
     if workdir_png:
       fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
     if summary_writer:
-      images.append(utils.plot_to_image(fig))
+      images.append(plot_to_image(fig))
 
     if config.include_random_anchor:
       plot_name = 'lalme_vmp_distance_random_anchor'
@@ -438,13 +440,13 @@ def log_images(
       if workdir_png:
         fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
       if summary_writer:
-        images.append(utils.plot_to_image(fig))
+        images.append(plot_to_image(fig))
 
       if summary_writer:
         plot_name = 'lalme_vmp_distance'
         summary_writer.image(
             tag=plot_name,
-            image=utils.misc.normalize_images(images),
+            image=normalize_images(images),
             step=state_list[0].step,
         )
 
@@ -503,7 +505,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> TrainState:
   config.flow_kwargs.loc_y_range = tuple(loc_bounds[1])
 
   # smi_eta = {'groups':jnp.ones((1,2))}
-  # elbo_fn(config.params_flow, next(prng_seq), train_ds, smi_eta)
+  # elbo_estimate(config.params_flow, next(prng_seq), train_ds, smi_eta)
 
   # Get examples of the output tree to be produced by the meta functions
   # Global parameters
@@ -524,7 +526,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> TrainState:
             sample_shape=(config.num_samples_elbo,),
         ))
   else:
-    state_flow_init = utils.load_ckpt(path=state_flow_init_path_list[0])
+    state_flow_init = load_ckpt(path=state_flow_init_path_list[0])
     params_flow_init_list.append(state_flow_init.params)
     del state_flow_init
 
@@ -548,7 +550,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> TrainState:
             global_params_base_sample=global_params_base_sample_init,
         ))
   else:
-    state_flow_init = utils.load_ckpt(path=state_flow_init_path_list[1])
+    state_flow_init = load_ckpt(path=state_flow_init_path_list[1])
     params_flow_init_list.append(state_flow_init.params)
     del state_flow_init
 
@@ -563,7 +565,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> TrainState:
               global_params_base_sample=global_params_base_sample_init,
           ))
     else:
-      state_flow_init = utils.load_ckpt(path=state_flow_init_path_list[2])
+      state_flow_init = load_ckpt(path=state_flow_init_path_list[2])
       params_flow_init_list.append(state_flow_init.params)
       del state_flow_init
 
@@ -586,7 +588,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> TrainState:
 
   state_name_list.append('global')
   state_list.append(
-      utils.initial_state_ckpt(
+      initial_state_ckpt(
           checkpoint_dir=f'{checkpoint_dir}/{state_name_list[-1]}',
           forward_fn=vmp_map,
           forward_fn_kwargs={
@@ -601,7 +603,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> TrainState:
 
   state_name_list.append('loc_floating')
   state_list.append(
-      utils.initial_state_ckpt(
+      initial_state_ckpt(
           checkpoint_dir=f'{checkpoint_dir}/{state_name_list[-1]}',
           forward_fn=vmp_map,
           forward_fn_kwargs={
@@ -618,7 +620,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> TrainState:
   #     logdir=workdir, just_logging=jax.host_id() != 0)
   if jax.process_index() == 0 and state_list[0].step < config.training_steps:
     summary_writer = tensorboard.SummaryWriter(workdir)
-    summary_writer.hparams(utils.flatten_dict(config))
+    summary_writer.hparams(flatten_dict(config))
   else:
     summary_writer = None
 
@@ -651,7 +653,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> TrainState:
   if config.include_random_anchor:
     state_name_list.append('loc_random_anchor')
     state_list.append(
-        utils.initial_state_ckpt(
+        initial_state_ckpt(
             checkpoint_dir=f'{checkpoint_dir}/{state_name_list[-1]}',
             forward_fn=vmp_map,
             forward_fn_kwargs={
@@ -669,7 +671,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> TrainState:
       logging.info(line)
 
   ### Training VMP map ###
-  update_states_jit = lambda state_list, batch, prng_key: utils.update_states(
+  update_states_jit = lambda state_list, batch, prng_key: update_states(
       state_list=state_list,
       batch=batch,
       prng_key=prng_key,
@@ -758,7 +760,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> TrainState:
 
     if (state_list[0].step) % config.checkpoint_steps == 0:
       for state, state_name in zip(state_list, state_name_list):
-        utils.save_checkpoint(
+        save_checkpoint(
             state=state,
             checkpoint_dir=f'{checkpoint_dir}/{state_name}',
             keep=config.checkpoints_keep,
@@ -772,7 +774,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> TrainState:
   # Saving checkpoint at the end of the training process
   # (in case training_steps is not multiple of checkpoint_steps)
   for state, state_name in zip(state_list, state_name_list):
-    utils.save_checkpoint(
+    save_checkpoint(
         state=state,
         checkpoint_dir=f'{checkpoint_dir}/{state_name}',
         keep=config.checkpoints_keep,
