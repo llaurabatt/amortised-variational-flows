@@ -10,7 +10,7 @@ def get_config():
   config.method = 'vmp_map'
 
   # Dataset to use
-  config.dataset_id = 'coarsen_8_items'
+  config.dataset_id = 'coarsen_all_items'
 
   # Defined in `flows.py`.
   config.flow_name = 'mean_field'
