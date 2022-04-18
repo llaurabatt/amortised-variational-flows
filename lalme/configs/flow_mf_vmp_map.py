@@ -91,7 +91,7 @@ def get_config():
   # Number of samples of eta for Meta-Posterior training
   config.num_samples_eta = 5
   config.eta_sampling_a = 0.2
-  config.eta_sampling_b = 0.2
+  config.eta_sampling_b = 1.0
 
   config.lambda_idx_plot = [50 * i for i in range(5)]
   config.constant_lambda_ignore_plot = True

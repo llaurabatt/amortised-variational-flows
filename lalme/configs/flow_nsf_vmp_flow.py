@@ -95,7 +95,7 @@ def get_config():
 
   # Number of samples of eta for Meta-Posterior training
   config.eta_sampling_a = 0.2
-  config.eta_sampling_b = 0.2
+  config.eta_sampling_b = 1.0
 
   # Initial seed for random numbers.
   config.seed = 123

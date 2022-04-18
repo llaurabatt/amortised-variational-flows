@@ -517,18 +517,13 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> TrainState:
   if config.include_random_anchor:
     state_flow_init_path_list.append(config.state_loc_random_anchor_init)
 
-  if state_flow_init_path_list[0] == '':
-    params_flow_init_list.append(
-        hk.transform(q_distr_global).init(
-            next(prng_seq),
-            flow_name=config.flow_name,
-            flow_kwargs=config.flow_kwargs,
-            sample_shape=(config.num_samples_elbo,),
-        ))
-  else:
-    state_flow_init = load_ckpt(path=state_flow_init_path_list[0])
-    params_flow_init_list.append(state_flow_init.params)
-    del state_flow_init
+  params_flow_init_list.append(
+      hk.transform(q_distr_global).init(
+          next(prng_seq),
+          flow_name=config.flow_name,
+          flow_kwargs=config.flow_kwargs,
+          sample_shape=(config.num_samples_elbo,),
+      ))
 
   # Get an initial sample of global parameters
   # (used below to initialize floating locations)
@@ -541,33 +536,24 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> TrainState:
   )['global_params_base_sample']
 
   # Location floating profiles
-  if state_flow_init_path_list[1] == '':
+
+  params_flow_init_list.append(
+      hk.transform(q_distr_loc_floating).init(
+          next(prng_seq),
+          flow_name=config.flow_name,
+          flow_kwargs=config.flow_kwargs,
+          global_params_base_sample=global_params_base_sample_init,
+      ))
+
+  # Location random anchor profiles
+  if config.include_random_anchor:
     params_flow_init_list.append(
-        hk.transform(q_distr_loc_floating).init(
+        hk.transform(q_distr_loc_random_anchor).init(
             next(prng_seq),
             flow_name=config.flow_name,
             flow_kwargs=config.flow_kwargs,
             global_params_base_sample=global_params_base_sample_init,
         ))
-  else:
-    state_flow_init = load_ckpt(path=state_flow_init_path_list[1])
-    params_flow_init_list.append(state_flow_init.params)
-    del state_flow_init
-
-  # Location random anchor profiles
-  if config.include_random_anchor:
-    if state_flow_init_path_list[2] == '':
-      params_flow_init_list.append(
-          hk.transform(q_distr_loc_random_anchor).init(
-              next(prng_seq),
-              flow_name=config.flow_name,
-              flow_kwargs=config.flow_kwargs,
-              global_params_base_sample=global_params_base_sample_init,
-          ))
-    else:
-      state_flow_init = load_ckpt(path=state_flow_init_path_list[2])
-      params_flow_init_list.append(state_flow_init.params)
-      del state_flow_init
 
   ### Set Variational Meta-Posterior Map ###
 

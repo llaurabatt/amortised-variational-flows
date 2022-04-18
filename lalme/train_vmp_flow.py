@@ -329,22 +329,34 @@ def elbo_estimate_along_eta(
     eta_sampling_a: float,
     eta_sampling_b: float,
     include_random_anchor: bool,
+    profile_is_anchor: Array,
     kernel_name: Optional[str] = None,
     kernel_kwargs: Optional[Dict[str, Any]] = None,
     num_samples_gamma_profiles: int = 0,
     gp_jitter: Optional[float] = None,
 ) -> Dict[str, Array]:
+  # params_tuple = [state.params for state in state_list]
 
   prng_seq = hk.PRNGSequence(prng_key)
 
   # Sample eta values
-  etas_elbo = jax.random.beta(
+  etas_profiles_floating = jax.random.beta(
       key=next(prng_seq),
       a=eta_sampling_a,
       b=eta_sampling_b,
-      shape=(num_samples, 1),
+      shape=(num_samples,),
   )
-  smi_eta_elbo = {'profiles': etas_elbo}
+
+  smi_eta_elbo = {
+      'profiles':
+          jax.vmap(lambda eta_profiles_floating: jnp.where(
+              profile_is_anchor,
+              1.,
+              eta_profiles_floating,
+          ))(etas_profiles_floating),
+      'items':
+          jnp.ones((num_samples, len(batch['num_forms_tuple']))),
+  }
 
   # Sample from flow
   q_distr_out = sample_all_flows(
@@ -382,6 +394,15 @@ def elbo_estimate_along_eta(
     posterior_sample_dict_stg1[key] = q_distr_out['posterior_sample'][key +
                                                                       '_aux']
 
+  # # TODO: make this one work to fix the one below
+  # log_prob_fun.log_prob_joint(
+  #     batch=batch,
+  #     posterior_sample_dict=jax.tree_map(lambda x: x[[0], ...],posterior_sample_dict_stg1),
+  #     # posterior_sample_dict=posterior_sample_dict_stg1,
+  #     smi_eta=jax.tree_map(lambda x: x[0, ...], smi_eta_elbo),
+  # )
+
+  # TODO: doesn't work yet
   log_prob_joint_stg1 = jax.vmap(
       lambda posterior_sample_i, smi_eta_i: log_prob_fun.log_prob_joint(
           batch=batch,
@@ -614,6 +635,13 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   #   -Posterior locations for floating profiles
   #   -Posterior locations for anchor profiles (treated as floating)
 
+  smi_eta_init = {
+      'profiles':
+          jnp.ones((config.num_samples_elbo, train_ds['num_profiles'])),
+      'items':
+          jnp.ones((config.num_samples_elbo, len(train_ds['num_forms_tuple']))),
+  }
+
   # Global parameters
   checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints')
   state_name_list = [
@@ -628,7 +656,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           forward_fn_kwargs={
               'flow_name': config.flow_name,
               'flow_kwargs': config.flow_kwargs,
-              'eta': jnp.ones((config.num_samples_elbo, 1))
+              'eta': smi_eta_init['profiles'],
           },
           prng_key=next(prng_seq),
           optimizer=make_optimizer(**config.optim_kwargs),
@@ -641,7 +669,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       next(prng_seq),
       flow_name=config.flow_name,
       flow_kwargs=config.flow_kwargs,
-      eta=jnp.ones((config.num_samples_elbo, 1)),
+      eta=smi_eta_init['profiles'],
   )['global_params_base_sample']
 
   state_list.append(
@@ -652,7 +680,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
               'flow_name': config.flow_name,
               'flow_kwargs': config.flow_kwargs,
               'global_params_base_sample': global_params_base_sample_init,
-              'eta': jnp.ones((config.num_samples_elbo, 1)),
+              'eta': smi_eta_init['profiles'],
               'is_aux': False,
           },
           prng_key=next(prng_seq),
@@ -667,7 +695,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
               'flow_name': config.flow_name,
               'flow_kwargs': config.flow_kwargs,
               'global_params_base_sample': global_params_base_sample_init,
-              'eta': jnp.ones((config.num_samples_elbo, 1)),
+              'eta': smi_eta_init['profiles'],
               'is_aux': True,
           },
           prng_key=next(prng_seq),
@@ -690,7 +718,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           prng_key,
           flow_name=config.flow_name,
           flow_kwargs=config.flow_kwargs,
-          eta=jnp.ones((config.num_samples_elbo, 1)),
+          eta=smi_eta_init['profiles'],
       ),
       columns=(
           "module",
@@ -712,7 +740,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           flow_name=config.flow_name,
           flow_kwargs=config.flow_kwargs,
           global_params_base_sample=global_params_base_sample_init,
-          eta=jnp.ones((config.num_samples_elbo, 1)),
+          eta=smi_eta_init['profiles'],
           is_aux=False,
       ),
       columns=(
@@ -736,7 +764,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                 'flow_name': config.flow_name,
                 'flow_kwargs': config.flow_kwargs,
                 'global_params_base_sample': global_params_base_sample_init,
-                'eta': jnp.ones((config.num_samples_elbo, 1))
+                'eta': smi_eta_init['profiles'],
             },
             prng_key=next(prng_seq),
             optimizer=make_optimizer(**config.optim_kwargs),
@@ -750,7 +778,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             flow_name=config.flow_name,
             flow_kwargs=config.flow_kwargs,
             global_params_base_sample=global_params_base_sample_init,
-            eta=jnp.ones((config.num_samples_elbo, 1)),
+            eta=smi_eta_init['profiles'],
         ),
         columns=(
             "module",
@@ -763,6 +791,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     summary = tabulate_fn_(state_list[3], next(prng_seq))
     for line in summary.split("\n"):
       logging.info(line)
+
+  profile_is_anchor = jnp.arange(
+      train_ds['num_profiles']) < train_ds['num_profiles_anchor']
 
   update_states_jit = lambda state_list, batch, prng_key: update_states(
       state_list=state_list,
@@ -777,6 +808,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           'eta_sampling_a': config.eta_sampling_a,
           'eta_sampling_b': config.eta_sampling_b,
           'include_random_anchor': config.include_random_anchor,
+          'profile_is_anchor': profile_is_anchor,
           'kernel_name': config.kernel_name,
           'kernel_kwargs': config.kernel_kwargs,
           'num_samples_gamma_profiles': config.num_samples_gamma_profiles,
@@ -796,6 +828,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       eta_sampling_a=1.0,
       eta_sampling_b=1.0,
       include_random_anchor=config.include_random_anchor,
+      profile_is_anchor=profile_is_anchor,
       kernel_name=config.kernel_name,
       kernel_kwargs=config.kernel_kwargs,
       num_samples_gamma_profiles=config.num_samples_gamma_profiles,
@@ -828,8 +861,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     # step = 0
 
     # Plots to monitor training
-    if (state_list[0].step == 0) or (state_list[0].step % config.log_img_steps
-                                     == 0):
+    # if (state_list[0].step == 0) or (state_list[0].step % config.log_img_steps
+    #                                  == 0):
+    if False:
       # print("Logging images...\n")
       log_images(
           state_list=state_list,
@@ -946,9 +980,5 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
 # # For debugging
 # config = get_config()
-# config.flow_kwargs.smi_eta.update({
-#     'profiles_floating': 0.001,
-# })
-# workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/mean_field/eta_floating_0.001'
-# workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/spline/eta_floating_0.500'
+# workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/nsf/vmp_flow'
 # train_and_evaluate(config, workdir)
