@@ -957,8 +957,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           batch=train_ds,
           prng_key=next(prng_seq),
           config=config,
-          show_basis_fields=True,
-          show_linguistic_fields=True,
+          show_basis_fields=config.show_basis_fields_during_training,
+          show_linguistic_fields=config.show_linguistic_fields_during_training,
           num_loc_random_anchor_plot=5,
           num_loc_floating_plot=5,
           show_mixing_weights=False,
@@ -1074,6 +1074,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 # config.flow_kwargs.smi_eta.update({
 #     'profiles_floating': 1.000,
 # })
-# # workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/mean_field/eta_floating_1.000'
-# workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/spline/eta_floating_1.000'
+# # workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/mean_field/eta_floating_1.000'
+# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/spline/eta_floating_1.000'
 # train_and_evaluate(config, workdir)

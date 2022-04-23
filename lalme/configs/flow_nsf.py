@@ -82,6 +82,8 @@ def get_config():
 
   # How often to generate posterior plots.
   config.log_img_steps = int(config.training_steps / 10)
+  config.show_basis_fields_during_training = False
+  config.show_linguistic_fields_during_training = False
 
   # How often to save model checkpoints.
   config.checkpoint_steps = int(config.training_steps / 2)

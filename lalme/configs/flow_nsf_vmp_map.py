@@ -73,7 +73,9 @@ def get_config():
   config.include_random_anchor = True
 
   # How often to log images to monitor convergence.
-  config.log_img_steps = config.training_steps / 10
+  config.log_img_steps = int(config.training_steps / 10)
+  config.show_basis_fields_during_training = False
+  config.show_linguistic_fields_during_training = False
 
   # Number of posteriors samples used in the plots.
   config.num_samples_plot = 300

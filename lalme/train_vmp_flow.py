@@ -394,15 +394,6 @@ def elbo_estimate_along_eta(
     posterior_sample_dict_stg1[key] = q_distr_out['posterior_sample'][key +
                                                                       '_aux']
 
-  # # TODO: make this one work to fix the one below
-  # log_prob_fun.log_prob_joint(
-  #     batch=batch,
-  #     posterior_sample_dict=jax.tree_map(lambda x: x[[0], ...],posterior_sample_dict_stg1),
-  #     # posterior_sample_dict=posterior_sample_dict_stg1,
-  #     smi_eta=jax.tree_map(lambda x: x[0, ...], smi_eta_elbo),
-  # )
-
-  # TODO: doesn't work yet
   log_prob_joint_stg1 = jax.vmap(
       lambda posterior_sample_i, smi_eta_i: log_prob_fun.log_prob_joint(
           batch=batch,
@@ -861,17 +852,16 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     # step = 0
 
     # Plots to monitor training
-    # if (state_list[0].step == 0) or (state_list[0].step % config.log_img_steps
-    #                                  == 0):
-    if False:
+    if (state_list[0].step == 0) or (state_list[0].step % config.log_img_steps
+                                     == 0):
       # print("Logging images...\n")
       log_images(
           state_list=state_list,
           batch=train_ds,
           prng_key=next(prng_seq),
           config=config,
-          show_basis_fields=True,
-          show_linguistic_fields=True,
+          show_basis_fields=config.show_basis_fields_during_training,
+          show_linguistic_fields=config.show_linguistic_fields_during_training,
           num_loc_random_anchor_plot=5,
           num_loc_floating_plot=5,
           show_mixing_weights=False,
@@ -980,5 +970,5 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
 # # For debugging
 # config = get_config()
-# workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/nsf/vmp_flow'
+# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/nsf/vmp_flow'
 # train_and_evaluate(config, workdir)

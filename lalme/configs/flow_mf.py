@@ -67,6 +67,8 @@ def get_config():
 
   # How often to evaluate the model.
   config.eval_steps = int(config.training_steps / 10)
+  config.show_basis_fields_during_training = False
+  config.show_linguistic_fields_during_training = False
 
   config.num_samples_eval = 100
 
