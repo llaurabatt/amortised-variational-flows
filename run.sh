@@ -10,6 +10,17 @@ WORK_DIR=$HOME/spatial-smi/output
 mkdir -p $WORK_DIR
 pip install -r $REPO_DIR/requirements.txt
 
+## Replicate MCMC
+## Single eta
+eta_floating='(1.0,)'
+python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_nsf_like_mcmc.py \
+                                --workdir=$WORK_DIR/8_items/nsf/eta_floating \
+                                --config.iterate_smi_eta=$eta_floating
+## Variational Meta-Posterior via VMP-flow
+### Neural Spline Flow
+python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_nsf_vmp_flow_like_mcmc.py \
+                                --workdir=$WORK_DIR/8_items/nsf/vmp_flow
+
 ## One posterior for each eta
 eta_floating='(0.001,0.5,1.0)'
 #### Mean field Variational Inference (MFVI)
