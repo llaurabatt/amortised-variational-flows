@@ -251,8 +251,6 @@ def log_images(
 
   prng_seq = hk.PRNGSequence(prng_key)
 
-  # config.eta_plot = [0.001] + np.round(np.linspace(0., 1., 11)[1:], 2).tolist()
-
   eta_plot = jnp.array(config.eta_plot).reshape(-1, 1)
 
   assert eta_plot.ndim == 2

@@ -84,8 +84,6 @@ def get_config():
 
   config.eta_plot = [
       [0.001],
-      [0.1],
-      [0.2],
       [0.5],
       [1.0],
   ]

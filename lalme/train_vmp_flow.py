@@ -503,6 +503,7 @@ def log_images(
     batch: Batch,
     prng_key: PRNGKey,
     config: ConfigDict,
+    profile_is_anchor: Array,
     show_basis_fields: bool,
     show_linguistic_fields: bool,
     num_loc_random_anchor_plot: Optional[int],
@@ -524,18 +525,28 @@ def log_images(
   # Plot posterior samples
   key_flow = next(prng_seq)
   for i in range(eta_plot.shape[0]):
-    # Sample from flow
+
+    etas_profiles_floating = jnp.broadcast_to(
+        eta_plot[[i], :], (config.num_samples_plot,) + eta_plot.shape[1:])
+
+    smi_eta_plot = {
+        'profiles':
+            jax.vmap(lambda eta_profiles_floating: jnp.where(
+                profile_is_anchor,
+                1.,
+                eta_profiles_floating,
+            ))(etas_profiles_floating),
+        'items':
+            jnp.ones((config.num_samples_plot, len(batch['num_forms_tuple']))),
+    }
+
     q_distr_out = sample_all_flows(
         params_tuple=[state.params for state in state_list],
         batch=batch,
         prng_key=key_flow,
         flow_name=config.flow_name,
         flow_kwargs=config.flow_kwargs,
-        smi_eta={
-            'profiles':
-                jnp.broadcast_to(eta_plot[[i], :], (config.num_samples_plot,) +
-                                 eta_plot.shape[1:])
-        },
+        smi_eta=smi_eta_plot,
         include_random_anchor=config.include_random_anchor,
         kernel_name=config.kernel_name,
         kernel_kwargs=config.kernel_kwargs,
@@ -860,6 +871,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           batch=train_ds,
           prng_key=next(prng_seq),
           config=config,
+          profile_is_anchor=profile_is_anchor,
           show_basis_fields=config.show_basis_fields_during_training,
           show_linguistic_fields=config.show_linguistic_fields_during_training,
           num_loc_random_anchor_plot=5,
@@ -956,6 +968,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       batch=train_ds,
       prng_key=next(prng_seq),
       config=config,
+      profile_is_anchor=profile_is_anchor,
       show_basis_fields=True,
       show_linguistic_fields=True,
       num_loc_random_anchor_plot=20,

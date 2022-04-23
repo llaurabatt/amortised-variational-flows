@@ -24,7 +24,7 @@ def get_config():
   # Hidden sizes of the MLP conditioner.
   config.flow_kwargs.hidden_sizes_conditioner = [30] * 3 + [10]
   # Hidden sizes of the MLP conditioner.
-  config.flow_kwargs.hidden_sizes_conditioner_eta = [30] * 3
+  config.flow_kwargs.hidden_sizes_conditioner_eta = [30] * 5
   # Number of bins to use in the rational-quadratic spline.
   config.flow_kwargs.num_bins = 10
   # the bounds of the quadratic spline transformer
@@ -84,8 +84,6 @@ def get_config():
 
   config.eta_plot = [
       [0.001],
-      [0.1],
-      [0.2],
       [0.5],
       [1.0],
   ]
