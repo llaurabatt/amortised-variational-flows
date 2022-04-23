@@ -6,7 +6,7 @@
 
 # # # Configure the gcloud command
 # gcloud config set account christianu7@gmail.com
-# gcloud config set project modularbayes
+# gcloud config set project spatial-smi
 # # Enable the Cloud TPU API
 # gcloud services enable tpu.googleapis.com
 # gcloud beta services identity create --service tpu.googleapis.com
@@ -69,9 +69,9 @@ sudo apt -y autoremove
 
 # Create virtual enviromnent
 sudo apt -y install python3.8-venv
-rm -rf ~/.virtualenvs/modularbayes
-python3 -m venv ~/.virtualenvs/modularbayes
-source ~/.virtualenvs/modularbayes/bin/activate
+rm -rf ~/.virtualenvs/spatial-smi
+python3 -m venv ~/.virtualenvs/spatial-smi
+source ~/.virtualenvs/spatial-smi/bin/activate
 pip install --upgrade pip
 pip install --upgrade wheel
 pip install "jax[tpu]>=0.2.16" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
@@ -80,10 +80,8 @@ pip install "jax[tpu]>=0.2.16" -f https://storage.googleapis.com/jax-releases/li
 git config --global user.name "Chris Carmona"
 git config --global user.email carmona@stats.ox.ac.uk
 
-# Clone and install modularbayes
+# Clone and install spatial-smi
 mkdir -p smi/01_code
 cd smi/01_code
-git clone https://chriscarmona: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@github.com/chriscarmona/modularbayes.git
-pip install -e ./modularbayes
-# python3 examples/lalme/main.py --workdir=examples/lalme/output --config=examples/lalme/configs/iaf.py
-# python3 examples/lalme/main.py --workdir=examples/lalme/output --config=examples/lalme/configs/meanfield.py
+git clone https://chriscarmona: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@github.com/chriscarmona/spatial-smi.git
+pip install -r ./spatial-smi/requirements.txt

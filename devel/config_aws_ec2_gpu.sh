@@ -17,16 +17,16 @@ sudo yum install python3.9
 git config --global user.name "Chris Carmona"
 git config --global user.email carmona@stats.ox.ac.uk
 
-# Clone and install modularbayes
+# Clone and install spatial-smi
 mkdir -p smi/01_code
 cd ~/smi/01_code
-git clone https://chriscarmona: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@github.com/chriscarmona/modularbayes.git
+git clone https://chriscarmona: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@github.com/chriscarmona/spatial-smi.git
 pip3 install --upgrade pip
 
-rm -rf ~/.virtualenvs/modularbayes
-python3.8 -m venv ~/.virtualenvs/modularbayes
-source ~/.virtualenvs/modularbayes/bin/activate
+rm -rf ~/.virtualenvs/spatial-smi
+python3.8 -m venv ~/.virtualenvs/spatial-smi
+source ~/.virtualenvs/spatial-smi/bin/activate
 pip install --upgrade pip
 pip install --upgrade wheel
 pip install --upgrade "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_releases.html  # Note: wheels only available on linux.
-pip install -e ./modularbayes
+pip install -r ./spatial-smi/requirements.txt
