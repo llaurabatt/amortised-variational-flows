@@ -619,34 +619,10 @@ def log_images(
 
 
 def error_locations_estimate(
-    params_tuple: Tuple[hk.Params],
+    posterior_sample_dict: Dict[str, Any],
     batch: Optional[Batch],
-    prng_key: PRNGKey,
-    num_samples: int,
-    flow_name: str,
-    flow_kwargs: Dict[str, Any],
-    include_random_anchor: bool,
-    kernel_name: Optional[str] = None,
-    kernel_kwargs: Optional[Dict[str, Any]] = None,
-    num_samples_gamma_profiles: int = 0,
-    gp_jitter: Optional[float] = None,
 ) -> Dict[str, Array]:
   """Compute average distance error."""
-
-  # Sample from flow
-  posterior_sample_dict = sample_all_flows(
-      params_tuple=params_tuple,
-      batch=batch,
-      prng_key=prng_key,
-      flow_name=flow_name,
-      flow_kwargs=flow_kwargs,
-      sample_shape=(num_samples,),
-      include_random_anchor=include_random_anchor,
-      kernel_name=kernel_name,
-      kernel_kwargs=kernel_kwargs,
-      num_samples_gamma_profiles=num_samples_gamma_profiles,
-      gp_jitter=gp_jitter,
-  )['posterior_sample']
 
   error_loc_out = {}
 
@@ -924,21 +900,20 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   )
   elbo_validation_jit = jax.jit(elbo_validation_jit)
 
-  error_locations_estimate_jit = lambda state_list, batch, prng_key: error_locations_estimate(
+  sample_eval_jit = lambda state_list, batch, prng_key: sample_all_flows(
       params_tuple=[state.params for state in state_list],
       batch=batch,
       prng_key=prng_key,
-      num_samples=config.num_samples_eval,
       flow_name=config.flow_name,
       flow_kwargs=config.flow_kwargs,
+      sample_shape=(config.num_samples_eval,),
       include_random_anchor=config.include_random_anchor,
       kernel_name=config.kernel_name,
       kernel_kwargs=config.kernel_kwargs,
       num_samples_gamma_profiles=config.num_samples_gamma_profiles,
       gp_jitter=config.gp_jitter,
-  )
-  # TODO: This doesn't work after jitting.
-  # error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
+  )['posterior_sample']
+  sample_eval_jit = jax.jit(sample_eval_jit)
 
   if state_list[0].step < config.training_steps:
     logging.info('Training variational posterior...')
@@ -1015,15 +990,21 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         )
 
       # Estimate posterior distance to true locations
-      error_loc_dict = error_locations_estimate_jit(
+      # Sample from flow
+      posterior_sample_eval = sample_eval_jit(
           state_list=state_list,
           batch=train_ds,
           prng_key=next(prng_seq),
       )
+
+      error_loc_dict = error_locations_estimate(
+          posterior_sample_dict=posterior_sample_eval,
+          batch=train_ds,
+      )
       for k, v in error_loc_dict.items():
         summary_writer.scalar(
             tag=k,
-            value=v.mean(),
+            value=float(v),
             step=state_list[0].step,
         )
 

@@ -6,6 +6,7 @@ import pathlib
 from absl import logging
 
 import numpy as np
+from matplotlib import pyplot as plt
 
 # from clu import metric_writers
 from flax.metrics import tensorboard
@@ -26,7 +27,7 @@ from train_flow import (load_data, make_optimizer, get_inducing_points,
 
 from modularbayes._src.utils.training import TrainState
 from modularbayes import (flatten_dict, initial_state_ckpt, update_states,
-                          save_checkpoint)
+                          save_checkpoint, plot_to_image, normalize_images)
 from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict, List,
                                       Optional, PRNGKey, SmiEta, SummaryWriter,
                                       Tuple)
@@ -508,6 +509,8 @@ def log_images(
     show_linguistic_fields: bool,
     num_loc_random_anchor_plot: Optional[int],
     num_loc_floating_plot: Optional[int],
+    show_eval_metric: bool,
+    eta_grid_len: int,
     show_mixing_weights: bool,
     show_loc_given_y: bool,
     use_gamma_anchor: bool = False,
@@ -575,6 +578,88 @@ def log_images(
         workdir_png=workdir_png,
         use_gamma_anchor=use_gamma_anchor,
     )
+
+  ### Evaluation metrics ###
+  if show_eval_metric:
+
+    eta_eval_grid = jnp.linspace(0, 1, eta_grid_len).reshape(-1, 1)
+
+    smi_eta_grid = {
+        'profiles':
+            jax.vmap(lambda eta_profiles_floating: jnp.where(
+                profile_is_anchor,
+                1.,
+                eta_profiles_floating,
+            ))(eta_eval_grid),
+        'items':
+            jnp.ones((eta_grid_len, len(batch['num_forms_tuple']))),
+    }
+
+    smi_eta_grid_expanded = jax.tree_map(
+        lambda x: jnp.repeat(
+            x[:, np.newaxis, ...], config.num_samples_eval, axis=1),
+        smi_eta_grid)
+
+    # Sample from flow
+    posterior_sample_eta_grid = jax.vmap(lambda smi_eta_i: sample_all_flows(
+        params_tuple=[state.params for state in state_list],
+        batch=batch,
+        prng_key=prng_key,
+        flow_name=config.flow_name,
+        flow_kwargs=config.flow_kwargs,
+        smi_eta=smi_eta_i,
+        include_random_anchor=config.include_random_anchor,
+        kernel_name=config.kernel_name,
+        kernel_kwargs=config.kernel_kwargs,
+        num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+        gp_jitter=config.gp_jitter,
+    ))(smi_eta_grid_expanded)['posterior_sample']
+
+    error_loc_dict = jax.vmap(
+        lambda posterior_sample_dict_i: error_locations_estimate(
+            posterior_sample_dict=posterior_sample_dict_i,
+            batch=batch,
+        ))(
+            posterior_sample_eta_grid)
+
+    images = []
+
+    plot_name = 'lalme_vmp_distance_floating'
+    fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+    # Plot distance_floating as a function of eta
+    axs.plot(eta_eval_grid, error_loc_dict['distance_floating'])
+    axs.set_xlabel('eta_floating')
+    axs.set_ylabel('Mean distance')
+    axs.set_title('Mean distance for floating profiles\n' +
+                  '(posterior vs. linguistic guess)')
+    fig.tight_layout()
+    if workdir_png:
+      fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    if summary_writer:
+      images.append(plot_to_image(fig))
+
+    if config.include_random_anchor:
+      plot_name = 'lalme_vmp_distance_random_anchor'
+      fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+      # Plot distance_floating as a function of eta
+      axs.plot(eta_eval_grid, error_loc_dict['distance_random_anchor'])
+      axs.set_xlabel('eta_floating')
+      axs.set_ylabel('Mean distance')
+      axs.set_title('Mean distance for anchor profiles\n' +
+                    '(posterior vs. real location)')
+      fig.tight_layout()
+      if workdir_png:
+        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      if summary_writer:
+        images.append(plot_to_image(fig))
+
+      if summary_writer:
+        plot_name = 'lalme_vmp_distance'
+        summary_writer.image(
+            tag=plot_name,
+            image=normalize_images(images),
+            step=state_list[0].step,
+        )
 
 
 def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
@@ -876,6 +961,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           show_linguistic_fields=config.show_linguistic_fields_during_training,
           num_loc_random_anchor_plot=5,
           num_loc_floating_plot=5,
+          show_eval_metric=True,
+          eta_grid_len=10,
           show_mixing_weights=False,
           show_loc_given_y=False,
           use_gamma_anchor=False,
@@ -973,6 +1060,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       show_linguistic_fields=True,
       num_loc_random_anchor_plot=20,
       num_loc_floating_plot=20,
+      show_eval_metric=True,
+      eta_grid_len=10,
       show_mixing_weights=False,
       show_loc_given_y=False,
       use_gamma_anchor=False,
