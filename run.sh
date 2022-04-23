@@ -37,10 +37,3 @@ python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_nsf.py \
 ### Neural Spline Flow
 python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_nsf_vmp_flow.py \
                                 --workdir=$WORK_DIR/all_items/nsf/vmp_flow
-## Variational Meta-Posterior via VMP-map
-### Mean Field
-python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_mf_vmp_map.py \
-                                --workdir=$WORK_DIR/all_items/mean_field/vmp_map
-### Neural Spline Flow
-python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_nsf_vmp_map.py \
-                                --workdir=$WORK_DIR/all_items/nsf/vmp_map

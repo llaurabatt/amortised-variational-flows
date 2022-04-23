@@ -12,7 +12,6 @@ import tensorflow as tf
 
 import train_flow
 import train_vmp_flow
-import train_vmp_map
 
 FLAGS = flags.FLAGS
 
@@ -54,10 +53,6 @@ def main(argv):
         })
         train_flow.train_and_evaluate(FLAGS.config,
                                       FLAGS.workdir + f"_{eta_floating:.3f}")
-
-  elif FLAGS.config.method == 'vmp_map':
-    train_vmp_map.train_and_evaluate(FLAGS.config, FLAGS.workdir)
-
   elif FLAGS.config.method == 'vmp_flow':
     train_vmp_flow.train_and_evaluate(FLAGS.config, FLAGS.workdir)
 
