@@ -161,7 +161,7 @@ def plot_basis_fields(
 ) -> Tuple[Figure, Axes]:
 
   # Total number of base GPs
-  num_base_gps = posterior_sample_dict['gamma_inducing'].shape[1]
+  num_basis_gps = posterior_sample_dict['gamma_inducing'].shape[1]
 
   if use_gamma_anchor:
     # Samples of GPs on inducing points and anchor profiles
@@ -186,10 +186,10 @@ def plot_basis_fields(
   gamma_mean = gamma.mean(axis=0)
 
   # Create plotting grid
-  # axs_nrows = int(np.ceil(np.sqrt(num_base_gps)))
-  # axs_ncols = int(np.ceil(np.sqrt(num_base_gps)))
+  # axs_nrows = int(np.ceil(np.sqrt(num_basis_gps)))
+  # axs_ncols = int(np.ceil(np.sqrt(num_basis_gps)))
   axs_nrows = 1
-  axs_ncols = num_base_gps
+  axs_ncols = num_basis_gps
   # fig, ax = plt.subplots()
   fig, axs = plt.subplots(
       nrows=axs_nrows,
@@ -199,7 +199,7 @@ def plot_basis_fields(
   fig.suptitle("Basis Fields")
 
   # For each base GP
-  for f, ax in enumerate(axs.reshape(-1)[:num_base_gps]):
+  for f, ax in enumerate(axs.reshape(-1)[:num_basis_gps]):
     # Plot the mean of the basis field
     x_plot, y_plot = np.split(loc, 2, axis=-1)
     z_plot = np.round(gamma_mean[f], 2)
@@ -271,13 +271,13 @@ def plot_mixing_weights(
 ) -> Tuple[Figure, Axes]:
   mixing_weights = posterior_sample_dict['mixing_weights_list'][item]
   mixing_weights_mean = mixing_weights.mean(axis=0)
-  _, num_base_gps, num_forms = mixing_weights.shape
+  _, num_basis_gps, num_forms = mixing_weights.shape
   fig, axs = plt.subplots(
-      num_base_gps,
+      num_basis_gps,
       num_forms,
-      figsize=(2. * num_forms, 1.5 * num_base_gps),
+      figsize=(2. * num_forms, 1.5 * num_basis_gps),
   )
-  for b in range(num_base_gps):
+  for b in range(num_basis_gps):
     for f in range(num_forms):
       violin_dict = axs[b, f].violinplot(dataset=mixing_weights[:, b, f])
       violin_dict['bodies'][0].set_edgecolor('black')

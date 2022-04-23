@@ -154,7 +154,7 @@ def sample_gamma_profiles_given_gamma_inducing(
     Tuple of arrays with samples on anchor and floating profiles.
   """
 
-  # num_samples_global, num_base_gps, _ = posterior_sample_dict[
+  # num_samples_global, num_basis_gps, _ = posterior_sample_dict[
   #     'gamma_inducing'].shape
 
   ### Sample gamma_profiles ###
@@ -174,7 +174,7 @@ def sample_gamma_profiles_given_gamma_inducing(
   gamma_sample_dict['gamma_anchor'] = p_anchor_given_inducing.sample(
       seed=next(prng_seq), sample_shape=(num_samples_gamma_profiles,))
   # assert gamma_anchor.shape == (num_samples_gamma_profiles, num_samples_global,
-  #                               num_base_gps, batch['num_profiles_anchor'])
+  #                               num_basis_gps, batch['num_profiles_anchor'])
 
   ### Floating profiles
 
@@ -201,7 +201,7 @@ def sample_gamma_profiles_given_gamma_inducing(
   gamma_sample_dict['gamma_floating'] = p_floating_given_inducing.sample(
       seed=next(prng_seq), sample_shape=(num_samples_gamma_profiles,))
   # assert gamma_floating.shape == (num_samples_gamma_profiles,
-  #                                 num_samples_global, num_base_gps,
+  #                                 num_samples_global, num_basis_gps,
   #                                 batch['num_profiles_floating'])
 
   if is_smi:
@@ -226,7 +226,7 @@ def sample_gamma_profiles_given_gamma_inducing(
         p_floating_given_inducing_aux.sample(
             seed=next(prng_seq), sample_shape=(num_samples_gamma_profiles,)))
     # assert gamma_floating_aux.shape == (num_samples_gamma_profiles,
-    #                                     num_samples_global, num_base_gps,
+    #                                     num_samples_global, num_basis_gps,
     #                                     batch['num_profiles_floating'])
 
   ### Anchor as floating profiles

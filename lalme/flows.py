@@ -40,7 +40,7 @@ class MeanField(hk.Module):
 
 def mean_field_global_params(
     num_forms_tuple: Tuple,
-    num_base_gps: int,
+    num_basis_gps: int,
     num_inducing_points: int,
     **_,
 ) -> modularbayes.Transformed:
@@ -55,9 +55,9 @@ def mean_field_global_params(
   """
   num_items = len(num_forms_tuple)
 
-  gamma_inducing_dim = num_base_gps * num_inducing_points
+  gamma_inducing_dim = num_basis_gps * num_inducing_points
   mixing_weights_dim = sum(
-      [num_base_gps * num_forms_i for num_forms_i in num_forms_tuple])
+      [num_basis_gps * num_forms_i for num_forms_i in num_forms_tuple])
   mixing_offset_dim = sum(num_forms_tuple)
   mu_dim = num_items
   zeta_dim = num_items
@@ -209,7 +209,7 @@ class CouplingConditioner(hk.Module):
 
 def nsf_global_params(
     num_forms_tuple: Tuple,
-    num_base_gps: int,
+    num_basis_gps: int,
     num_inducing_points: int,
     num_layers: int,
     hidden_sizes: Sequence[int],
@@ -228,9 +228,9 @@ def nsf_global_params(
 
   num_items = len(num_forms_tuple)
 
-  gamma_inducing_dim = num_base_gps * num_inducing_points
+  gamma_inducing_dim = num_basis_gps * num_inducing_points
   mixing_weights_dim = sum(
-      [num_base_gps * num_forms_i for num_forms_i in num_forms_tuple])
+      [num_basis_gps * num_forms_i for num_forms_i in num_forms_tuple])
   mixing_offset_dim = sum(num_forms_tuple)
   mu_dim = num_items
   zeta_dim = num_items
@@ -417,7 +417,7 @@ def nsf_locations(
 
 def meta_nsf_global_params(
     num_forms_tuple: Tuple,
-    num_base_gps: int,
+    num_basis_gps: int,
     num_inducing_points: int,
     num_layers: int,
     hidden_sizes_conditioner: Sequence[int],
@@ -437,9 +437,9 @@ def meta_nsf_global_params(
 
   num_items = len(num_forms_tuple)
 
-  gamma_inducing_dim = num_base_gps * num_inducing_points
+  gamma_inducing_dim = num_basis_gps * num_inducing_points
   mixing_weights_dim = sum(
-      [num_base_gps * num_forms_i for num_forms_i in num_forms_tuple])
+      [num_basis_gps * num_forms_i for num_forms_i in num_forms_tuple])
   mixing_offset_dim = sum(num_forms_tuple)
   mu_dim = num_items
   zeta_dim = num_items
@@ -635,7 +635,7 @@ in the LALME model.
 def split_flow_global_params(
     samples: Array,
     num_forms_tuple: Tuple,
-    num_base_gps: int,
+    num_basis_gps: int,
     num_inducing_points: int,
     **_,
 ) -> Dict[str, Any]:
@@ -646,9 +646,9 @@ def split_flow_global_params(
 
   num_items = len(num_forms_tuple)
 
-  gamma_inducing_dim = num_base_gps * num_inducing_points
+  gamma_inducing_dim = num_basis_gps * num_inducing_points
   mixing_weights_dims = [
-      num_base_gps * num_forms_i for num_forms_i in num_forms_tuple
+      num_basis_gps * num_forms_i for num_forms_i in num_forms_tuple
   ]
   mixing_weights_dim = sum(mixing_weights_dims)
   mixing_offset_dim = sum(num_forms_tuple)
@@ -663,7 +663,7 @@ def split_flow_global_params(
 
   # GP on inducing points
   gamma_inducing, samples = jnp.split(samples, [gamma_inducing_dim], axis=-1)
-  gamma_inducing = gamma_inducing.reshape(num_samples, num_base_gps,
+  gamma_inducing = gamma_inducing.reshape(num_samples, num_basis_gps,
                                           num_inducing_points)
   samples_dict['gamma_inducing'] = gamma_inducing
 
@@ -677,11 +677,11 @@ def split_flow_global_params(
   mixing_weights_list = []
   for num_forms_i in num_forms_tuple[:-1]:
     mixing_weights_i, mixing_weights = jnp.split(
-        mixing_weights, [num_base_gps * num_forms_i], axis=-1)
+        mixing_weights, [num_basis_gps * num_forms_i], axis=-1)
     mixing_weights_list.append(mixing_weights_i)
   mixing_weights_list.append(mixing_weights)
   mixing_weights_list = [
-      mixing_weights_list[i].reshape(num_samples, num_base_gps, num_forms_i)
+      mixing_weights_list[i].reshape(num_samples, num_basis_gps, num_forms_i)
       for i, num_forms_i in enumerate(num_forms_tuple)
   ]
   samples_dict['mixing_weights_list'] = mixing_weights_list

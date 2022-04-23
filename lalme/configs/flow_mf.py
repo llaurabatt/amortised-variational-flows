@@ -17,7 +17,7 @@ def get_config():
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
-  config.flow_kwargs.num_base_gps = 7
+  config.flow_kwargs.num_basis_gps = 7
   config.flow_kwargs.inducing_grid_shape = (10, 10)
   # Ranges of posterior locations
   # (NOTE: these will be modified in the training script)
