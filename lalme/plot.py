@@ -46,11 +46,11 @@ def plot_linguistic_field(
 
   if use_gamma_anchor:
     # Samples of GPs on inducing points and anchor profiles
-    # Note: gamma_anchor has an additional axis at dimension 0,
+    # Note: gamma_anchor has an additional axis at dimension 1,
     #   num_samples_gamma_profiles, we only take the first sample
     gamma = np.concatenate([
         posterior_sample_dict['gamma_inducing'],
-        posterior_sample_dict['gamma_anchor'][0],
+        posterior_sample_dict['gamma_anchor'][:, 0, ...],
     ],
                            axis=-1)
     # Locations of inducing points and anchor profiles
@@ -165,11 +165,11 @@ def plot_basis_fields(
 
   if use_gamma_anchor:
     # Samples of GPs on inducing points and anchor profiles
-    # Note: gamma_anchor has an additional axis at dimension 0,
+    # Note: gamma_anchor has an additional axis at dimension 1,
     #   num_samples_gamma_profiles, we only take the first sample
     gamma = np.concatenate([
         posterior_sample_dict['gamma_inducing'],
-        posterior_sample_dict['gamma_anchor'][0],
+        posterior_sample_dict['gamma_anchor'][:, 0, ...],
     ],
                            axis=-1)
     # Locations of inducing points and anchor profiles

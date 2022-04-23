@@ -419,6 +419,7 @@ def elbo_estimate(
     num_samples_gamma_profiles: int = 0,
     gp_jitter: Optional[float] = None,
 ) -> Dict[str, Array]:
+  # params_tuple = [state.params for state in state_list]
 
   # Sample from flow
   q_distr_out = sample_all_flows(
@@ -1071,8 +1072,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 # # For debugging
 # config = get_config()
 # config.flow_kwargs.smi_eta.update({
-#     'profiles_floating': 0.001,
+#     'profiles_floating': 1.000,
 # })
-# workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/mean_field/eta_floating_0.001'
-# workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/spline/eta_floating_0.500'
+# # workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/mean_field/eta_floating_1.000'
+# workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/spline/eta_floating_1.000'
 # train_and_evaluate(config, workdir)

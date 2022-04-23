@@ -91,7 +91,7 @@ def log_prob_y_integrated_over_gamma_profiles(
   )
   # Second, iterate over samples of gamma_profiles for each global sample
   log_prob_y_equal_1_pointwise_list = jax.vmap(log_prob_y_along_global_fn)(
-      gamma_profiles)
+      gamma_profiles.swapaxes(0, 1))
   # assert len(log_prob_y_equal_1_pointwise_list) == batch['num_items']
   # assert all([
   #     x.shape == (num_samples_gamma_profiles, num_samples_global,
@@ -172,9 +172,11 @@ def sample_gamma_profiles_given_gamma_inducing(
       gp_jitter=gp_jitter,
   )
   gamma_sample_dict['gamma_anchor'] = p_anchor_given_inducing.sample(
-      seed=next(prng_seq), sample_shape=(num_samples_gamma_profiles,))
-  # assert gamma_anchor.shape == (num_samples_gamma_profiles, num_samples_global,
-  #                               num_basis_gps, batch['num_profiles_anchor'])
+      seed=next(prng_seq),
+      sample_shape=(num_samples_gamma_profiles,)).swapaxes(0, 1)
+  # assert gamma_sample_dict['gamma_anchor'].shape == (
+  #     num_samples_global, num_samples_gamma_profiles, num_basis_gps,
+  #     batch['num_profiles_anchor'])
 
   ### Floating profiles
 
@@ -199,10 +201,11 @@ def sample_gamma_profiles_given_gamma_inducing(
       gp_jitter=gp_jitter,
   )
   gamma_sample_dict['gamma_floating'] = p_floating_given_inducing.sample(
-      seed=next(prng_seq), sample_shape=(num_samples_gamma_profiles,))
-  # assert gamma_floating.shape == (num_samples_gamma_profiles,
-  #                                 num_samples_global, num_basis_gps,
-  #                                 batch['num_profiles_floating'])
+      seed=next(prng_seq),
+      sample_shape=(num_samples_gamma_profiles,)).swapaxes(0, 1)
+  # assert gamma_sample_dict['gamma_floating'].shape == (
+  #     num_samples_global, num_samples_gamma_profiles, num_basis_gps,
+  #     batch['num_profiles_floating'])
 
   if is_smi:
     # Compute covariance (kernel) on auxiliary floating locations.
@@ -224,10 +227,11 @@ def sample_gamma_profiles_given_gamma_inducing(
     )
     gamma_sample_dict['gamma_floating_aux'] = (
         p_floating_given_inducing_aux.sample(
-            seed=next(prng_seq), sample_shape=(num_samples_gamma_profiles,)))
-    # assert gamma_floating_aux.shape == (num_samples_gamma_profiles,
-    #                                     num_samples_global, num_basis_gps,
-    #                                     batch['num_profiles_floating'])
+            seed=next(prng_seq),
+            sample_shape=(num_samples_gamma_profiles,))).swapaxes(0, 1)
+    # assert gamma_sample_dict['gamma_floating_aux'].shape == (
+    #     num_samples_global, num_samples_gamma_profiles, num_basis_gps,
+    #     batch['num_profiles_floating'])
 
   ### Anchor as floating profiles
   if include_random_anchor:
@@ -249,7 +253,8 @@ def sample_gamma_profiles_given_gamma_inducing(
     )
     gamma_sample_dict[
         'gamma_random_anchor'] = p_random_anchor_given_inducing.sample(
-            seed=next(prng_seq), sample_shape=(num_samples_gamma_profiles,))
+            seed=next(prng_seq),
+            sample_shape=(num_samples_gamma_profiles,)).swapaxes(0, 1)
 
   return gamma_sample_dict
 
