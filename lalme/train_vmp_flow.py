@@ -331,6 +331,7 @@ def elbo_estimate_along_eta(
     eta_sampling_b: float,
     include_random_anchor: bool,
     profile_is_anchor: Array,
+    prior_params: Dict[str, Any],
     kernel_name: Optional[str] = None,
     kernel_kwargs: Optional[Dict[str, Any]] = None,
     num_samples_gamma_profiles: int = 0,
@@ -400,6 +401,7 @@ def elbo_estimate_along_eta(
           batch=batch,
           posterior_sample_dict=posterior_sample_i,
           smi_eta=smi_eta_i,
+          **prior_params,
       ))(
           jax.tree_map(lambda x: jnp.expand_dims(x, 1),
                        posterior_sample_dict_stg1),
@@ -424,6 +426,7 @@ def elbo_estimate_along_eta(
           batch=batch,
           posterior_sample_dict=posterior_sample_i,
           smi_eta=None,
+          **prior_params,
       ))(
           jax.tree_map(lambda x: jnp.expand_dims(x, 1),
                        posterior_sample_dict_stg2))
@@ -463,6 +466,7 @@ def elbo_estimate_along_eta(
             posterior_sample_dict=posterior_sample_i,
             smi_eta=None,
             random_anchor=True,
+            **prior_params,
         ))(
             jax.tree_map(lambda x: jnp.expand_dims(x, 1),
                          posterior_sample_dict_stg3))
@@ -895,6 +899,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           'eta_sampling_a': config.eta_sampling_a,
           'eta_sampling_b': config.eta_sampling_b,
           'include_random_anchor': config.include_random_anchor,
+          'prior_params': config.prior_params,
           'profile_is_anchor': profile_is_anchor,
           'kernel_name': config.kernel_name,
           'kernel_kwargs': config.kernel_kwargs,
@@ -915,6 +920,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       eta_sampling_a=1.0,
       eta_sampling_b=1.0,
       include_random_anchor=config.include_random_anchor,
+      prior_params=config.prior_params,
       profile_is_anchor=profile_is_anchor,
       kernel_name=config.kernel_name,
       kernel_kwargs=config.kernel_kwargs,

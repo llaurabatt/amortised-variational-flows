@@ -414,6 +414,7 @@ def elbo_estimate(
     flow_kwargs: Dict[str, Any],
     smi_eta: Optional[SmiEta],
     include_random_anchor: bool,
+    prior_params: Dict[str, Any],
     kernel_name: Optional[str] = None,
     kernel_kwargs: Optional[Dict[str, Any]] = None,
     num_samples_gamma_profiles: int = 0,
@@ -463,6 +464,7 @@ def elbo_estimate(
         batch=batch,
         posterior_sample_dict=posterior_sample_dict_stg1,
         smi_eta=smi_eta,
+        **prior_params,
     )
     log_q_stg1 = (
         q_distr_out['global_params_log_prob'] +
@@ -487,6 +489,7 @@ def elbo_estimate(
       batch=batch,
       posterior_sample_dict=posterior_sample_dict_stg2,
       smi_eta=None,
+      **prior_params,
   )
   if is_smi:
     log_q_stg2 = (
@@ -527,6 +530,7 @@ def elbo_estimate(
         posterior_sample_dict=posterior_sample_dict_stg3,
         smi_eta=None,
         random_anchor=True,
+        **prior_params,
     )
     log_q_stg3 = (
         jax.lax.stop_gradient(q_distr_out['global_params_log_prob']) +
@@ -875,6 +879,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           'flow_kwargs': config.flow_kwargs,
           'smi_eta': smi_eta,
           'include_random_anchor': config.include_random_anchor,
+          'prior_params': config.prior_params,
           'kernel_name': config.kernel_name,
           'kernel_kwargs': config.kernel_kwargs,
           'num_samples_gamma_profiles': config.num_samples_gamma_profiles,
@@ -893,6 +898,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       flow_kwargs=config.flow_kwargs,
       smi_eta=smi_eta,
       include_random_anchor=config.include_random_anchor,
+      prior_params=config.prior_params,
       kernel_name=config.kernel_name,
       kernel_kwargs=config.kernel_kwargs,
       num_samples_gamma_profiles=config.num_samples_gamma_profiles,
@@ -1056,5 +1062,5 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 #     'profiles_floating': 1.000,
 # })
 # # workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/mean_field/eta_floating_1.000'
-# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/spline/eta_floating_1.000'
+# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/nsf/eta_floating_1.000'
 # train_and_evaluate(config, workdir)

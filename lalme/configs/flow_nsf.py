@@ -22,7 +22,7 @@ def get_config():
   # Number of layers to use in the flow.
   config.flow_kwargs.num_layers = 6
   # Hidden sizes of the MLP conditioner.
-  config.flow_kwargs.hidden_sizes = [30] * 3
+  config.flow_kwargs.hidden_sizes = [30] * 5
   # Number of bins to use in the rational-quadratic spline.
   config.flow_kwargs.num_bins = 10
   # the bounds of the quadratic spline transformer
@@ -31,6 +31,20 @@ def get_config():
   # (NOTE: these will be modified in the training script)
   config.flow_kwargs.loc_x_range = (0., 1.)
   config.flow_kwargs.loc_y_range = (0., 0.8939394)
+
+  # Define priors
+  config.prior_params = ml_collections.ConfigDict()
+  config.prior_params.mu_prior_concentration = 1.
+  config.prior_params.mu_prior_rate = 1.
+  config.prior_params.zeta_prior_a = 1.
+  config.prior_params.zeta_prior_b = 1.
+  config.prior_params.w_prior_scale = 1.
+  config.prior_params.a_prior_scale = 10.
+  config.kernel_name = 'ExponentiatedQuadratic'
+  config.kernel_kwargs = ml_collections.ConfigDict()
+  config.kernel_kwargs.amplitude = 0.1
+  config.kernel_kwargs.length_scale = 0.1
+  config.gp_jitter = 1e-3
 
   # SMI degree of influence of floating profiles
   config.iterate_smi_eta = ()
@@ -59,15 +73,6 @@ def get_config():
   config.num_profiles_floating_keep = None
   config.num_items_keep = None
   config.remove_empty_forms = True
-
-  # config.loc_bounds = 5.
-  # config.loc_bounds_penalty = 10.
-
-  config.kernel_name = 'ExponentiatedQuadratic'
-  config.kernel_kwargs = ml_collections.ConfigDict()
-  config.kernel_kwargs.amplitude = 0.1
-  config.kernel_kwargs.length_scale = 0.1
-  config.gp_jitter = 1e-3
 
   # Number of posteriors samples to approximate the variational loss (ELBO).
   config.num_samples_elbo = 20

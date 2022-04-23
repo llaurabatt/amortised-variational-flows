@@ -264,6 +264,12 @@ def log_prob_joint(
     posterior_sample_dict: Dict[str, Any],
     smi_eta: Optional[SmiEta] = None,
     random_anchor: bool = False,
+    w_prior_scale: float = 1.,
+    a_prior_scale: float = 10.,
+    mu_prior_concentration: float = 1.,
+    mu_prior_rate: float = 10.,
+    zeta_prior_a: float = 1.,
+    zeta_prior_b: float = 1.,
 ) -> Array:
   """Log-density for the LALME model.
 
@@ -289,7 +295,7 @@ def log_prob_joint(
 
   ## Priors ##
 
-  # P(Phi_Z) : Prior on the GPs on inducing points
+  # P(Gamma_Z) : Prior on the GPs on inducing points
   log_prob_gamma = distrax.Independent(
       modularbayes.MultivariateNormalTriL(
           loc=jnp.zeros((1, 1, num_inducing_points)),
@@ -307,7 +313,7 @@ def log_prob_joint(
         distrax.Independent(
             tfd.Laplace(
                 loc=jnp.zeros(weights_i.shape[1:]),
-                scale=jnp.ones(weights_i.shape[1:]),
+                scale=w_prior_scale * jnp.ones(weights_i.shape[1:]),
             ),
             reinterpreted_batch_ndims=2).log_prob(weights_i)
         for weights_i in mixing_weights_list
@@ -324,7 +330,7 @@ def log_prob_joint(
         distrax.Independent(
             distrax.Normal(
                 loc=jnp.zeros(offset_i.shape[1:]),
-                scale=10. * jnp.ones(offset_i.shape[1:]),
+                scale=a_prior_scale * jnp.ones(offset_i.shape[1:]),
             ),
             reinterpreted_batch_ndims=1).log_prob(offset_i)
         for offset_i in mixing_offset_list
@@ -337,15 +343,15 @@ def log_prob_joint(
   # P(mu) : Prior on rate of occurence for each item
   log_prob_mu = distrax.Independent(
       tfd.Gamma(
-          concentration=1. * jnp.ones(num_items),
-          rate=1. * jnp.ones(num_items)),
+          concentration=mu_prior_concentration * jnp.ones(num_items),
+          rate=mu_prior_rate * jnp.ones(num_items)),
       reinterpreted_batch_ndims=1).log_prob
 
   # P(zeta) : Prior on the item zero-inflation parameter: Beta
   log_prob_zeta = distrax.Independent(
       tfd.Beta(
-          concentration1=jnp.ones(num_items),
-          concentration0=jnp.ones(num_items),
+          concentration1=zeta_prior_a * jnp.ones(num_items),
+          concentration0=zeta_prior_b * jnp.ones(num_items),
       ),
       reinterpreted_batch_ndims=1).log_prob
 

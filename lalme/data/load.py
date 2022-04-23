@@ -113,16 +113,20 @@ def process_lalme(
         data : Dictionary with LALME data, as produced by load_lalme.
         loc_bounds : Array indicating the bounded area to map profile locations
             from their original Easting/Northing coordinates.
-        num_profiles_anchor_keep : Number of anchor profiles to keep. If None, keep all profiles.
-        num_profiles_floating_keep : Number of floating profiles to keep. If None, keep all profiles.
-        remove_empty_forms : If True, eliminates forms that have not a single profile using it.
+        num_profiles_anchor_keep : Number of anchor profiles to keep. If None,
+            keep all profiles.
+        num_profiles_floating_keep : Number of floating profiles to keep. If
+            None, keep all profiles.
+        remove_empty_forms : If True, eliminates forms that have not a single
+            profile using it.
 
     Return:
         data: Dictionary with the data used in the LALME model.
 
     Reference:
-        M. Benskin, M. Laing, V. Karaiskos and K. Williamson. An Electronic Version of A Linguistic
-        Atlas of Late Mediaeval English [http://www.lel.ed.ac.uk/ihd/elalme/elalme.html]
+        M. Benskin, M. Laing, V. Karaiskos and K. Williamson. An Electronic
+        Version of A Linguistic Atlas of Late Mediaeval English
+        [http://www.lel.ed.ac.uk/ihd/elalme/elalme.html]
     """
 
   data = data_raw.copy()

@@ -28,6 +28,20 @@ def get_config():
   config.iterate_smi_eta = ()
   config.flow_kwargs.smi_eta = {'items': None, 'profiles': None}
 
+  # Define priors
+  config.prior_params = ml_collections.ConfigDict()
+  config.prior_params.mu_prior_concentration = 1.
+  config.prior_params.mu_prior_rate = 1.
+  config.prior_params.zeta_prior_a = 1.
+  config.prior_params.zeta_prior_b = 1.
+  config.prior_params.w_prior_scale = 1.
+  config.prior_params.a_prior_scale = 10.
+  config.kernel_name = 'ExponentiatedQuadratic'
+  config.kernel_kwargs = ml_collections.ConfigDict()
+  config.kernel_kwargs.amplitude = 0.1
+  config.kernel_kwargs.length_scale = 0.1
+  config.gp_jitter = 1e-3
+
   # Number of training steps to run.
   config.training_steps = 30_000
 
@@ -51,15 +65,6 @@ def get_config():
   config.num_profiles_floating_keep = None
   config.num_items_keep = None
   config.remove_empty_forms = True
-
-  # config.loc_bounds = 5.
-  # config.loc_bounds_penalty = 10.
-
-  config.kernel_name = 'ExponentiatedQuadratic'
-  config.kernel_kwargs = ml_collections.ConfigDict()
-  config.kernel_kwargs.amplitude = 0.1
-  config.kernel_kwargs.length_scale = 0.1
-  config.gp_jitter = 1e-3
 
   # Number of posteriors samples to approximate the variational loss (ELBO).
   config.num_samples_elbo = 20
