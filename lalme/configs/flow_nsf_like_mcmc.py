@@ -38,16 +38,16 @@ def get_config():
 
   # Define priors
   config.prior_params = ml_collections.ConfigDict()
-  config.prior_params.mu_prior_concentration = 1.
-  config.prior_params.mu_prior_rate = 1.
+  config.prior_params.mu_prior_concentration = 0.1
+  config.prior_params.mu_prior_rate = 0.1
   config.prior_params.zeta_prior_a = 1.
   config.prior_params.zeta_prior_b = 1.
-  config.prior_params.w_prior_scale = 1.
-  config.prior_params.a_prior_scale = 10.
+  config.prior_params.w_prior_scale = 0.1
+  config.prior_params.a_prior_scale = 1.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
-  config.kernel_kwargs.amplitude = 0.1
-  config.kernel_kwargs.length_scale = 0.1
+  config.kernel_kwargs.amplitude = 0.7
+  config.kernel_kwargs.length_scale = 0.5
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.

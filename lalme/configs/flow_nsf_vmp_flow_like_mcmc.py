@@ -44,7 +44,7 @@ def get_config():
   config.prior_params.a_prior_scale = 1.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
-  config.kernel_kwargs.amplitude = 1.
+  config.kernel_kwargs.amplitude = 0.7
   config.kernel_kwargs.length_scale = 0.5
   config.gp_jitter = 1e-3
 
