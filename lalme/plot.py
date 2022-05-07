@@ -240,12 +240,19 @@ def plot_profile_location(
             -1,
         )
     ]
-    sns.kdeplot(
+    # sns.kdeplot(
+    #     x=loc_x,
+    #     y=loc_y,
+    #     shade=True,
+    #     cmap="PuBu",
+    #     ax=ax,
+    # )
+    _ = ax.hist2d(
         x=loc_x,
         y=loc_y,
-        shade=True,
-        cmap="PuBu",
-        ax=ax,
+        bins=20,
+        cmap="Blues",
+        range=[[0., 1.], [0., 1.]],
     )
 
   data_loc_idx = (data['num_profiles_anchor']
