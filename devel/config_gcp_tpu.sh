@@ -6,13 +6,13 @@
 
 # # # Configure the gcloud command
 # gcloud config set account christianu7@gmail.com
-# gcloud config set project spatial-smi
+# gcloud config set project modularbayes
 # # Enable the Cloud TPU API
 # gcloud services enable tpu.googleapis.com
 # gcloud beta services identity create --service tpu.googleapis.com
 
 # # Characteristics of the TPU VM
-# export VM=gcp-tpu
+# export VM=gcp-tpu-2
 
 # export GCP_ZONE=europe-west4-a
 # export TPU_TYPE=v3-8
@@ -64,23 +64,35 @@
 # upgrade VM packages
 sudo apt-get update
 sudo apt-get -y upgrade
-sudo apt -y upgrade
-sudo apt -y autoremove
+sudo apt-get -y autoremove
 
-# Create virtual enviromnent
-sudo apt -y install python3.8-venv
-rm -rf ~/.virtualenvs/spatial-smi
-python3 -m venv ~/.virtualenvs/spatial-smi
-source ~/.virtualenvs/spatial-smi/bin/activate
-pip install --upgrade pip
-pip install --upgrade wheel
-pip install "jax[tpu]>=0.2.16" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
+# Install tree
+sudo apt-get install -y tree
+
+# Install Python and virtual environment
+sudo apt-get install -y python3.8
+sudo apt-get install -y python3.8-venv
+ln -sf /usr/bin/python3.8 /usr/bin/python3
 
 # Set-up git
 git config --global user.name "Chris Carmona"
 git config --global user.email carmona@stats.ox.ac.uk
+git config --global alias.hist "log --pretty=format:'%C(yellow)[%ad]%C(reset) %C(green)[%h]%C(reset) | %C(red)%s %C(bold red){{%an}}%C(reset) %C(blue)%d%C(reset)' --graph --date=short"
 
-# Clone and install spatial-smi
+# Create virtual enviromnent
+rm -rf ~/.virtualenvs/spatial-smi
+python3 -m venv ~/.virtualenvs/spatial-smi
+# Install jax
+source ~/.virtualenvs/spatial-smi/bin/activate
+pip install -U pip wheel setuptools
+pip install "jax[tpu]>=0.2.16" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
+
+# # Install vscode extensions (Optional)
+# code --install-extension ms-python.python
+# code --install-extension ryu1kn.partial-diff
+# code --install-extension GitHub.copilot
+
+# Clone and install spatial-smi requirements
 mkdir -p smi/01_code
 cd smi/01_code
 git clone https://chriscarmona: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@github.com/chriscarmona/spatial-smi.git
