@@ -634,12 +634,50 @@ in the LALME model.
 
 def split_flow_global_params(
     samples: Array,
-    num_forms_tuple: Tuple,
+    num_forms_tuple: Tuple[int],
     num_basis_gps: int,
     num_inducing_points: int,
     **_,
 ) -> Dict[str, Any]:
-  """Get model parameters by splitting samples from the flow."""
+  """Dictionary with posterior samples.
+
+  Split an array with samples of the model into a dictionary with the
+  corresponding LALME parameters. This function is for the posterior of the
+  global parameters.
+
+  Args:
+    samples: Array with samples, assumed to be concatenated by their last axis.
+      Expected shape: (num_samples, flow_dim).
+    num_profiles: Number of profiles.
+    is_aux: For SMI, indicates whether the samples are auxiliary or not.
+      If true, appends the suffix '_aux' to the key.
+    name: Base name assigned to the samples.
+
+  Returns:
+    A dictionary with the following keys (assuming name='loc_floating' and
+    is_aux=False):
+      -gamma_inducing: Array of shape (num_samples, num_basis_gps,
+        num_inducing_points) with samples of the basis GPs at the inducing
+        points.
+      -mixing_weights_list: List of Arrays, with the same lenght of
+        num_forms_tuple, and each element with shape (num_samples,
+        num_basis_gps, num_forms_tuple[i])
+      -mixing_offset_list: List of Arrays, with the same lenght of
+        num_forms_tuple, and each element with shape (num_samples,
+        num_forms_tuple[i])
+      -mu: Array of shape (num_samples, num_items) with samples of the item
+        occurrence rates.
+      -zeta: Array of shape (num_samples, num_items) with samples of the
+        zero-inflation of the item occurrence rates.
+
+  Note:
+    Here the last dimension of the input is expected to be:
+      flow_dim=(gamma_inducing_dim
+        + mixing_weights_dim
+        + mixing_offset_dim
+        + mu_dim
+        + zeta_dim)
+  """
 
   assert samples.ndim == 2
   num_samples, flow_dim = samples.shape
@@ -710,7 +748,30 @@ def split_flow_locations(
     name='loc_floating',
     **_,
 ) -> Dict[str, Any]:
-  """Get model parameters by splitting samples from the flow."""
+  """Dictionary with posterior samples.
+
+  Split an array with samples of the model into a dictionary with the
+  corresponding LALME parameters. This function is for the posterior of the
+  profiles locations.
+
+  Args:
+    samples: Array with samples, assumed to be concatenated by their last axis.
+      Expected shape: (num_samples, flow_dim).
+    num_profiles: Number of profiles.
+    is_aux: For SMI, indicates whether the samples are auxiliary or not.
+      If true, appends the suffix '_aux' to the key.
+    name: Base name assigned to the samples.
+
+  Returns:
+    A dictionary with the following keys (assuming name='loc_floating' and
+    is_aux=False):
+      - 'loc_floating': Array of shape (num_samples, num_profiles, 2) with
+        samples of the locations.
+
+  Note:
+    Here the last dimension of the input is expected to be:
+      flow_dim=2*num_profiles
+  """
 
   assert samples.ndim == 2
   num_samples, flow_dim = samples.shape
@@ -723,9 +784,6 @@ def split_flow_locations(
   # (instead of (x,y) for each profile)
   locations = samples.reshape((num_samples, 2, num_profiles)).swapaxes(1, 2)
 
-  if is_aux:
-    samples_dict[name + '_aux'] = locations
-  else:
-    samples_dict[name] = locations
+  samples_dict[name + ('_aux' if is_aux else '')] = locations
 
   return samples_dict
