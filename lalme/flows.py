@@ -765,7 +765,7 @@ def split_flow_locations(
   Returns:
     A dictionary with the following keys (assuming name='loc_floating' and
     is_aux=False):
-      - 'loc_floating': Array of shape (num_samples, num_profiles, 2) with
+      -loc_floating: Array of shape (num_samples, num_profiles, 2) with
         samples of the locations.
 
   Note:
@@ -787,3 +787,66 @@ def split_flow_locations(
   samples_dict[name + ('_aux' if is_aux else '')] = locations
 
   return samples_dict
+
+
+def concat_samples_global_params(samples_dict: Dict[str, Any]) -> Array:
+  """Undo split_flow_global_params"""
+
+  # Get sizes
+  num_samples, num_basis_gps, num_inducing_points = samples_dict[
+      'gamma_inducing'].shape
+
+  # pylint: disable=consider-using-generator
+  num_forms_tuple = tuple(
+      [x.shape[-1] for x in samples_dict['mixing_weights_list']])
+
+  samples = []
+
+  # GPs on inducing points
+  samples.append(samples_dict['gamma_inducing'].reshape(num_samples, -1))
+  assert samples[-1].shape == (num_samples, num_basis_gps * num_inducing_points)
+
+  # mixing weights
+  samples.append(
+      jnp.concatenate([
+          x.reshape(num_samples, -1)
+          for x in samples_dict['mixing_weights_list']
+      ],
+                      axis=-1))
+  assert samples[-1].shape == (1, num_basis_gps * sum(num_forms_tuple))
+
+  # mixing offset
+  samples.append(
+      jnp.concatenate([
+          x.reshape(num_samples, -1) for x in samples_dict['mixing_offset_list']
+      ],
+                      axis=-1))
+  assert samples[-1].shape == (1, sum(num_forms_tuple))
+
+  # mu
+  samples.append(samples_dict['mu'])
+
+  # zeta
+  samples.append(samples_dict['zeta'])
+
+  # Concatenate all samples
+  samples = jnp.concatenate(samples, axis=-1)
+
+  return samples
+
+
+def concat_samples_locations(
+    samples_dict: Dict[str, Any],
+    is_aux: bool,
+    name='loc_floating',
+) -> Array:
+  """Undo split_flow_locations"""
+
+  key = name + ('_aux' if is_aux else '')
+  # Get sizes
+  num_samples, num_profiles, _ = samples_dict[key].shape
+
+  samples = samples_dict[key].reshape(num_samples, -1)
+  assert samples.shape == (num_samples, 2 * num_profiles)
+
+  return samples

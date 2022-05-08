@@ -274,19 +274,41 @@ def log_prob_joint(
   """Log-density for the LALME model.
 
   Args:
-    batch: Batch of data from the LALME dataset.
-    posterior_sample_dict: Dictionary with samples from the flow.
-    smi_eta : TODO
+    batch: Batch of data from the LALME dataset. a dictionary with the following
+      keys:
+      -cov_inducing_chol: covariance matrix between the inducing points.
+    posterior_sample_dict: Dictionary with samples of parameters of LALME model,
+      with keys:
+      -gamma_inducing: Array of shape (num_samples, num_basis_gps,
+        num_inducing_points) with samples of the basis GPs at the inducing
+        points.
+      -mixing_weights_list: List of Arrays, with the same lenght of
+        num_forms_tuple, and each element with shape (num_samples,
+        num_basis_gps, num_forms_tuple[i])
+      -mixing_offset_list: List of Arrays, with the same lenght of
+        num_forms_tuple, and each element with shape (num_samples,
+        num_forms_tuple[i])
+      -mu: Array of shape (num_samples, num_items) with samples of the item
+        occurrence rates.
+      -zeta: Array of shape (num_samples, num_items) with samples of the
+        zero-inflation of the item occurrence rates.
+      -loc_floating: Array of shape (num_samples, num_profiles, 2) with
+        samples of the locations.
+      -gamma_floating: Array of shape (num_samples, num_basis_gps,
+        num_floating_points) with samples of the basis GPs at the corresponfing
+        floating points.
+    smi_eta : Dictionary specifying the SMI influence parameters with two keys:
+      -profiles:
+      -items:
   """
 
   # Get model dimensions
-  num_samples, num_items = posterior_sample_dict['mu'].shape
-  num_forms_tuple = [
-      weights_i.shape[-1]
-      for weights_i in posterior_sample_dict['mixing_weights_list']
-  ]
-  assert len(num_forms_tuple) == num_items
-  num_inducing_points = posterior_sample_dict['gamma_inducing'].shape[2]
+  num_samples, num_basis_gps, num_inducing_points = posterior_sample_dict[
+      'gamma_inducing'].shape
+  # pylint: disable=consider-using-generator
+  num_forms_tuple = tuple(
+      [x.shape[-1] for x in posterior_sample_dict['mixing_weights_list']])
+  num_items = len(num_forms_tuple)
 
   ## Observational model ##
   # We integrate the likelihood over samples of gamma_profiles

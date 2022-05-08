@@ -5,8 +5,6 @@ import math
 
 from absl import logging
 
-import ml_collections
-
 import numpy as np
 
 import jax
@@ -22,11 +20,13 @@ from flax.metrics import tensorboard
 import log_prob_fun
 import plot
 from train_flow import load_data, get_inducing_points
-from flows import split_flow_global_params, split_flow_locations
+from flows import (split_flow_global_params, split_flow_locations,
+                   concat_samples_global_params, concat_samples_locations)
 
 from modularbayes import flatten_dict
-from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Mapping,
-                                      Optional, PRNGKey, Tuple)
+from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
+                                      Mapping, Optional, OrderedDict, PRNGKey,
+                                      Tuple)
 
 tfd = tfp.distributions
 tfb = tfp.bijectors
@@ -47,9 +47,12 @@ def get_posterior_sample_init(
     include_random_anchor: bool,
     num_profiles_anchor: Optional[int] = None,
 ):
+  """Get dictionary to initialize MCMC."""
 
   num_samples = 1
   num_items = len(num_forms_tuple)
+
+  posterior_sample = OrderedDict()
 
   ### Global parameters ###
   gamma_inducing_dim = num_basis_gps * num_inducing_points
@@ -63,12 +66,19 @@ def get_posterior_sample_init(
   flow_dim = (
       gamma_inducing_dim + mixing_weights_dim + mixing_offset_dim + mu_dim +
       zeta_dim)
-  posterior_sample = split_flow_global_params(
+  posterior_sample_global = split_flow_global_params(
       samples=jnp.zeros((num_samples, flow_dim)),
       num_forms_tuple=num_forms_tuple,
       num_basis_gps=num_basis_gps,
       num_inducing_points=num_inducing_points,
   )
+
+  global_params_names = [
+      'gamma_inducing', 'mixing_weights_list', 'mixing_offset_list', 'mu',
+      'zeta'
+  ]
+  for key in global_params_names:
+    posterior_sample[key] = posterior_sample_global[key]
 
   ### Location floating profiles ###
   posterior_sample_loc_floating = split_flow_locations(
@@ -78,7 +88,8 @@ def get_posterior_sample_init(
       is_aux=False,
   )
 
-  posterior_sample = dict(posterior_sample, **posterior_sample_loc_floating)
+  posterior_sample['loc_floating'] = posterior_sample_loc_floating[
+      'loc_floating']
 
   if include_random_anchor:
     ### Location floating profiles ###
@@ -88,7 +99,8 @@ def get_posterior_sample_init(
         name='loc_random_anchor',
         is_aux=False,
     )
-    posterior_sample = dict(posterior_sample, **posterior_sample_loc_anchor)
+    posterior_sample['loc_random_anchor'] = posterior_sample_loc_anchor[
+        'loc_random_anchor']
 
   return posterior_sample
 
@@ -183,6 +195,32 @@ def get_kernel_bijector_stg2(
       bijectors=block_bijectors, block_sizes=block_sizes)
 
   return kernel_bijector
+
+
+def concat_samples(
+    samples_dict: Dict[str, Any],
+    include_random_anchor: bool,
+) -> Array:
+
+  samples = []
+
+  samples.append(concat_samples_global_params(samples_dict))
+  samples.append(
+      concat_samples_locations(
+          samples_dict=samples_dict,
+          is_aux=False,
+          name='loc_floating',
+      ))
+  if include_random_anchor:
+    samples.append(
+        concat_samples_locations(
+            samples_dict=samples_dict,
+            is_aux=False,
+            name='loc_random_anchor',
+        ))
+  samples = jnp.concatenate(samples, axis=-1)
+
+  return samples
 
 
 @jax.jit
@@ -283,14 +321,19 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       num_profiles_anchor=config.num_profiles_anchor,
   )
 
-  # TODO(chris): Continue from here
-
   ### Sample First Stage ###
 
   logging.info("\t sampling stage 1...")
 
   times_data = {}
   times_data['start_sampling'] = time.perf_counter()
+
+  posterior_sample_init = concat_samples(
+      samples_dict=posterior_sample_dict_init,
+      include_random_anchor=config.include_random_anchor,
+  )[0, :]
+
+  # TODO(chris): Continue from here
 
   target_log_prob_fn = lambda state: log_prob_fn(
       batch=train_ds,
@@ -300,8 +343,6 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       model_params_init=posterior_sample_dict_init,
   )
 
-  posterior_sample_init = jnp.concatenate(
-      [x for x in posterior_sample_dict_init.items()], axis=-1)[0, :]
   target_log_prob_fn(posterior_sample_init)
 
   kernel = tfp.mcmc.TransformedTransitionKernel(
@@ -408,7 +449,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     # )
 
     # Define function to parallelize sample_stage2
-    # TODO: use pmap
+    # TODO(chris): use pmap
     sample_stg2_vmap = jax.vmap(
         lambda sigma, beta_init, tau_init, prng_key: sample_stg2(
             sigma=sigma,
