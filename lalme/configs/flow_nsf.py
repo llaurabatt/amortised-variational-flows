@@ -12,6 +12,12 @@ def get_config():
   # Dataset to use
   config.dataset_id = 'coarsen_all_items'
 
+  # Data specification
+  config.num_profiles_anchor_keep = None
+  config.num_profiles_floating_keep = None
+  config.num_items_keep = None
+  config.remove_empty_forms = True
+
   # Defined in `flows.py`.
   config.flow_name = 'nsf'
 
@@ -33,13 +39,13 @@ def get_config():
   config.flow_kwargs.loc_y_range = (0., 0.8939394)
 
   # Define priors
-  config.prior_params = ml_collections.ConfigDict()
-  config.prior_params.mu_prior_concentration = 1.
-  config.prior_params.mu_prior_rate = 1.
-  config.prior_params.zeta_prior_a = 1.
-  config.prior_params.zeta_prior_b = 1.
-  config.prior_params.w_prior_scale = 1.
-  config.prior_params.a_prior_scale = 10.
+  config.prior_hparams = ml_collections.ConfigDict()
+  config.prior_hparams.mu_prior_concentration = 1.
+  config.prior_hparams.mu_prior_rate = 1.
+  config.prior_hparams.zeta_prior_a = 1.
+  config.prior_hparams.zeta_prior_b = 1.
+  config.prior_hparams.w_prior_scale = 1.
+  config.prior_hparams.a_prior_scale = 10.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
   config.kernel_kwargs.amplitude = 0.1
@@ -69,11 +75,6 @@ def get_config():
       'end_value': None,
   }
 
-  config.num_profiles_anchor_keep = None
-  config.num_profiles_floating_keep = None
-  config.num_items_keep = None
-  config.remove_empty_forms = True
-
   # Number of posteriors samples to approximate the variational loss (ELBO).
   config.num_samples_elbo = 20
   config.num_samples_gamma_profiles = 10
@@ -83,6 +84,7 @@ def get_config():
 
   config.num_samples_eval = 100
 
+  # Use random location for anchor profiles for evaluation
   config.include_random_anchor = True
 
   # How often to generate posterior plots.

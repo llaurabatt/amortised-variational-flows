@@ -29,13 +29,13 @@ def get_config():
   config.flow_kwargs.smi_eta = {'items': None, 'profiles': None}
 
   # Define priors
-  config.prior_params = ml_collections.ConfigDict()
-  config.prior_params.mu_prior_concentration = 1.
-  config.prior_params.mu_prior_rate = 1.
-  config.prior_params.zeta_prior_a = 1.
-  config.prior_params.zeta_prior_b = 1.
-  config.prior_params.w_prior_scale = 1.
-  config.prior_params.a_prior_scale = 10.
+  config.prior_hparams = ml_collections.ConfigDict()
+  config.prior_hparams.mu_prior_concentration = 1.
+  config.prior_hparams.mu_prior_rate = 1.
+  config.prior_hparams.zeta_prior_a = 1.
+  config.prior_hparams.zeta_prior_b = 1.
+  config.prior_hparams.w_prior_scale = 1.
+  config.prior_hparams.a_prior_scale = 10.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
   config.kernel_kwargs.amplitude = 0.1

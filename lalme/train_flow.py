@@ -83,26 +83,34 @@ def make_optimizer(
   return optimizer
 
 
-def get_inducing_points(dataset: Batch, config: ConfigDict):
+def get_inducing_points(
+    dataset: Batch,
+    inducing_grid_shape: Tuple[int, int],
+    kernel_name: str,
+    kernel_kwargs: Dict[str, Any],
+    gp_jitter: float,
+) -> Dict[str, Array]:
   """Define grid of inducing point for GPs."""
   dataset = dataset.copy()
 
+  num_inducing_points = math.prod(inducing_grid_shape)
+
   # Inducing points are defined as a grid on the unit square
   loc_inducing = jnp.meshgrid(
-      jnp.linspace(0, 1, config.flow_kwargs.inducing_grid_shape[0]),
-      jnp.linspace(0, 1, config.flow_kwargs.inducing_grid_shape[1]))
+      jnp.linspace(0, 1, inducing_grid_shape[0]),
+      jnp.linspace(0, 1, inducing_grid_shape[1]))
   loc_inducing = jnp.stack(loc_inducing, axis=-1).reshape(-1, 2)
   dataset['loc_inducing'] = loc_inducing
   # Compute GP covariance between inducing values
-  dataset['cov_inducing'] = getattr(
-      kernels, config.kernel_name)(**config.kernel_kwargs).matrix(
-          x1=dataset['loc_inducing'],
-          x2=dataset['loc_inducing'],
-      )
+  dataset['cov_inducing'] = getattr(kernels,
+                                    kernel_name)(**kernel_kwargs).matrix(
+                                        x1=dataset['loc_inducing'],
+                                        x2=dataset['loc_inducing'],
+                                    )
 
   # Add jitter
-  dataset['cov_inducing'] = dataset[
-      'cov_inducing'] + config.gp_jitter * jnp.eye(config.num_inducing_points)
+  dataset['cov_inducing'] = dataset['cov_inducing'] + gp_jitter * jnp.eye(
+      num_inducing_points)
   # Check that the covarince is symmetric
   assert issymmetric(dataset['cov_inducing'])
 
@@ -113,7 +121,7 @@ def get_inducing_points(dataset: Batch, config: ConfigDict):
   # dataset['cov_inducing_inv'] = jnp.linalg.inv(dataset['cov_inducing'])
   cov_inducing_chol_inv = jax.scipy.linalg.solve_triangular(
       a=dataset['cov_inducing_chol'],
-      b=jnp.eye(config.num_inducing_points),
+      b=jnp.eye(num_inducing_points),
       lower=True,
   )
   dataset['cov_inducing_inv'] = jnp.matmul(
@@ -125,7 +133,7 @@ def get_inducing_points(dataset: Batch, config: ConfigDict):
   assert ~jnp.any(jnp.isnan(dataset['cov_inducing_inv']))
   # Cross covariance between anchor and inducing values
   dataset['cov_anchor_inducing'] = getattr(
-      kernels, config.kernel_name)(**config.kernel_kwargs).matrix(
+      kernels, kernel_name)(**kernel_kwargs).matrix(
           x1=dataset['loc'][:dataset['num_profiles_anchor'], :],
           x2=dataset['loc_inducing'],
       )
@@ -330,6 +338,7 @@ def sample_all_flows(
     num_samples_gamma_profiles: int = 0,
     gp_jitter: Optional[float] = None,
 ) -> Dict[str, Any]:
+  """Generate a sample from the entire flow posterior."""
 
   prng_seq = hk.PRNGSequence(prng_key)
 
@@ -414,12 +423,16 @@ def elbo_estimate(
     flow_kwargs: Dict[str, Any],
     smi_eta: Optional[SmiEta],
     include_random_anchor: bool,
-    prior_params: Dict[str, Any],
+    prior_hparams: Dict[str, Any],
     kernel_name: Optional[str] = None,
     kernel_kwargs: Optional[Dict[str, Any]] = None,
     num_samples_gamma_profiles: int = 0,
     gp_jitter: Optional[float] = None,
 ) -> Dict[str, Array]:
+  """Estimate the ELBO.
+
+  Monte Carlo Estimate of the evidence lower-bound.
+  """
   # params_tuple = [state.params for state in state_list]
 
   # Sample from flow
@@ -464,7 +477,7 @@ def elbo_estimate(
         batch=batch,
         posterior_sample_dict=posterior_sample_dict_stg1,
         smi_eta=smi_eta,
-        **prior_params,
+        **prior_hparams,
     )
     log_q_stg1 = (
         q_distr_out['global_params_log_prob'] +
@@ -489,7 +502,7 @@ def elbo_estimate(
       batch=batch,
       posterior_sample_dict=posterior_sample_dict_stg2,
       smi_eta=None,
-      **prior_params,
+      **prior_hparams,
   )
   if is_smi:
     log_q_stg2 = (
@@ -530,7 +543,7 @@ def elbo_estimate(
         posterior_sample_dict=posterior_sample_dict_stg3,
         smi_eta=None,
         random_anchor=True,
-        **prior_params,
+        **prior_hparams,
     )
     log_q_stg3 = (
         jax.lax.stop_gradient(q_distr_out['global_params_log_prob']) +
@@ -685,7 +698,13 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           x2=train_ds['loc'][:train_ds['num_profiles_anchor'], :],
       )
 
-  train_ds = get_inducing_points(dataset=train_ds, config=config)
+  train_ds = get_inducing_points(
+      dataset=train_ds,
+      inducing_grid_shape=config.flow_kwargs.inducing_grid_shape,
+      kernel_name=config.kernel_name,
+      kernel_kwargs=config.kernel_kwargs,
+      gp_jitter=config.gp_jitter,
+  )
 
   smi_eta = dict(config.flow_kwargs.smi_eta)
   is_smi = any(v is not None for v in smi_eta.values())
@@ -879,7 +898,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           'flow_kwargs': config.flow_kwargs,
           'smi_eta': smi_eta,
           'include_random_anchor': config.include_random_anchor,
-          'prior_params': config.prior_params,
+          'prior_params': config.prior_hparams,
           'kernel_name': config.kernel_name,
           'kernel_kwargs': config.kernel_kwargs,
           'num_samples_gamma_profiles': config.num_samples_gamma_profiles,
@@ -898,7 +917,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       flow_kwargs=config.flow_kwargs,
       smi_eta=smi_eta,
       include_random_anchor=config.include_random_anchor,
-      prior_params=config.prior_params,
+      prior_hparams=config.prior_hparams,
       kernel_name=config.kernel_name,
       kernel_kwargs=config.kernel_kwargs,
       num_samples_gamma_profiles=config.num_samples_gamma_profiles,

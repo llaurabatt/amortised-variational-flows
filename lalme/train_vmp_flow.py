@@ -701,7 +701,13 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           x2=train_ds['loc'][:train_ds['num_profiles_anchor'], :],
       )
 
-  train_ds = get_inducing_points(dataset=train_ds, config=config)
+  train_ds = get_inducing_points(
+      dataset=train_ds,
+      inducing_grid_shape=config.flow_kwargs.inducing_grid_shape,
+      kernel_name=config.kernel_name,
+      kernel_kwargs=config.kernel_kwargs,
+      gp_jitter=config.gp_jitter,
+  )
 
   # These parameters affect the dimension of the flow
   # so they are also part of the flow parameters
@@ -899,7 +905,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           'eta_sampling_a': config.eta_sampling_a,
           'eta_sampling_b': config.eta_sampling_b,
           'include_random_anchor': config.include_random_anchor,
-          'prior_params': config.prior_params,
+          'prior_params': config.prior_hparams,
           'profile_is_anchor': profile_is_anchor,
           'kernel_name': config.kernel_name,
           'kernel_kwargs': config.kernel_kwargs,
@@ -920,7 +926,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       eta_sampling_a=1.0,
       eta_sampling_b=1.0,
       include_random_anchor=config.include_random_anchor,
-      prior_params=config.prior_params,
+      prior_params=config.prior_hparams,
       profile_is_anchor=profile_is_anchor,
       kernel_name=config.kernel_name,
       kernel_kwargs=config.kernel_kwargs,

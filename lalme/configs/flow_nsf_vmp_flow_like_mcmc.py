@@ -20,7 +20,7 @@ def get_config():
   config.flow_kwargs.num_basis_gps = 5
   config.flow_kwargs.inducing_grid_shape = (10, 10)
   # Number of layers to use in the flow.
-  config.flow_kwargs.num_layers = 6
+  config.flow_kwargs.num_layers = 8
   # Hidden sizes of the MLP conditioner.
   config.flow_kwargs.hidden_sizes_conditioner = [30] * 5
   # Hidden sizes of the MLP conditioner.
@@ -35,21 +35,21 @@ def get_config():
   config.flow_kwargs.loc_y_range = (0., 0.8939394)
 
   # Define priors
-  config.prior_params = ml_collections.ConfigDict()
-  config.prior_params.mu_prior_concentration = 0.1
-  config.prior_params.mu_prior_rate = 0.1
-  config.prior_params.zeta_prior_a = 1.
-  config.prior_params.zeta_prior_b = 1.
-  config.prior_params.w_prior_scale = 0.1
-  config.prior_params.a_prior_scale = 1.
+  config.prior_hparams = ml_collections.ConfigDict()
+  config.prior_hparams.mu_prior_concentration = 0.1
+  config.prior_hparams.mu_prior_rate = 0.1
+  config.prior_hparams.zeta_prior_a = 1.
+  config.prior_hparams.zeta_prior_b = 1.
+  config.prior_hparams.w_prior_scale = 1.
+  config.prior_hparams.a_prior_scale = 10.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
-  config.kernel_kwargs.amplitude = 0.7
-  config.kernel_kwargs.length_scale = 0.5
+  config.kernel_kwargs.amplitude = 0.1
+  config.kernel_kwargs.length_scale = 0.1
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 20_000
+  config.training_steps = 50_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -60,7 +60,7 @@ def get_config():
       'init_value': 0.,
       'peak_value': 3e-4,
       'warmup_steps': 3_000,
-      'transition_steps': config.training_steps / 4,
+      'transition_steps': config.training_steps // 3,
       'decay_rate': 0.5,
       'transition_begin': 0,
       'staircase': False,
@@ -77,13 +77,13 @@ def get_config():
   config.num_samples_gamma_profiles = 5
 
   # How often to evaluate the model.
-  config.eval_steps = int(config.training_steps / 10)
+  config.eval_steps = config.training_steps // 10
   config.num_samples_eval = 100
 
   config.include_random_anchor = True
 
   # How often to log images to monitor convergence.
-  config.log_img_steps = int(config.training_steps / 10)
+  config.log_img_steps = config.training_steps // 5
   config.show_basis_fields_during_training = True
   config.show_linguistic_fields_during_training = True
 
@@ -92,12 +92,12 @@ def get_config():
 
   config.eta_plot = [
       [0.001],
-      [0.5],
+      [0.2],
       [1.0],
   ]
 
   # How often to save model checkpoints.
-  config.checkpoint_steps = int(config.training_steps / 2)
+  config.checkpoint_steps = config.training_steps // 2
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
 
