@@ -12,6 +12,7 @@ import tensorflow as tf
 
 import train_flow
 import train_vmp_flow
+import run_mcmc
 
 FLAGS = flags.FLAGS
 
@@ -55,6 +56,17 @@ def main(argv):
                                       FLAGS.workdir + f"_{eta_floating:.3f}")
   elif FLAGS.config.method == 'vmp_flow':
     train_vmp_flow.train_and_evaluate(FLAGS.config, FLAGS.workdir)
+
+  elif FLAGS.config.method == 'mcmc':
+    if FLAGS.config.iterate_smi_eta == ():
+      run_mcmc.sample_and_evaluate(FLAGS.config, FLAGS.workdir)
+    else:
+      for eta_floating in FLAGS.config.iterate_smi_eta:
+        FLAGS.config.flow_kwargs.smi_eta.update({
+            'profiles_floating': eta_floating,
+        })
+        run_mcmc.sample_and_evaluate(FLAGS.config,
+                                     FLAGS.workdir + f"_{eta_floating:.3f}")
 
 
 if __name__ == '__main__':
