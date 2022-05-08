@@ -24,7 +24,7 @@ def get_config():
   config.flow_kwargs.num_basis_gps = 5
   config.flow_kwargs.inducing_grid_shape = (10, 10)
   # Number of layers to use in the flow.
-  config.flow_kwargs.num_layers = 6
+  config.flow_kwargs.num_layers = 8
   # Hidden sizes of the MLP conditioner.
   config.flow_kwargs.hidden_sizes_conditioner = [30] * 5
   # Hidden sizes of the MLP conditioner.
@@ -35,17 +35,17 @@ def get_config():
   config.flow_kwargs.spline_range = (-10., 10)
   # Ranges of posterior locations
   # (NOTE: these will be modified in the training script)
-  config.prior_hparamsloc_x_range = (0., 1.)
-  config.prior_hparamsloc_y_range = (0., 0.8939394)
-config.prior_hparams
-  config.prior_hparams
+  config.flow_kwargs.loc_x_range = (0., 1.)
+  config.flow_kwargs.loc_y_range = (0., 0.8939394)
+
+  # Define priors
   config.prior_hparams = ml_collections.ConfigDict()
   config.prior_hparams.mu_prior_concentration = 0.1
   config.prior_hparams.mu_prior_rate = 0.1
-  config.prior_params.zeta_prior_a = 1.
-  config.prior_params.zeta_prior_b = 1.
-  config.prior_params.w_prior_scale = 0.1
-  config.prior_params.a_prior_scale = 1.
+  config.prior_hparams.zeta_prior_a = 1.
+  config.prior_hparams.zeta_prior_b = 1.
+  config.prior_hparams.w_prior_scale = 0.1
+  config.prior_hparams.a_prior_scale = 1.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
   config.kernel_kwargs.amplitude = 0.7
