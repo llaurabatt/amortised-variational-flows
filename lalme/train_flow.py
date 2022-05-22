@@ -477,6 +477,7 @@ def elbo_estimate(
         batch=batch,
         posterior_sample_dict=posterior_sample_dict_stg1,
         smi_eta=smi_eta,
+        random_anchor=False,
         **prior_hparams,
     )
     log_q_stg1 = (
@@ -502,6 +503,7 @@ def elbo_estimate(
       batch=batch,
       posterior_sample_dict=posterior_sample_dict_stg2,
       smi_eta=None,
+      random_anchor=False,
       **prior_hparams,
   )
   if is_smi:
@@ -898,7 +900,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           'flow_kwargs': config.flow_kwargs,
           'smi_eta': smi_eta,
           'include_random_anchor': config.include_random_anchor,
-          'prior_params': config.prior_hparams,
+          'prior_hparams': config.prior_hparams,
           'kernel_name': config.kernel_name,
           'kernel_kwargs': config.kernel_kwargs,
           'num_samples_gamma_profiles': config.num_samples_gamma_profiles,

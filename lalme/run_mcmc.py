@@ -23,6 +23,7 @@ from train_flow import load_data, get_inducing_points
 from flows import (split_flow_global_params, split_flow_locations,
                    concat_samples_global_params, concat_samples_locations)
 
+import modularbayes
 from modularbayes import flatten_dict
 from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
                                       Mapping, Optional, OrderedDict, PRNGKey,
@@ -39,20 +40,29 @@ jax.config.update('jax_default_matmul_precision', 'float32')
 np.set_printoptions(suppress=True, precision=4)
 
 
-def get_posterior_sample_init(
+def get_posterior_sample_init_stg1(
     num_forms_tuple: Tuple[int],
     num_basis_gps: int,
     num_inducing_points: int,
     num_profiles_floating: int,
-    include_random_anchor: bool,
     num_profiles_anchor: Optional[int] = None,
 ):
-  """Get dictionary to initialize MCMC."""
+  """Get dictionary with parametes to initialize MCMC.
+
+  The order of the parameters
+  """
 
   num_samples = 1
   num_items = len(num_forms_tuple)
 
+  global_params_names = [
+      'gamma_inducing', 'mixing_weights_list', 'mixing_offset_list', 'mu',
+      'zeta'
+  ]
+  all_params_names = global_params_names + ['loc_floating']
   posterior_sample = OrderedDict()
+  for key in all_params_names:
+    posterior_sample[key] = None
 
   ### Global parameters ###
   gamma_inducing_dim = num_basis_gps * num_inducing_points
@@ -73,10 +83,6 @@ def get_posterior_sample_init(
       num_inducing_points=num_inducing_points,
   )
 
-  global_params_names = [
-      'gamma_inducing', 'mixing_weights_list', 'mixing_offset_list', 'mu',
-      'zeta'
-  ]
   for key in global_params_names:
     posterior_sample[key] = posterior_sample_global[key]
 
@@ -91,25 +97,19 @@ def get_posterior_sample_init(
   posterior_sample['loc_floating'] = posterior_sample_loc_floating[
       'loc_floating']
 
-  if include_random_anchor:
-    ### Location floating profiles ###
-    posterior_sample_loc_anchor = split_flow_locations(
-        samples=jnp.zeros((num_samples, 2 * num_profiles_anchor)),
-        num_profiles=num_profiles_anchor,
-        name='loc_random_anchor',
-        is_aux=False,
-    )
-    posterior_sample['loc_random_anchor'] = posterior_sample_loc_anchor[
-        'loc_random_anchor']
+  # Verify that the parameters are in the correct order
+  assert list(posterior_sample.keys()) == all_params_names
 
   return posterior_sample
 
 
 def get_kernel_bijector_stg1(
+    num_forms_tuple: int,
+    num_profiles_floating: int,
     num_basis_gps: int,
     inducing_grid_shape: Tuple[int],
-    num_forms_tuple: int,
-    num_items: int,
+    loc_x_range: Tuple[float],
+    loc_y_range: Tuple[float],
 ):
   """Define kernel bijector for stage 1.
 
@@ -121,6 +121,9 @@ def get_kernel_bijector_stg1(
     -zeta goes to [0,1]
   """
 
+  num_items = len(num_forms_tuple)
+
+  ### Bijectors for Global Parameters ###
   num_inducing_points = math.prod(inducing_grid_shape)
 
   gamma_inducing_dim = num_basis_gps * num_inducing_points
@@ -130,23 +133,64 @@ def get_kernel_bijector_stg1(
   mu_dim = num_items
   zeta_dim = num_items
 
-  block_bijectors = [
+  block_bijector_global = [
+      # gamma: Identity [-Inf,Inf]
       tfb.Identity(),
+      # mixing_weights: Identity [-Inf,Inf]
       tfb.Identity(),
+      # mixing_offset: Identity [-Inf,Inf]
       tfb.Identity(),
+      # mu: Softplus [0,Inf]
       tfb.Softplus(),
-      distrax.Sigmoid(),
+      # zeta: Sigmoid [0,1]
+      tfb.Sigmoid(),
   ]
-  block_sizes = [
+  block_sizes_global = [
       gamma_inducing_dim,
       mixing_weights_dim,
       mixing_offset_dim,
       mu_dim,
       zeta_dim,
   ]
+  bijector_global = tfb.Blockwise(
+      bijectors=block_bijector_global, block_sizes=block_sizes_global)
+
+  ### Bijectors for Profile Locations ###
+  bijector_loc_floating_layers = []
+  # First, all locations to the [0,1] square
+  bijector_loc_floating_layers.append(distrax.Block(distrax.Sigmoid(), 1))
+  # profiles x's go to [0,loc_x_max]
+  # profiles y's go to [0,loc_y_max]
+  if loc_x_range == (0., 1.):
+    loc_x_range_bijector = tfb.Identity()
+  else:
+    loc_x_range_bijector = tfb.Scale(scale=loc_x_range[1] - loc_x_range[0])
+    # TODO(chrcarm): enable shift
+    # loc_x_range_bijector = tfp.Shift(shift=loc_x_range[0])
+
+  if loc_y_range == (0., 1.):
+    loc_y_range_bijector = tfb.Identity()
+  else:
+    loc_y_range_bijector = tfb.Scale(scale=loc_y_range[1] - loc_y_range[0])
+    # TODO(chrcarm): enable shift
+    # loc_y_range_bijector = tfp.Shift(shift=loc_y_range[0])
+
+  block_bijectors_loc_floating = [loc_x_range_bijector, loc_y_range_bijector]
+  block_sizes_loc_floating = [num_profiles_floating, num_profiles_floating]
+  bijector_loc_floating_layers.append(
+      tfb.Blockwise(
+          bijectors=block_bijectors_loc_floating,
+          block_sizes=block_sizes_loc_floating))
+  bijector_loc_floating = distrax.Chain(bijector_loc_floating_layers[::-1])
+
+  bijector_loc_floating = tfb.Blockwise(
+      bijectors=block_bijectors_loc_floating,
+      block_sizes=block_sizes_loc_floating)
 
   kernel_bijector = tfb.Blockwise(
-      bijectors=block_bijectors, block_sizes=block_sizes)
+      bijectors=[bijector_global, bijector_loc_floating],
+      block_sizes=[sum(block_sizes_global),
+                   sum(block_sizes_loc_floating)])
 
   return kernel_bijector
 
@@ -197,10 +241,7 @@ def get_kernel_bijector_stg2(
   return kernel_bijector
 
 
-def concat_samples(
-    samples_dict: Dict[str, Any],
-    include_random_anchor: bool,
-) -> Array:
+def concat_samples_stg1(samples_dict: Dict[str, Any],) -> Array:
 
   samples = []
 
@@ -211,42 +252,60 @@ def concat_samples(
           is_aux=False,
           name='loc_floating',
       ))
-  if include_random_anchor:
-    samples.append(
-        concat_samples_locations(
-            samples_dict=samples_dict,
-            is_aux=False,
-            name='loc_random_anchor',
-        ))
   samples = jnp.concatenate(samples, axis=-1)
 
   return samples
 
 
-@jax.jit
 def log_prob_fn(
     batch: Batch,
-    model_params: Array,
+    prng_key: PRNGKey,
+    posterior_sample_raw: Array,
     prior_hparams: Mapping[str, Any],
-    smi_eta_groups: Optional[Array],
-    model_params_init: Mapping[str, Any],
+    kernel_name: str,
+    kernel_kwargs: Mapping[str, Any],
+    num_samples_gamma_profiles: int,
+    smi_eta_profiles: Optional[Array],
+    posterior_sample_dict_init: Mapping[str, Any],
+    include_random_anchor=False,
+    gp_jitter: float = 1e-5,
 ):
   """Log probability function for the random effects model."""
 
-  leaves_init, treedef = jax.tree_util.tree_flatten(model_params_init)
-
+  # Use the tree structure in posterior_sample_dict to split the samples in
+  # posterior_sample_raw and create a dictionary with named samples.
+  leaves_init, treedef = jax.tree_util.tree_flatten(posterior_sample_dict_init)
   leaves = []
   for i in range(len(leaves_init) - 1):
-    param_i, model_params = jnp.split(
-        model_params, leaves_init[i].flatten().shape, axis=-1)
+    param_i, posterior_sample_raw = jnp.split(
+        posterior_sample_raw, leaves_init[i].flatten().shape, axis=-1)
     leaves.append(param_i.reshape(leaves_init[i].shape))
-  leaves.append(model_params.reshape(leaves_init[-1].shape))
-
+  leaves.append(posterior_sample_raw.reshape(leaves_init[-1].shape))
   posterior_sample_dict = jax.tree_util.tree_unflatten(
       treedef=treedef, leaves=leaves)
 
-  smi_eta = {'groups': smi_eta_groups} if smi_eta_groups is not None else None
+  # Put Smi eta values into a dictionary.
+  smi_eta = {
+      'profiles': smi_eta_profiles
+  } if smi_eta_profiles is not None else None
+  smi_eta['items'] = jnp.ones(len(batch['num_forms_tuple']))
 
+  # Sample the basis GPs on profiles locations conditional on GP values on the
+  # inducing points.
+  gamma_sample_dict = log_prob_fun.sample_gamma_profiles_given_gamma_inducing(
+      batch=batch,
+      posterior_sample_dict=posterior_sample_dict,
+      prng_key=prng_key,
+      kernel_name=kernel_name,
+      kernel_kwargs=kernel_kwargs,
+      gp_jitter=gp_jitter,
+      num_samples_gamma_profiles=num_samples_gamma_profiles,
+      is_smi=False,  # Do not sample the auxiliary gamma
+      include_random_anchor=include_random_anchor,
+  )
+  posterior_sample_dict.update(gamma_sample_dict)
+
+  # Compute the log probability function.
   log_prob = log_prob_fun.log_prob_joint(
       batch=batch,
       posterior_sample_dict=posterior_sample_dict,
@@ -254,6 +313,7 @@ def log_prob_fn(
       random_anchor=False,
       **prior_hparams,
   ).squeeze()
+  # globals().update(prior_hparams)
 
   return log_prob
 
@@ -276,7 +336,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       config.model_hparams.inducing_grid_shape)
 
   # For training, we need a Dictionary compatible with jit
-  # we remove string vector
+  # we remove string vectors
   train_ds = {k: v for k, v in dataset.items() if k not in ['items', 'forms']}
 
   # Compute GP covariance between anchor profiles
@@ -312,12 +372,11 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     summary_writer.hparams(flatten_dict(config))
 
   # Initilize the model parameters
-  posterior_sample_dict_init = get_posterior_sample_init(
+  posterior_sample_dict_init = get_posterior_sample_init_stg1(
       num_forms_tuple=config.num_forms_tuple,
       num_basis_gps=config.model_hparams.num_basis_gps,
       num_inducing_points=config.num_inducing_points,
       num_profiles_floating=config.num_profiles_floating,
-      include_random_anchor=config.include_random_anchor,
       num_profiles_anchor=config.num_profiles_anchor,
   )
 
@@ -328,36 +387,53 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   times_data = {}
   times_data['start_sampling'] = time.perf_counter()
 
-  posterior_sample_init = concat_samples(
-      samples_dict=posterior_sample_dict_init,
-      include_random_anchor=config.include_random_anchor,
-  )[0, :]
+  posterior_sample_raw_init = concat_samples_stg1(
+      samples_dict=posterior_sample_dict_init,)[0, :]
+
+  prng_key_gamma = next(prng_seq)
+  target_log_prob_fn_stg1_jit = lambda posterior_sample_raw: log_prob_fn(
+      batch=train_ds,
+      prng_key=prng_key_gamma,
+      posterior_sample_raw=posterior_sample_raw,
+      prior_hparams=config.prior_hparams,
+      kernel_name=config.kernel_name,
+      kernel_kwargs=config.kernel_kwargs,
+      num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+      smi_eta_profiles=smi_eta['profiles'] if smi_eta is not None else None,
+      posterior_sample_dict_init=posterior_sample_dict_init,
+      include_random_anchor=False,
+      gp_jitter=config.gp_jitter,
+  )
+  target_log_prob_fn_stg1_jit = jax.jit(target_log_prob_fn_stg1_jit)
+
+  # Define bijector for samples
+  bijector_stg1 = get_kernel_bijector_stg1(
+      num_forms_tuple=config.num_forms_tuple,
+      num_profiles_floating=config.num_profiles_floating,
+      **config.model_hparams,
+  )
+
+  # Test the log probability function
+  _ = target_log_prob_fn_stg1_jit(
+      posterior_sample_raw=bijector_stg1.forward(posterior_sample_raw_init))
 
   # TODO(chris): Continue from here
 
-  target_log_prob_fn = lambda state: log_prob_fn(
-      batch=train_ds,
-      model_params=state,
-      prior_hparams=config.prior_hparams,
-      smi_eta_groups=smi_eta['groups'] if smi_eta is not None else None,
-      model_params_init=posterior_sample_dict_init,
-  )
-
-  target_log_prob_fn(posterior_sample_init)
-
+  # Define sampling kernel
   kernel = tfp.mcmc.TransformedTransitionKernel(
       inner_kernel=tfm.NoUTurnSampler(
-          target_log_prob_fn=target_log_prob_fn,
+          target_log_prob_fn=target_log_prob_fn_stg1_jit,
           step_size=config.mcmc_step_size,
       ),
-      bijector=get_kernel_bijector_stg1(**config.model_hparams))
+      bijector=bijector_stg1)
 
+  # Sample stage 1 chain
   times_data['start_mcmc_stg_1'] = time.perf_counter()
   posterior_sample = tfm.sample_chain(
       num_results=config.num_samples,
       num_burnin_steps=config.num_burnin_steps,
       kernel=kernel,
-      current_state=posterior_sample_init,
+      current_state=bijector_stg1.forward(posterior_sample_raw_init),
       trace_fn=None,
       seed=next(prng_seq),
   )
@@ -405,10 +481,10 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     ):
       target_log_prob_fn_stage2 = lambda state: log_prob_fn(
           batch=train_ds,
-          model_params=jnp.concatenate([sigma, state], axis=-1),
+          posterior_sample_raw=jnp.concatenate([sigma, state], axis=-1),
           prior_hparams=config.prior_hparams,
-          smi_eta_groups=jnp.array(1.),
-          model_params_init=posterior_sample_dict_init,
+          smi_eta_profiles=jnp.array(1.),
+          posterior_sample_dict=posterior_sample_dict_init,
       )
       inner_kernel = tfm.NoUTurnSampler(
           target_log_prob_fn=target_log_prob_fn_stage2,

@@ -46,6 +46,8 @@ def get_config():
   config.kernel_kwargs.length_scale = 0.1
   config.gp_jitter = 1e-3
 
+  config.num_samples_gamma_profiles = 10
+
   config.num_samples = 2_000
   config.num_samples_subchain = 100
   config.num_burnin_steps = 1_000

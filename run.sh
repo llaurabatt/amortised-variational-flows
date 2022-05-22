@@ -8,10 +8,15 @@ WORK_DIR=$HOME/spatial-smi/output
 
 # Create output directory and install missing dependencies
 mkdir -p $WORK_DIR
-pip install -r $REPO_DIR/requirements.txt
+pip install -Ur $REPO_DIR/requirements.txt
 
-## Replicate MCMC
-## Single eta
+## Variational replication of MCMC
+## Single eta, Mean field
+eta_floating='(1.0,)'
+python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_mf_like_mcmc.py \
+                                --workdir=$WORK_DIR/8_items/mf/eta_floating \
+                                --config.iterate_smi_eta=$eta_floating
+## Single eta, Neural Spline Flow
 eta_floating='(1.0,)'
 python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_nsf_like_mcmc.py \
                                 --workdir=$WORK_DIR/8_items/nsf/eta_floating \

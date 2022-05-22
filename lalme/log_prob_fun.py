@@ -135,8 +135,8 @@ def sample_gamma_profiles_given_gamma_inducing(
     num_samples_gamma_profiles: int,
     is_smi: bool,
     include_random_anchor: bool,
-) -> Tuple[Array]:
-  """Sample exaclty from the conditional distribution p(gamma_p|gamma_u).
+) -> Dict[str, Array]:
+  """Sample from the conditional distribution p(gamma_p|gamma_u).
 
   Integrate over multiple samples of gamma_profiles.
 
@@ -147,11 +147,16 @@ def sample_gamma_profiles_given_gamma_inducing(
     prng_key: Random seed.
     kernel_name: String specifiying the Kernel function to be used.
     kernel_kwargs: Dictionary with keyword arguments for the Kernel function.
+    gp_jitter: float, jitter to add to the diagonal of the conditional
+      covariance matrices, only for numerical stability.
     num_samples_gamma_profiles: Integer indicating the number of samples used
       in the montecarlo integration of gamma_profiles.
+    is_smi: Boolean indicating if a SMI posterior is being used.
+    include_random_anchor: Boolean indicating if the random anchor should be
+      produced as part of the samples.
 
   Returns:
-    Tuple of arrays with samples on anchor and floating profiles.
+    Dictionary with samples of the GPs at the profiles locations.
   """
 
   # num_samples_global, num_basis_gps, _ = posterior_sample_dict[
@@ -403,16 +408,89 @@ def log_prob_joint(
   return log_prob
 
 
-def gp_F_given_U(
+def conditional_gp_params_F_given_U(
     u: Array,
-    cov_x: Array,
     cov_x_z: Array,
-    cov_z_inv: Optional[Array] = None,
+    cov_z_inv: Array,
+    only_mean: bool = False,
+    cov_x: Optional[Array] = None,
     gp_jitter: float = 1e-5,
 ):
   """Conditional GP distribution.
 
-  Obtain the conditional distribution p(F|U) where F=f(X) and U=f(Z) are the
+  Compute the conditional mean and covariance of a Gaussian Process, E(F|U) and
+  Cov(F|U), where F=f(X) and U=f(Z) are the values of the GP evaluated at
+  locations X and Z, respectively.
+  Let K(,) be the kernel of the gaussian process. Define
+    A = K(X,Z) @ inv(K(X,Z))
+    B = A @ K(Z,X)
+  The conditional distribution is a gaussian with
+    E[F|U] = A @ U
+    Cov[F|U] = K(X,X) - B
+
+  Args:
+    u: Array with the conditioning values U. Shape (num_samples, gp_dim, z_dim)
+    cov_x_z: Array with the covariance of the GP between the new locations X
+      and the conditioning locations Z. Shape (1 or num_samples, x_dim, z_dim).
+    cov_z_inv: Array with the inverse of the covariance of the GP at the
+      conditioning points.
+    only_mean: Boolean indicating whether to only compute the conditional mean.
+    cov_x: Array with the covariance of the GP at the new locations X. Only used
+      if only_mean is False. Shape (1 or num_samples, x_dim, x_dim).
+    gp_jitter: float, jitter to add to the diagonal of the conditional
+      covariance matrix.
+  """
+
+  assert u.ndim == 3
+  num_samples, gp_dim, z_dim = u.shape
+  x_dim = cov_x_z.shape[-2]
+
+  assert cov_x_z.ndim == 3
+  assert cov_x_z.shape[-2:] == (x_dim, z_dim)
+  assert cov_z_inv.shape == (z_dim, z_dim)
+
+  matrix_a = jnp.einsum("rxz,zu->rxu", cov_x_z, cov_z_inv, precision='highest')
+
+  # Conditional mean
+  mean_f_given_u = jnp.einsum(
+      'sxz,sgz->sgx',
+      jnp.broadcast_to(matrix_a, (num_samples, x_dim, z_dim)),
+      # u.shape == (num_samples, gp_dim, z_dim)
+      u,
+      precision='highest',
+  )
+  assert mean_f_given_u.shape == (num_samples, gp_dim, x_dim)
+
+  if only_mean:
+    cov_f_given_u = None
+  else:
+    assert cov_x.ndim == 3
+    assert cov_x.shape[-2:] == (x_dim, x_dim)
+
+    matrix_b = jnp.einsum(
+        "rxz,rfz->rxf", matrix_a, cov_x_z, precision='highest')
+    matrix_b = jax.vmap(force_symmetric)(matrix_b)
+
+    # Conditional covariance
+    # cov_f_given_u.shape == (num_samples, num_profiles_x, num_profiles_x)
+    cov_f_given_u = cov_x - matrix_b
+    cov_f_given_u = cov_f_given_u + (
+        gp_jitter *
+        jnp.broadcast_to(jnp.eye(cov_f_given_u.shape[-1]), cov_f_given_u.shape))
+
+  return mean_f_given_u, cov_f_given_u
+
+
+def gp_F_given_U(
+    u: Array,
+    cov_x: Array,
+    cov_x_z: Array,
+    cov_z_inv: Array,
+    gp_jitter: float = 1e-5,
+):
+  """Conditional GP distribution.
+
+  Compute the conditional distribution p(F|U) where F=f(X) and U=f(Z) are the
   values of a gaussian process evaluated at locations X and Z, respectively.
   Let K(,) be the kernel of the gaussian process. Define
     A = K(X,Z) @ inv(K(X,Z))
@@ -420,41 +498,27 @@ def gp_F_given_U(
   The conditional distribution is a gaussian with
     E[F|U] = A @ U
     Cov[F|U] = K(X,X) - B
+
+  Args:
+    u: Array with the conditioning values U. Shape (num_samples, gp_dim, z_dim)
+    cov_x: Array with the covariance of the GP at the new locations X.
+      Shape (num_samples, x_dim, x_dim).
+    cov_x_z: Array with the covariance of the GP between the new locations X
+      and the conditioning locations Z. Shape (num_samples, x_dim, z_dim).
+    cov_z_inv: Array with the inverse of the covariance of the GP at the
+      conditioning points.
+    gp_jitter: float, jitter to add to the diagonal of the conditional
+      covariance matrix.
   """
 
-  assert u.ndim == 3
-  num_samples, gp_dim, z_dim = u.shape
-  x_dim = cov_x.shape[-1]
-
-  assert cov_x.ndim == 3
-  assert cov_x.shape[-2:] == (x_dim, x_dim)
-  assert cov_x_z.ndim == 3
-  assert cov_x_z.shape[-2:] == (x_dim, z_dim)
-  assert cov_z_inv.shape == (z_dim, z_dim)
-
-  # Sample GP values on x locations conditional on GP y values
-  # x profiles
-  matrix_A = jnp.einsum("rxz,zu->rxu", cov_x_z, cov_z_inv, precision='highest')
-  matrix_B = jnp.einsum("rxz,rfz->rxf", matrix_A, cov_x_z, precision='highest')
-  matrix_B = jax.vmap(force_symmetric)(matrix_B)
-
-  # Conditional mean
-  mean_f_given_u = jnp.einsum(
-      'sxz,sgz->sgx',
-      jnp.broadcast_to(matrix_A, (num_samples, x_dim, z_dim)),
-      # u.shape == (num_samples, gp_dim, z_dim)
-      u,
-      precision='highest',
+  mean_f_given_u, cov_f_given_u = conditional_gp_params_F_given_U(
+      u=u,
+      cov_x_z=cov_x_z,
+      cov_z_inv=cov_z_inv,
+      only_mean=False,
+      cov_x=cov_x,
+      gp_jitter=gp_jitter,
   )
-  assert mean_f_given_u.shape == (num_samples, gp_dim, x_dim)
-
-  # Conditional covariance
-  # cov_f_given_u.shape ==
-  #   (num_samples, num_profiles_x, num_profiles_x)
-  cov_f_given_u = cov_x - matrix_B
-  cov_f_given_u = cov_f_given_u + (
-      gp_jitter *
-      jnp.broadcast_to(jnp.eye(cov_f_given_u.shape[-1]), cov_f_given_u.shape))
 
   # assert jnp.all(jax.vmap(jnp.diag)(cov_f_given_u) > 0)
   # assert jnp.all(jax.vmap(issymmetric)(cov_anchor_given_y))
@@ -463,6 +527,7 @@ def gp_F_given_U(
   # Expand dimension for independent GPs
   cov_tril_f_given_u = jnp.expand_dims(cov_tril_f_given_u, axis=1)
   assert cov_tril_f_given_u.ndim == 4
+  x_dim = cov_x.shape[-1]
   assert cov_tril_f_given_u.shape[-2:] == (x_dim, x_dim)
 
   p_f_given_u = distrax.Independent(
