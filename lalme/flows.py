@@ -632,6 +632,27 @@ in the LALME model.
   return modularbayes.ConditionalTransformed(base_distribution, flow)
 
 
+def get_global_params_dim(
+    num_forms_tuple: Tuple[int],
+    num_basis_gps: int,
+    num_inducing_points: int,
+):
+  """Computes dimension of vector with global parameters."""
+  num_items = len(num_forms_tuple)
+  gamma_inducing_dim = num_basis_gps * num_inducing_points
+  mixing_weights_dims = [
+      num_basis_gps * num_forms_i for num_forms_i in num_forms_tuple
+  ]
+  mixing_weights_dim = sum(mixing_weights_dims)
+  mixing_offset_dim = sum(num_forms_tuple)
+  mu_dim = num_items
+  zeta_dim = num_items
+  global_params_dim = (
+      gamma_inducing_dim + mixing_weights_dim + mixing_offset_dim + mu_dim +
+      zeta_dim)
+  return global_params_dim
+
+
 def split_flow_global_params(
     samples: Array,
     num_forms_tuple: Tuple[int],
@@ -813,7 +834,8 @@ def concat_samples_global_params(samples_dict: Dict[str, Any]) -> Array:
           for x in samples_dict['mixing_weights_list']
       ],
                       axis=-1))
-  assert samples[-1].shape == (1, num_basis_gps * sum(num_forms_tuple))
+  assert samples[-1].shape == (num_samples,
+                               num_basis_gps * sum(num_forms_tuple))
 
   # mixing offset
   samples.append(
@@ -821,7 +843,7 @@ def concat_samples_global_params(samples_dict: Dict[str, Any]) -> Array:
           x.reshape(num_samples, -1) for x in samples_dict['mixing_offset_list']
       ],
                       axis=-1))
-  assert samples[-1].shape == (1, sum(num_forms_tuple))
+  assert samples[-1].shape == (num_samples, sum(num_forms_tuple))
 
   # mu
   samples.append(samples_dict['mu'])
@@ -846,7 +868,7 @@ def concat_samples_locations(
   # Get sizes
   num_samples, num_profiles, _ = samples_dict[key].shape
 
-  samples = samples_dict[key].reshape(num_samples, -1)
+  samples = samples_dict[key].swapaxes(1, 2).reshape(num_samples, -1)
   assert samples.shape == (num_samples, 2 * num_profiles)
 
   return samples

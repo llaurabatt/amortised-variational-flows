@@ -10,21 +10,27 @@ WORK_DIR=$HOME/spatial-smi/output
 mkdir -p $WORK_DIR
 pip install -Ur $REPO_DIR/requirements.txt
 
+eta_floating='(0.001,0.2,0.5,1.0,)'
+
+## MCMC
+## Single eta, Mean field
+python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/mcmc.py \
+                                --workdir=$WORK_DIR/8_items/mcmc/eta_floating \
+                                --config.iterate_smi_eta=$eta_floating
 ## Variational replication of MCMC
 ## Single eta, Mean field
-eta_floating='(1.0,)'
 python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_mf_like_mcmc.py \
                                 --workdir=$WORK_DIR/8_items/mf/eta_floating \
                                 --config.iterate_smi_eta=$eta_floating
+## Variational replication of MCMC
 ## Single eta, Neural Spline Flow
-eta_floating='(1.0,)'
 python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_nsf_like_mcmc.py \
                                 --workdir=$WORK_DIR/8_items/nsf/eta_floating \
                                 --config.iterate_smi_eta=$eta_floating
 ## Variational Meta-Posterior via VMP-flow
 ### Neural Spline Flow
-python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_nsf_vmp_flow_like_mcmc.py \
-                                --workdir=$WORK_DIR/8_items/nsf/vmp_flow
+python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_nsf_vmp_flow_like_mcmc_max.py \
+                                --workdir=$WORK_DIR/8_items/nsf/vmp_flow_max
 
 ## One posterior for each eta
 eta_floating='(0.001,0.5,1.0)'

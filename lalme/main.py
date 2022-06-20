@@ -62,7 +62,7 @@ def main(argv):
       run_mcmc.sample_and_evaluate(FLAGS.config, FLAGS.workdir)
     else:
       for eta_floating in FLAGS.config.iterate_smi_eta:
-        FLAGS.config.flow_kwargs.smi_eta.update({
+        FLAGS.config.smi_eta.update({
             'profiles_floating': eta_floating,
         })
         run_mcmc.sample_and_evaluate(FLAGS.config,
