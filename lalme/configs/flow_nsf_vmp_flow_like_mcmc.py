@@ -36,8 +36,8 @@ def get_config():
 
   # Define priors
   config.prior_hparams = ml_collections.ConfigDict()
-  config.prior_hparams.mu_prior_concentration = 0.1
-  config.prior_hparams.mu_prior_rate = 0.1
+  config.prior_hparams.mu_prior_concentration = 1.
+  config.prior_hparams.mu_prior_rate = 0.5
   config.prior_hparams.zeta_prior_a = 1.
   config.prior_hparams.zeta_prior_b = 1.
   config.prior_hparams.w_prior_scale = 1.
