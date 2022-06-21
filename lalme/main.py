@@ -28,6 +28,9 @@ def main(argv):
   if len(argv) > 1:
     raise app.UsageError('Too many command-line arguments.')
 
+  # log to a file
+  logging.get_absl_handler().use_absl_log_file()
+
   # Hide any GPUs form TensorFlow. Otherwise TF might reserve memory and make
   # it unavailable to JAX.
   tf.config.experimental.set_visible_devices([], 'GPU')
