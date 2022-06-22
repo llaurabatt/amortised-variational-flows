@@ -307,10 +307,13 @@ def log_prob_fn(
   )
 
   # Put Smi eta values into a dictionary.
-  smi_eta = {
-      'profiles': smi_eta_profiles
-  } if smi_eta_profiles is not None else None
-  smi_eta['items'] = jnp.ones(len(batch['num_forms_tuple']))
+  if smi_eta_profiles is not None:
+    smi_eta = {
+        'profiles': smi_eta_profiles,
+        'items': jnp.ones(len(batch['num_forms_tuple']))
+    }
+  else:
+    smi_eta = None
 
   # Sample the basis GPs on profiles locations conditional on GP values on the
   # inducing points.
@@ -429,7 +432,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   prng_key_gamma = next(prng_seq)
 
   @jax.jit
-  def target_log_prob_fn(posterior_sample_raw):
+  def target_log_prob_fn_stg1(posterior_sample_raw):
     return log_prob_fn(
         batch=train_ds,
         prng_key=prng_key_gamma,
@@ -455,13 +458,13 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   )
 
   # Test the log probability function
-  _ = target_log_prob_fn(
+  _ = target_log_prob_fn_stg1(
       posterior_sample_raw=bijector_stg1.forward(posterior_sample_raw_init))
 
   # Define sampling kernel
   kernel = tfp.mcmc.TransformedTransitionKernel(
       inner_kernel=tfm.NoUTurnSampler(
-          target_log_prob_fn=target_log_prob_fn,
+          target_log_prob_fn=target_log_prob_fn_stg1,
           step_size=config.mcmc_step_size,
       ),
       bijector=bijector_stg1)
@@ -532,14 +535,31 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         **config.model_hparams,
     )
 
+    @jax.jit
+    def target_log_prob_fn_stg2(global_params, loc_floating_sample):
+      return log_prob_fn(
+          batch=train_ds,
+          prng_key=prng_key_gamma,
+          posterior_sample_raw_1d=jnp.concatenate(
+              [global_params, loc_floating_sample], axis=-1),
+          prior_hparams=config.prior_hparams,
+          kernel_name=config.kernel_name,
+          kernel_kwargs=config.kernel_kwargs,
+          num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+          smi_eta_profiles=None,
+          num_forms_tuple=config.num_forms_tuple,
+          num_basis_gps=config.model_hparams.num_basis_gps,
+          num_inducing_points=config.num_inducing_points,
+          num_profiles_floating=config.num_profiles_floating,
+          include_random_anchor=False,
+          gp_jitter=config.gp_jitter,
+      )
+
     # Test the log probability function
-    _ = target_log_prob_fn(
-        posterior_sample_raw=jnp.concatenate([
-            global_params_sample[0],
-            bijector_stg2.forward(5 *
-                                  jnp.ones(2 * config.num_profiles_floating)),
-        ],
-                                             axis=-1))
+    _ = target_log_prob_fn_stg2(
+        global_params_sample[0],
+        bijector_stg2.forward(5 * jnp.zeros(2 * config.num_profiles_floating)),
+    )
 
     def sample_stg2(
         global_params: Array,
@@ -548,12 +568,9 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         prng_key: PRNGKey,
     ):
 
-      def target_log_prob_fn_stg2(loc_floating_sample):
-        return target_log_prob_fn(
-            jnp.concatenate([global_params, loc_floating_sample], axis=-1))
-
       inner_kernel = tfm.NoUTurnSampler(
-          target_log_prob_fn=target_log_prob_fn_stg2,
+          target_log_prob_fn=lambda x: target_log_prob_fn_stg2(
+              global_params, x),
           step_size=config.mcmc_step_size,
       )
 
@@ -573,9 +590,9 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     # # Get one sample of parameters in stage 2
     # loc_floating_sample_ = sample_stg2(
-    #     global_params_sample=global_params_sample[0],
-    #     loc_floating_init=loc_floating_aux[0],
-    #     num_burnin_steps=5,
+    #     global_params=global_params_sample[0],
+    #     loc_floating_init=loc_floating_aux_sample[0],
+    #     num_samples_subchain_stg2=5,
     #     prng_key=next(prng_seq),
     # )
 
@@ -679,12 +696,13 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
 # # For debugging
 # config = get_config()
-# config.num_samples = 10
-# config.num_samples_subchain = 10
-# config.num_burnin_steps = 5
+# config.num_samples = 20
+# config.num_burnin_steps_stg1 = 5
+# config.num_samples_subchain_stg2 = 5
+# config.num_chunks_stg2 = 5
 # config.smi_eta.update({
-#     'profiles_floating': 1.000,
+#     'profiles_floating': 0.001,
 # })
 # import pathlib
-# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/mcmc/eta_floating_1.000'
+# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/mcmc/eta_floating_0.001'
 # sample_and_evaluate(config, workdir)
