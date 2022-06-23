@@ -47,8 +47,8 @@ def get_config():
 
   config.num_samples = 2_000
   config.num_burnin_steps_stg1 = 500
-  config.num_samples_subchain_stg2 = 50
-  config.num_chunks_stg2 = 50
+  config.num_samples_subchain_stg2 = 10
+  config.num_chunks_stg2 = 10
 
   config.mcmc_step_size = 0.01
 

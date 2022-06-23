@@ -32,6 +32,7 @@ git clone https://github.com/chriscarmona/spatial-smi.git
 ```
 4. Install dependencies
 ```bash
+pip install -U pip wheel
 pip install -r requirements.txt
 ```
 

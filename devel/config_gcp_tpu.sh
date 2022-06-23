@@ -95,5 +95,5 @@ pip install "jax[tpu]>=0.2.16" -f https://storage.googleapis.com/jax-releases/li
 # Clone and install spatial-smi requirements
 mkdir -p smi/01_code
 cd smi/01_code
-git clone https://chriscarmona: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@github.com/chriscarmona/spatial-smi.git
+git clone https://chriscarmona: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@github.com/chriscarmona/spatial-smi.git
 pip install -r ./spatial-smi/requirements.txt

@@ -49,7 +49,7 @@ def get_config():
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 50_000
+  config.training_steps = 100_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -60,7 +60,7 @@ def get_config():
       'init_value': 0.,
       'peak_value': 3e-4,
       'warmup_steps': 3_000,
-      'transition_steps': config.training_steps // 3,
+      'transition_steps': config.training_steps // 4,
       'decay_rate': 0.5,
       'transition_begin': 0,
       'staircase': False,
@@ -92,6 +92,7 @@ def get_config():
 
   config.eta_plot = [
       [0.001],
+      [0.2],
       [0.5],
       [1.0],
   ]
@@ -102,10 +103,10 @@ def get_config():
   config.checkpoints_keep = 1
 
   # Number of samples of eta for Meta-Posterior training
-  config.eta_sampling_a = 0.2
-  config.eta_sampling_b = 1.0
+  config.eta_sampling_a = 0.5
+  config.eta_sampling_b = 0.5
 
-  # Initial seed for random numbers.
+  # Random seed
   config.seed = 123
 
   return config
