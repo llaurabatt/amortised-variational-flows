@@ -11,7 +11,7 @@ import haiku as hk
 import modularbayes
 from modularbayes import log1mexpm, force_symmetric
 from modularbayes._src.typing import (Any, Array, Batch, Dict, List, Optional,
-                                      PRNGKey, SmiEta, Tuple)
+                                      PRNGKey, SmiEta)
 
 tfd = tfp.distributions
 kernels = tfp.math.psd_kernels
@@ -82,13 +82,15 @@ def log_prob_y_integrated_over_gamma_profiles(
 
   # Computes log_prob_y_equal_1 over the sampled values gamma_profiles
   # First, iterate over samples from the global parameters
-  log_prob_y_along_global_fn = lambda gamma_p: jax.vmap(log_prob_y_equal_1)(
-      gamma=gamma_p,
-      mixing_weights_list=posterior_sample_dict['mixing_weights_list'],
-      mixing_offset_list=posterior_sample_dict['mixing_offset_list'],
-      mu=posterior_sample_dict['mu'],
-      zeta=posterior_sample_dict['zeta'],
-  )
+  def log_prob_y_along_global_fn(gamma_p):
+    return jax.vmap(log_prob_y_equal_1)(
+        gamma=gamma_p,
+        mixing_weights_list=posterior_sample_dict['mixing_weights_list'],
+        mixing_offset_list=posterior_sample_dict['mixing_offset_list'],
+        mu=posterior_sample_dict['mu'],
+        zeta=posterior_sample_dict['zeta'],
+    )
+
   # Second, iterate over samples of gamma_profiles for each global sample
   log_prob_y_equal_1_pointwise_list = jax.vmap(log_prob_y_along_global_fn)(
       gamma_profiles.swapaxes(0, 1))
@@ -101,12 +103,17 @@ def log_prob_y_integrated_over_gamma_profiles(
 
   # Average log_prob_y_equal_1 over samples of gamma_profiles
   # and add over forms
-  log_prob_y_item_profile = jnp.stack([
-      jnp.where(y_i, log_prob_y_eq_1_i,
-                log1mexpm(-log_prob_y_eq_1_i)).mean(axis=0).sum(axis=1) for y_i,
-      log_prob_y_eq_1_i in zip(batch['y'], log_prob_y_equal_1_pointwise_list)
-  ],
-                                      axis=1)
+  log_prob_y_item_profile_ = []
+  for y_i, log_prob_y_eq_1_i in zip(batch['y'],
+                                    log_prob_y_equal_1_pointwise_list):
+    try:
+      log_prob_y_item_profile_.append(
+          jnp.where(y_i, log_prob_y_eq_1_i,
+                    log1mexpm(-log_prob_y_eq_1_i)).mean(axis=0).sum(axis=1))
+    except:
+      breakpoint()
+  log_prob_y_item_profile = jnp.stack(log_prob_y_item_profile_, axis=1)
+
   # assert log_prob_y_item_profile.shape == (num_samples_global,
   #                                          batch['num_items'],
   #                                          batch['num_profiles'])
@@ -331,7 +338,8 @@ def log_prob_joint(
 
   # P(loc_floating) : Prior on the floating locations
   # TODO: more likely where there are more items already
-  log_prob_locations = lambda _: jnp.zeros(num_samples)
+  def log_prob_locations(_):
+    return jnp.zeros(num_samples)
 
   # P(W) : prior on the mixing weights
   def log_prob_weights(mixing_weights_list: List[Array]):

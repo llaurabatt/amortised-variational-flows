@@ -888,59 +888,61 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     for line in summary.split("\n"):
       logging.info(line)
 
-  update_states_jit = lambda state_list, batch, prng_key, smi_eta: update_states(
-      state_list=state_list,
-      batch=batch,
-      prng_key=prng_key,
-      optimizer=make_optimizer(**config.optim_kwargs),
-      loss_fn=loss,
-      loss_fn_kwargs={
-          'num_samples': config.num_samples_elbo,
-          'flow_name': config.flow_name,
-          'flow_kwargs': config.flow_kwargs,
-          'smi_eta': smi_eta,
-          'include_random_anchor': config.include_random_anchor,
-          'prior_hparams': config.prior_hparams,
-          'kernel_name': config.kernel_name,
-          'kernel_kwargs': config.kernel_kwargs,
-          'num_samples_gamma_profiles': config.num_samples_gamma_profiles,
-          'gp_jitter': config.gp_jitter,
-      },
-  )
-  # globals().update(loss_fn_kwargs)
-  update_states_jit = jax.jit(update_states_jit)
+  @jax.jit
+  def update_states_jit(state_list, batch, prng_key, smi_eta):
+    return update_states(
+        state_list=state_list,
+        batch=batch,
+        prng_key=prng_key,
+        optimizer=make_optimizer(**config.optim_kwargs),
+        loss_fn=loss,
+        loss_fn_kwargs={
+            'num_samples': config.num_samples_elbo,
+            'flow_name': config.flow_name,
+            'flow_kwargs': config.flow_kwargs,
+            'smi_eta': smi_eta,
+            'include_random_anchor': config.include_random_anchor,
+            'prior_hparams': config.prior_hparams,
+            'kernel_name': config.kernel_name,
+            'kernel_kwargs': config.kernel_kwargs,
+            'num_samples_gamma_profiles': config.num_samples_gamma_profiles,
+            'gp_jitter': config.gp_jitter,
+        },
+    )
 
-  elbo_validation_jit = lambda state_list, batch, prng_key, smi_eta: elbo_estimate(
-      params_tuple=[state.params for state in state_list],
-      batch=batch,
-      prng_key=prng_key,
-      num_samples=config.num_samples_eval,
-      flow_name=config.flow_name,
-      flow_kwargs=config.flow_kwargs,
-      smi_eta=smi_eta,
-      include_random_anchor=config.include_random_anchor,
-      prior_hparams=config.prior_hparams,
-      kernel_name=config.kernel_name,
-      kernel_kwargs=config.kernel_kwargs,
-      num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-      gp_jitter=config.gp_jitter,
-  )
-  elbo_validation_jit = jax.jit(elbo_validation_jit)
+  @jax.jit
+  def elbo_validation_jit(state_list, batch, prng_key, smi_eta):
+    return elbo_estimate(
+        params_tuple=[state.params for state in state_list],
+        batch=batch,
+        prng_key=prng_key,
+        num_samples=config.num_samples_eval,
+        flow_name=config.flow_name,
+        flow_kwargs=config.flow_kwargs,
+        smi_eta=smi_eta,
+        include_random_anchor=config.include_random_anchor,
+        prior_hparams=config.prior_hparams,
+        kernel_name=config.kernel_name,
+        kernel_kwargs=config.kernel_kwargs,
+        num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+        gp_jitter=config.gp_jitter,
+    )
 
-  sample_eval_jit = lambda state_list, batch, prng_key: sample_all_flows(
-      params_tuple=[state.params for state in state_list],
-      batch=batch,
-      prng_key=prng_key,
-      flow_name=config.flow_name,
-      flow_kwargs=config.flow_kwargs,
-      sample_shape=(config.num_samples_eval,),
-      include_random_anchor=config.include_random_anchor,
-      kernel_name=config.kernel_name,
-      kernel_kwargs=config.kernel_kwargs,
-      num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-      gp_jitter=config.gp_jitter,
-  )['posterior_sample']
-  sample_eval_jit = jax.jit(sample_eval_jit)
+  @jax.jit
+  def sample_eval_jit(state_list, batch, prng_key):
+    return sample_all_flows(
+        params_tuple=[state.params for state in state_list],
+        batch=batch,
+        prng_key=prng_key,
+        flow_name=config.flow_name,
+        flow_kwargs=config.flow_kwargs,
+        sample_shape=(config.num_samples_eval,),
+        include_random_anchor=config.include_random_anchor,
+        kernel_name=config.kernel_name,
+        kernel_kwargs=config.kernel_kwargs,
+        num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+        gp_jitter=config.gp_jitter,
+    )['posterior_sample']
 
   if state_list[0].step < config.training_steps:
     logging.info('Training variational posterior...')
@@ -948,7 +950,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     prng_seq = hk.PRNGSequence(config.seed)
 
   while state_list[0].step < config.training_steps:
-    # step = 0
 
     # Plots to monitor training
     if (state_list[0].step == 0) or (state_list[0].step % config.log_img_steps
@@ -1079,9 +1080,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
 # # For debugging
 # config = get_config()
-# config.flow_kwargs.smi_eta.update({
-#     'profiles_floating': 1.000,
-# })
-# # workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/mean_field/eta_floating_1.000'
-# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/nsf/eta_floating_1.000'
+# config.flow_kwargs.smi_eta.update({'profiles_floating': 0.001,})
+# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/mf_mini/eta_floating_0.001'
+# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/nsf/eta_floating_0.001'
 # train_and_evaluate(config, workdir)

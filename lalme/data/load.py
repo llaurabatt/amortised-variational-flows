@@ -168,6 +168,7 @@ def process_lalme(
     data['loc'] = data['loc'][index_profiles_keep, :]
     data['y'] = [y_item[:, index_profiles_keep] for y_item in data['y']]
     data['num_profiles'] = num_profiles_anchor_keep + num_profiles_floating_keep
+    data['num_profiles_anchor'] = num_profiles_anchor_keep
     data['num_profiles_floating'] = num_profiles_floating_keep
 
     assert all(

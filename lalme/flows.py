@@ -31,9 +31,11 @@ class MeanField(hk.Module):
   def __call__(self,):
     event_shape = (self.flow_dim,)
 
-    loc = hk.get_parameter("loc", event_shape, init=jnp.zeros)
+    loc = hk.get_parameter(
+        "loc", event_shape, init=hk.initializers.VarianceScaling())
     # log_scale = jnp.zeros(event_shape)
-    log_scale = hk.get_parameter("log_scale", event_shape, init=jnp.zeros)
+    log_scale = hk.get_parameter(
+        "log_scale", event_shape, init=hk.initializers.VarianceScaling())
 
     return loc, log_scale
 

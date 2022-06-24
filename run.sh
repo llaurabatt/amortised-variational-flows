@@ -41,7 +41,7 @@ python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_nsf_like_m
 ## Variational Meta-Posterior via VMP-flow, replication of MCMC
 ### Neural Spline Flow
 mkdir -p $WORK_DIR/8_items/nsf/log_vmp_flow
-python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_nsf_vmp_flow_like_mcmc_max.py \
+python3 $REPO_DIR/lalme/main.py --config=$REPO_DIR/lalme/configs/flow_nsf_vmp_flow_like_mcmc.py \
                                 --workdir=$WORK_DIR/8_items/nsf/vmp_flow \
                                 --log_dir=$WORK_DIR/8_items/nsf/log_vmp_flow
 
