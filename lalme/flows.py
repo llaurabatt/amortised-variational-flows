@@ -322,7 +322,6 @@ def nsf_locations(
     num_layers: int,
     hidden_sizes: Sequence[int],
     num_bins: int,
-    spline_range: Tuple[float],
     loc_x_range: Tuple[float],
     loc_y_range: Tuple[float],
     **_,
@@ -350,8 +349,7 @@ def nsf_locations(
   num_bijector_params = 3 * num_bins + 1
 
   def bijector_fn(params: Array):
-    return distrax.RationalQuadraticSpline(
-        params, range_min=spline_range[0], range_max=spline_range[1])
+    return distrax.RationalQuadraticSpline(params, range_min=0., range_max=1.)
 
   # Alternating binary mask.
   mask = jnp.arange(0, math.prod(event_shape)) % 2
@@ -380,8 +378,7 @@ def nsf_locations(
     mask = jnp.logical_not(mask)
 
   # Last layer: Map values to parameter domain
-  # all locations to the [0,1] square
-  flow_layers.append(distrax.Block(distrax.Sigmoid(), 1))
+
   # profiles x's go to [0,loc_x_max]
   # profiles y's go to [0,loc_y_max]
   if loc_x_range == (0., 1.):
@@ -411,8 +408,9 @@ def nsf_locations(
   #     distrax.Uniform(low=jnp.zeros(event_shape), high=jnp.ones(event_shape)),
   #     reinterpreted_batch_ndims=len(event_shape))
 
-  base_distribution = distrax.MultivariateNormalDiag(
-      loc=jnp.zeros(event_shape), scale_diag=jnp.ones(event_shape))
+  base_distribution = distrax.Independent(
+      distrax.Uniform(low=jnp.zeros(event_shape), high=jnp.ones(event_shape)),
+      reinterpreted_batch_ndims=1)
 
   return modularbayes.ConditionalTransformed(base_distribution, flow)
 
@@ -537,7 +535,6 @@ def meta_nsf_locations(
     hidden_sizes_conditioner: Sequence[int],
     hidden_sizes_conditioner_eta: Sequence[int],
     num_bins: int,
-    spline_range: Tuple[float],
     loc_x_range: Tuple[float],
     loc_y_range: Tuple[float],
     **_,
@@ -565,8 +562,7 @@ in the LALME model.
   num_bijector_params = 3 * num_bins + 1
 
   def bijector_fn(params: Array):
-    return distrax.RationalQuadraticSpline(
-        params, range_min=spline_range[0], range_max=spline_range[1])
+    return distrax.RationalQuadraticSpline(params, range_min=0., range_max=1.)
 
   # Alternating binary mask.
   mask = jnp.arange(0, math.prod(event_shape)) % 2
@@ -601,8 +597,7 @@ in the LALME model.
     mask = jnp.logical_not(mask)
 
   # Last layer: Map values to parameter domain
-  # all locations to the [0,1] square
-  flow_layers.append(distrax.Block(distrax.Sigmoid(), 1))
+
   # profiles x's go to [0,loc_x_max]
   # profiles y's go to [0,loc_y_max]
   if loc_x_range == (0., 1.):
@@ -628,8 +623,9 @@ in the LALME model.
   # Chain all layers together
   flow = modularbayes.ConditionalChain(flow_layers[::-1])
 
-  base_distribution = distrax.MultivariateNormalDiag(
-      loc=jnp.zeros(event_shape), scale_diag=jnp.ones(event_shape))
+  base_distribution = distrax.Independent(
+      distrax.Uniform(low=jnp.zeros(event_shape), high=jnp.ones(event_shape)),
+      reinterpreted_batch_ndims=1)
 
   return modularbayes.ConditionalTransformed(base_distribution, flow)
 
