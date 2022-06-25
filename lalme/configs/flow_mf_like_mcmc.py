@@ -71,19 +71,19 @@ def get_config():
   config.num_samples_gamma_profiles = 10
 
   # How often to evaluate the model.
-  config.eval_steps = int(config.training_steps / 10)
+  config.eval_steps = config.training_steps // 10
 
   config.num_samples_eval = 100
 
   config.include_random_anchor = True
 
   # How often to generate posterior plots.
-  config.log_img_steps = int(config.training_steps / 10)
+  config.log_img_steps = config.training_steps // 5
   config.show_basis_fields_during_training = False
   config.show_linguistic_fields_during_training = False
 
   # How often to save model checkpoints.
-  config.checkpoint_steps = int(config.training_steps / 2)
+  config.checkpoint_steps = config.training_steps // 2
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
 

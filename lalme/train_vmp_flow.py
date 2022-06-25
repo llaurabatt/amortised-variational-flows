@@ -892,48 +892,51 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   profile_is_anchor = jnp.arange(
       train_ds['num_profiles']) < train_ds['num_profiles_anchor']
 
-  update_states_jit = lambda state_list, batch, prng_key: update_states(
-      state_list=state_list,
-      batch=batch,
-      prng_key=prng_key,
-      optimizer=make_optimizer(**config.optim_kwargs),
-      loss_fn=loss,
-      loss_fn_kwargs={
-          'num_samples': config.num_samples_elbo,
-          'flow_name': config.flow_name,
-          'flow_kwargs': config.flow_kwargs,
-          'eta_sampling_a': config.eta_sampling_a,
-          'eta_sampling_b': config.eta_sampling_b,
-          'include_random_anchor': config.include_random_anchor,
-          'prior_hparams': config.prior_hparams,
-          'profile_is_anchor': profile_is_anchor,
-          'kernel_name': config.kernel_name,
-          'kernel_kwargs': config.kernel_kwargs,
-          'num_samples_gamma_profiles': config.num_samples_gamma_profiles,
-          'gp_jitter': config.gp_jitter,
-      },
-  )
-  # globals().update(loss_fn_kwargs)
-  update_states_jit = jax.jit(update_states_jit)
+  @jax.jit
+  def update_states_jit(state_list, batch, prng_key):
+    return update_states(
+        state_list=state_list,
+        batch=batch,
+        prng_key=prng_key,
+        optimizer=make_optimizer(**config.optim_kwargs),
+        loss_fn=loss,
+        loss_fn_kwargs={
+            'num_samples': config.num_samples_elbo,
+            'flow_name': config.flow_name,
+            'flow_kwargs': config.flow_kwargs,
+            'eta_sampling_a': config.eta_sampling_a,
+            'eta_sampling_b': config.eta_sampling_b,
+            'include_random_anchor': config.include_random_anchor,
+            'prior_hparams': config.prior_hparams,
+            'profile_is_anchor': profile_is_anchor,
+            'kernel_name': config.kernel_name,
+            'kernel_kwargs': config.kernel_kwargs,
+            'num_samples_gamma_profiles': config.num_samples_gamma_profiles,
+            'gp_jitter': config.gp_jitter,
+        },
+    )
 
-  elbo_validation_jit = lambda state_list, batch, prng_key: elbo_estimate_along_eta(
-      params_tuple=[state.params for state in state_list],
-      batch=batch,
-      prng_key=prng_key,
-      num_samples=config.num_samples_eval,
-      flow_name=config.flow_name,
-      flow_kwargs=config.flow_kwargs,
-      eta_sampling_a=1.0,
-      eta_sampling_b=1.0,
-      include_random_anchor=config.include_random_anchor,
-      prior_hparams=config.prior_hparams,
-      profile_is_anchor=profile_is_anchor,
-      kernel_name=config.kernel_name,
-      kernel_kwargs=config.kernel_kwargs,
-      num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-      gp_jitter=config.gp_jitter,
-  )
-  elbo_validation_jit = jax.jit(elbo_validation_jit)
+  # globals().update(loss_fn_kwargs)
+
+  @jax.jit
+  def elbo_validation_jit(state_list, batch, prng_key):
+    return elbo_estimate_along_eta(
+        params_tuple=[state.params for state in state_list],
+        batch=batch,
+        prng_key=prng_key,
+        num_samples=config.num_samples_eval,
+        flow_name=config.flow_name,
+        flow_kwargs=config.flow_kwargs,
+        eta_sampling_a=1.0,
+        eta_sampling_b=1.0,
+        include_random_anchor=config.include_random_anchor,
+        prior_hparams=config.prior_hparams,
+        profile_is_anchor=profile_is_anchor,
+        kernel_name=config.kernel_name,
+        kernel_kwargs=config.kernel_kwargs,
+        num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+        gp_jitter=config.gp_jitter,
+    )
 
   # error_locations_estimate_jit = lambda state_list, batch, prng_key: error_locations_estimate(
   #     params_tuple=[state.params for state in state_list],

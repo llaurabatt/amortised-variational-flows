@@ -14,7 +14,7 @@ def get_config():
 
   # Data specification
   config.num_profiles_anchor_keep = None
-  config.num_profiles_floating_keep = None
+  config.num_profiles_floating_keep = 20
   config.num_items_keep = None
   config.remove_empty_forms = True
 
