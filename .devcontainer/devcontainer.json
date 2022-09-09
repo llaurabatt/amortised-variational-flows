@@ -1,9 +1,9 @@
 // For format details, see https://aka.ms/vscode-remote/devcontainer.json or this file's README at:
 // https://github.com/microsoft/vscode-dev-containers/tree/v0.202.3/containers/python-3
 {
-  "name": "spatial_smi_cuda_devel",
+  "name": "jax_cuda",
   "build": {
-    "dockerfile": "../docker/spatial_smi_cuda.Dockerfile",
+    "dockerfile": "../docker/jax_cuda.Dockerfile",
     "context": ".."
   },
   // Run Container with all GPUs enabled
@@ -19,7 +19,7 @@
       "settings": {
         "terminal.integrated.profiles.linux": {
           "bash": {
-            "path": "/bin/bash"
+            "path": "/usr/bin/zsh"
           }
         },
         "python.defaultInterpreterPath": "/bin/python3",

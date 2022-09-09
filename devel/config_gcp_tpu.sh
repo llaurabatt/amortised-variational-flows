@@ -70,9 +70,7 @@ sudo apt-get -y autoremove
 sudo apt-get install -y tree
 
 # Install Python and virtual environment
-sudo apt-get install -y python3.8
-sudo apt-get install -y python3.8-venv
-ln -sf /usr/bin/python3.8 /usr/bin/python3
+sudo apt-get install -y python3-venv
 
 # Set-up git
 git config --global user.name "Chris Carmona"
@@ -96,4 +94,4 @@ pip install "jax[tpu]>=0.2.16" -f https://storage.googleapis.com/jax-releases/li
 mkdir -p smi/01_code
 cd smi/01_code
 git clone https://chriscarmona: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@github.com/chriscarmona/spatial-smi.git
-pip install -r ./spatial-smi/requirements.txt
+pip install -r ./spatial-smi/requirements/requirements.txt
