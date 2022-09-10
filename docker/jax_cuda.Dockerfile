@@ -1,6 +1,6 @@
 FROM nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04
 
-LABEL maintainer="carmona@stats.ox.ac.uk"
+LABEL maintainer="chrcarm@amazon.com"
 
 # Avoid warnings by switching to noninteractive
 ENV DEBIAN_FRONTEND=noninteractive
@@ -51,10 +51,5 @@ RUN pip install -U sagemaker-training
 
 # Install Jax with CUDA support
 RUN pip --no-cache-dir install -U "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-
-# Clone spatial-smi repo and install requirements
-RUN git clone https://chriscarmona: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@github.com/chriscarmona/spatial-smi.git ~/spatial-smi
-RUN pip install -r ~/spatial-smi/requirements/requirements.txt --ignore-installed PyYAML
-RUN pip install -r ~/spatial-smi/requirements/requirements-devel.txt --ignore-installed PyYAML
 
 CMD ["zsh"]

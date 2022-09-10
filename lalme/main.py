@@ -1,5 +1,7 @@
 """Main script for running the LALME model."""
 
+import warnings
+
 from absl import app
 from absl import flags
 from absl import logging
@@ -13,6 +15,9 @@ import tensorflow as tf
 import train_flow
 import train_vmp_flow
 import run_mcmc
+
+# TODO: Remove when Haiku stop producing "jax.tree_leaves is deprecated" warning
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 FLAGS = flags.FLAGS
 
@@ -29,7 +34,8 @@ def main(argv):
     raise app.UsageError('Too many command-line arguments.')
 
   # log to a file
-  logging.get_absl_handler().use_absl_log_file()
+  if FLAGS.log_dir:
+    logging.get_absl_handler().use_absl_log_file()
 
   # Hide any GPUs form TensorFlow. Otherwise TF might reserve memory and make
   # it unavailable to JAX.

@@ -37,4 +37,4 @@ pip install -U pip
 pip install -U wheel setuptools
 pip install -U "jax[cuda11_cudnn805]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 pip install -r ./spatial-smi/requirements/requirements.txt
-pip install -r ~/spatial-smi/requirements/requirements-sagemaker.txt
+pip install -r ~/spatial-smi/sagemaker/sagemaker.txt
