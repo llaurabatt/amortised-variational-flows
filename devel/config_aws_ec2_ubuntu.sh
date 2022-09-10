@@ -27,14 +27,17 @@ git config --global user.name "Chris Carmona"
 git config --global user.email carmona@stats.ox.ac.uk
 git config --global alias.hist "log --pretty=format:'%C(yellow)[%ad]%C(reset) %C(green)[%h]%C(reset) | %C(red)%s %C(bold red){{%an}}%C(reset) %C(blue)%d%C(reset)' --graph --date=short"
 
-# Clone ncad
-git clone https://chriscarmona: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@github.com/chriscarmona/spatial-smi.git ~/spatial-smi
-# Install ncad in a new virtual environment 
+# Create virtual environment 
 rm -rf ~/.virtualenvs/spatial-smi
 python3 -m venv ~/.virtualenvs/spatial-smi
 source ~/.virtualenvs/spatial-smi/bin/activate
 pip install -U pip
 pip install -U wheel setuptools
 pip install -U "jax[cuda11_cudnn805]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-pip install -r ./spatial-smi/requirements/requirements.txt
-pip install -r ~/spatial-smi/sagemaker/sagemaker.txt
+
+# Clone repo
+git clone https://chriscarmona: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@github.com/chriscarmona/spatial-smi.git ~/spatial-smi
+cd ~/spatial-smi
+pip install -r requirements.txt
+pip install -r devel/requirements.txt
+pip install -r sagemaker/requirements.txt

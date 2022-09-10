@@ -91,7 +91,7 @@ pip install "jax[tpu]>=0.2.16" -f https://storage.googleapis.com/jax-releases/li
 # code --install-extension GitHub.copilot
 
 # Clone and install spatial-smi requirements
-mkdir -p smi/01_code
-cd smi/01_code
-git clone https://chriscarmona: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@github.com/chriscarmona/spatial-smi.git
-pip install -r ./spatial-smi/requirements/requirements.txt
+git clone https://chriscarmona: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@github.com/chriscarmona/spatial-smi.git ~/spatial-smi
+cd ~/spatial-smi
+pip install -r requirements.txt
+pip install -r devel/requirements.txt

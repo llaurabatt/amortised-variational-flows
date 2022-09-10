@@ -133,5 +133,3 @@ dmypy.json
 
 # Visual Studio Code configuration files
 .vscode
-
-output/**

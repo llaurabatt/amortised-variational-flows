@@ -1,12 +1,10 @@
 """Main script for running the LALME model."""
-
+import os
 import warnings
 
 from absl import app
 from absl import flags
 from absl import logging
-
-from clu import platform
 
 import jax
 from ml_collections import config_flags
@@ -35,6 +33,8 @@ def main(argv):
 
   # log to a file
   if FLAGS.log_dir:
+    if not os.path.exists(FLAGS.log_dir):
+        os.makedirs(FLAGS.log_dir)
     logging.get_absl_handler().use_absl_log_file()
 
   # Hide any GPUs form TensorFlow. Otherwise TF might reserve memory and make
@@ -45,13 +45,6 @@ def main(argv):
   logging.info('JAX process: %d / %d', jax.process_index(), jax.process_count())
   logging.info('JAX local devices: %r', jax.local_devices())
   logging.info('JAX device count: %r', jax.device_count())
-
-  # Add a note so that we can tell which task is which JAX host.
-  # (Depending on the platform task 0 is not guaranteed to be host 0)
-  platform.work_unit().set_task_status(f'process_index: {jax.process_index()}, '
-                                       f'process_count: {jax.process_count()}')
-  platform.work_unit().create_artifact(platform.ArtifactType.DIRECTORY,
-                                       FLAGS.workdir, 'workdir')
 
   if FLAGS.config.method == 'flow':
     if FLAGS.config.iterate_smi_eta == ():

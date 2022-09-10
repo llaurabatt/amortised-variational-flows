@@ -17,6 +17,7 @@ from sagemaker.estimator import Framework
 from sagemaker.tensorflow.model import TensorFlowModel
 from sagemaker.vpc_utils import VPC_CONFIG_DEFAULT
 
+import tensorflow as tf
 
 class JaxEstimator(Framework):
 
@@ -26,11 +27,11 @@ class JaxEstimator(Framework):
       source_dir=None,
       hyperparameters=None,
       image_uri=None,
-      tf_version="2.9.1",
+      tf_version=tf.__version__,
       py_version="py3",
       **kwargs,
   ):
-    super(JaxEstimator, self).__init__(
+    super().__init__(
         entry_point=entry_point,
         source_dir=source_dir,
         hyperparameters=hyperparameters,
@@ -49,7 +50,11 @@ class JaxEstimator(Framework):
       dependencies=None,
       **kwargs,
   ):
-    """Creates ``TensorFlowModel`` object to be used for creating SageMaker model entities"""
+    """Creates ``TensorFlowModel`` object.
+    
+    To be used for creating SageMaker model entities.
+    """
+    
     kwargs["name"] = self._get_or_create_name(kwargs.get("name"))
 
     if "enable_network_isolation" not in kwargs:

@@ -28,8 +28,10 @@ def load_lalme(dataset_id: str = 'coarsen_8_items') -> Dict[str, Any]:
         data: Dictionary with the data used in the LALME model.
 
     Reference:
-        M. Benskin, M. Laing, V. Karaiskos and K. Williamson. An Electronic Version of A Linguistic
-        Atlas of Late Mediaeval English [http://www.lel.ed.ac.uk/ihd/elalme/elalme.html]
+        M. Benskin, M. Laing, V. Karaiskos and K. Williamson.
+        An Electronic Version of A Linguistic
+        Atlas of Late Mediaeval English
+        [http://www.lel.ed.ac.uk/ihd/elalme/elalme.html]
     """
 
   data = {}
@@ -88,7 +90,7 @@ def load_lalme(dataset_id: str = 'coarsen_8_items') -> Dict[str, Any]:
 
   # Get Y
   # data['y'] will be a list, with one element per item
-  # every element is a matrix, with rows equal to the number of forms in that item,
+  # every element is a matrix, with rows equal to the number of forms for it,
   # and columns equal to the number of profiles
   data['y'] = np.split(
       y_concat_df.to_numpy(), np.cumsum(data['num_forms_tuple'])[:-1], axis=0)

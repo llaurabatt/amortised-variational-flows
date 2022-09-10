@@ -6,8 +6,8 @@ import pathlib
 from absl import logging
 
 import numpy as np
+from matplotlib import pyplot as plt
 
-# from clu import metric_writers
 from flax.metrics import tensorboard
 
 import jax
@@ -18,18 +18,18 @@ import optax
 
 from tensorflow_probability.substrates import jax as tfp
 
-import data
 import flows
 import log_prob_fun
 import plot
+from train_flow import (load_data, make_optimizer, get_inducing_points,
+                        error_locations_estimate)
 
 from modularbayes._src.utils.training import TrainState
-from modularbayes import (flatten_dict, issymmetric, initial_state_ckpt,
-                          update_states, save_checkpoint)
-from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
-                                      IntLike, List, Optional, PRNGKey,
-                                      Sequence, SmiEta, SummaryWriter, Tuple,
-                                      Union)
+from modularbayes import (flatten_dict, initial_state_ckpt, update_states,
+                          save_checkpoint, plot_to_image, normalize_images)
+from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict, List,
+                                      Optional, PRNGKey, SmiEta, SummaryWriter,
+                                      Tuple)
 
 kernels = tfp.math.psd_kernels
 
@@ -39,112 +39,10 @@ jax.config.update('jax_default_matmul_precision', 'float32')
 np.set_printoptions(suppress=True, precision=4)
 
 
-def load_data(config: ConfigDict) -> Dict[str, Array]:
-  """Load LALME data."""
-
-  data_dict = data.load_lalme(dataset_id=config.dataset_id)
-
-  # Get locations bounds
-  # loc_bounds = jnp.array([[0., 1.], [0., 1.]])
-  loc_bounds = np.stack(
-      [data_dict['loc'].min(axis=0), data_dict['loc'].max(axis=0)],
-      axis=1).astype(np.float32)
-  # Shift x's and y's to start on zero
-  loc_bounds = loc_bounds - loc_bounds[:, [0]]
-  # scale to the unit square, preserving relative size of axis
-  loc_scale = 1 / loc_bounds.max()
-  loc_bounds = loc_bounds * loc_scale
-
-  # Process data
-  data_dict = data.process_lalme(
-      data_raw=data_dict,
-      num_profiles_anchor_keep=config.num_profiles_anchor_keep,
-      num_profiles_floating_keep=config.num_profiles_floating_keep,
-      num_items_keep=config.num_items_keep,
-      loc_bounds=loc_bounds,
-      remove_empty_forms=config.remove_empty_forms,
-  )
-
-  return data_dict
-
-
-def make_optimizer(
-    lr_schedule_name,
-    lr_schedule_kwargs,
-    grad_clip_value,
-) -> optax.GradientTransformation:
-  """Define optimizer to train the VHP map."""
-  schedule = getattr(optax, lr_schedule_name)(**lr_schedule_kwargs)
-
-  optimizer = optax.chain(*[
-      optax.clip_by_global_norm(max_norm=grad_clip_value),
-      optax.adabelief(learning_rate=schedule),
-  ])
-  return optimizer
-
-
-def get_inducing_points(
-    dataset: Batch,
-    inducing_grid_shape: Tuple[int, int],
-    kernel_name: str,
-    kernel_kwargs: Dict[str, Any],
-    gp_jitter: float,
-) -> Dict[str, Array]:
-  """Define grid of inducing point for GPs."""
-  dataset = dataset.copy()
-
-  num_inducing_points = math.prod(inducing_grid_shape)
-
-  # Inducing points are defined as a grid on the unit square
-  loc_inducing = jnp.meshgrid(
-      jnp.linspace(0, 1, inducing_grid_shape[0]),
-      jnp.linspace(0, 1, inducing_grid_shape[1]))
-  loc_inducing = jnp.stack(loc_inducing, axis=-1).reshape(-1, 2)
-  dataset['loc_inducing'] = loc_inducing
-  # Compute GP covariance between inducing values
-  dataset['cov_inducing'] = getattr(kernels,
-                                    kernel_name)(**kernel_kwargs).matrix(
-                                        x1=dataset['loc_inducing'],
-                                        x2=dataset['loc_inducing'],
-                                    )
-
-  # Add jitter
-  dataset['cov_inducing'] = dataset['cov_inducing'] + gp_jitter * jnp.eye(
-      num_inducing_points)
-  # Check that the covarince is symmetric
-  assert issymmetric(dataset['cov_inducing'])
-
-  # Cholesky factor of covariance
-  dataset['cov_inducing_chol'] = jnp.linalg.cholesky(dataset['cov_inducing'])
-
-  # Inverse of covariance of inducing values
-  # dataset['cov_inducing_inv'] = jnp.linalg.inv(dataset['cov_inducing'])
-  cov_inducing_chol_inv = jax.scipy.linalg.solve_triangular(
-      a=dataset['cov_inducing_chol'],
-      b=jnp.eye(num_inducing_points),
-      lower=True,
-  )
-  dataset['cov_inducing_inv'] = jnp.matmul(
-      cov_inducing_chol_inv.T, cov_inducing_chol_inv, precision='highest')
-
-  # Check that the inverse is symmetric
-  assert issymmetric(dataset['cov_inducing_inv'])
-  # Check that there are no NaNs
-  assert ~jnp.any(jnp.isnan(dataset['cov_inducing_inv']))
-  # Cross covariance between anchor and inducing values
-  dataset['cov_anchor_inducing'] = getattr(
-      kernels, kernel_name)(**kernel_kwargs).matrix(
-          x1=dataset['loc'][:dataset['num_profiles_anchor'], :],
-          x2=dataset['loc_inducing'],
-      )
-
-  return dataset
-
-
 def q_distr_global(
     flow_name: str,
     flow_kwargs: Dict[str, Any],
-    sample_shape: Union[IntLike, Sequence[IntLike]],
+    eta: Array,
 ) -> Dict[str, Any]:
   """Sample from the posterior of the LALME model.
 
@@ -177,10 +75,16 @@ def q_distr_global(
   ## Posterior for global parameters ##
   # Define normalizing flow
   q_distr = getattr(flows, flow_name + '_global_params')(**flow_kwargs)
+
+  num_samples = eta.shape[0]
+
   # Sample from flow
   (global_params_sample, global_params_log_prob,
    global_params_base_sample) = q_distr.sample_and_log_prob_with_base(
-       seed=hk.next_rng_key(), sample_shape=sample_shape)
+       seed=hk.next_rng_key(),
+       sample_shape=(num_samples,),
+       context=[eta, None],
+   )
 
   # Split flow into model parameters
   q_distr_out['posterior_sample'] = flows.split_flow_global_params(
@@ -202,6 +106,7 @@ def q_distr_loc_floating(
     flow_name: str,
     flow_kwargs: Dict[str, Any],
     global_params_base_sample: Array,
+    eta: Array,
     is_aux: bool,
 ) -> Dict[str, Any]:
   """Sample from the posterior of floating locations
@@ -236,17 +141,16 @@ def q_distr_loc_floating(
 
   ## Posterior for locations of floating profiles ##
   # Define normalizing flow
-  q_distr_locations = getattr(flows, flow_name + '_locations')(
+  q_distr = getattr(flows, flow_name + '_locations')(
       num_profiles=flow_kwargs['num_profiles_floating'], **flow_kwargs)
 
   # Sample from flow
   num_samples = global_params_base_sample.shape[0]
-  (locations_sample,
-   locations_log_prob) = q_distr_locations.sample_and_log_prob(
-       seed=hk.next_rng_key(),
-       sample_shape=(num_samples,),
-       context=global_params_base_sample,
-   )
+  (locations_sample, locations_log_prob) = q_distr.sample_and_log_prob(
+      seed=hk.next_rng_key(),
+      sample_shape=(num_samples,),
+      context=[eta, global_params_base_sample],
+  )
 
   # Split flow into model parameters
   # (and add to existing posterior_sample_dict)
@@ -270,6 +174,7 @@ def q_distr_loc_random_anchor(
     flow_name: str,
     flow_kwargs: Dict[str, Any],
     global_params_base_sample: Array,
+    eta: Array,
 ) -> Dict[str, Any]:
   """Sample from the posterior of floating locations
 
@@ -298,17 +203,16 @@ def q_distr_loc_random_anchor(
   ## Posterior for locations of anchor profiles treated as unkbowb locations##
 
   # Define normalizing flow
-  num_samples = global_params_base_sample.shape[0]
-
-  q_distr_locations = getattr(flows, flow_name + '_locations')(
+  q_distr = getattr(flows, flow_name + '_locations')(
       num_profiles=flow_kwargs['num_profiles_anchor'], **flow_kwargs)
+
   # Sample from flow
-  (locations_sample,
-   locations_log_prob) = q_distr_locations.sample_and_log_prob(
-       seed=hk.next_rng_key(),
-       sample_shape=(num_samples,),
-       context=global_params_base_sample,
-   )
+  num_samples = global_params_base_sample.shape[0]
+  (locations_sample, locations_log_prob) = q_distr.sample_and_log_prob(
+      seed=hk.next_rng_key(),
+      sample_shape=(num_samples,),
+      context=[eta, global_params_base_sample],
+  )
 
   # Split flow into model parameters
   # (and add to existing posterior_sample_dict)
@@ -331,14 +235,13 @@ def sample_all_flows(
     prng_key: PRNGKey,
     flow_name: str,
     flow_kwargs: Dict[str, Any],
-    sample_shape: Union[IntLike, Sequence[IntLike]],
+    smi_eta: SmiEta,
     include_random_anchor: bool,
     kernel_name: Optional[str],
     kernel_kwargs: Optional[Dict[str, Any]],
     num_samples_gamma_profiles: int = 0,
     gp_jitter: Optional[float] = None,
 ) -> Dict[str, Any]:
-  """Generate a sample from the entire flow posterior."""
 
   prng_seq = hk.PRNGSequence(prng_key)
 
@@ -348,7 +251,7 @@ def sample_all_flows(
       next(prng_seq),
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
-      sample_shape=sample_shape,
+      eta=smi_eta['profiles'],
   )
   # Floating profiles locations
   q_distr_out_loc_floating = hk.transform(q_distr_loc_floating).apply(
@@ -357,6 +260,7 @@ def sample_all_flows(
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
       global_params_base_sample=q_distr_out['global_params_base_sample'],
+      eta=smi_eta['profiles'],
       is_aux=False,
   )
   q_distr_out['posterior_sample'].update(
@@ -364,20 +268,20 @@ def sample_all_flows(
   q_distr_out['loc_floating_log_prob'] = q_distr_out_loc_floating[
       'loc_floating_log_prob']
 
-  if flow_kwargs.is_smi:
-    # Floating profiles locations
-    q_distr_out_loc_floating = hk.transform(q_distr_loc_floating).apply(
-        params_tuple[2],
-        next(prng_seq),
-        flow_name=flow_name,
-        flow_kwargs=flow_kwargs,
-        global_params_base_sample=q_distr_out['global_params_base_sample'],
-        is_aux=True,
-    )
-    q_distr_out['posterior_sample'].update(
-        q_distr_out_loc_floating['posterior_sample'])
-    q_distr_out['loc_floating_aux_log_prob'] = q_distr_out_loc_floating[
-        'loc_floating_aux_log_prob']
+  # Floating profiles locations
+  q_distr_out_loc_floating = hk.transform(q_distr_loc_floating).apply(
+      params_tuple[2],
+      next(prng_seq),
+      flow_name=flow_name,
+      flow_kwargs=flow_kwargs,
+      global_params_base_sample=q_distr_out['global_params_base_sample'],
+      eta=smi_eta['profiles'],
+      is_aux=True,
+  )
+  q_distr_out['posterior_sample'].update(
+      q_distr_out_loc_floating['posterior_sample'])
+  q_distr_out['loc_floating_aux_log_prob'] = q_distr_out_loc_floating[
+      'loc_floating_aux_log_prob']
 
   # Anchor profiles locations
   if include_random_anchor:
@@ -388,6 +292,7 @@ def sample_all_flows(
             flow_name=flow_name,
             flow_kwargs=flow_kwargs,
             global_params_base_sample=q_distr_out['global_params_base_sample'],
+            eta=smi_eta['profiles'],
         )
     q_distr_out['posterior_sample'].update(
         q_distr_out_loc_random_anchor['posterior_sample'])
@@ -406,7 +311,7 @@ def sample_all_flows(
         kernel_kwargs=kernel_kwargs,
         gp_jitter=gp_jitter,
         num_samples_gamma_profiles=num_samples_gamma_profiles,
-        is_smi=flow_kwargs.is_smi,
+        is_smi=True,
         include_random_anchor=include_random_anchor,
     )
     q_distr_out['posterior_sample'].update(gamma_sample_dict)
@@ -414,43 +319,60 @@ def sample_all_flows(
   return q_distr_out
 
 
-def elbo_estimate(
+def elbo_estimate_along_eta(
     params_tuple: Tuple[hk.Params],
     batch: Optional[Batch],
     prng_key: PRNGKey,
     num_samples: int,
     flow_name: str,
     flow_kwargs: Dict[str, Any],
-    smi_eta: Optional[SmiEta],
+    eta_sampling_a: float,
+    eta_sampling_b: float,
     include_random_anchor: bool,
+    profile_is_anchor: Array,
     prior_hparams: Dict[str, Any],
     kernel_name: Optional[str] = None,
     kernel_kwargs: Optional[Dict[str, Any]] = None,
     num_samples_gamma_profiles: int = 0,
     gp_jitter: Optional[float] = None,
 ) -> Dict[str, Array]:
-  """Estimate the ELBO.
-
-  Monte Carlo Estimate of the evidence lower-bound.
-  """
   # params_tuple = [state.params for state in state_list]
+
+  prng_seq = hk.PRNGSequence(prng_key)
+
+  # Sample eta values
+  etas_profiles_floating = jax.random.beta(
+      key=next(prng_seq),
+      a=eta_sampling_a,
+      b=eta_sampling_b,
+      shape=(num_samples,),
+  )
+
+  smi_eta_elbo = {
+      'profiles':
+          jax.vmap(lambda eta_profiles_floating: jnp.where(
+              profile_is_anchor,
+              1.,
+              eta_profiles_floating,
+          ))(etas_profiles_floating),
+      'items':
+          jnp.ones((num_samples, len(batch['num_forms_tuple']))),
+  }
 
   # Sample from flow
   q_distr_out = sample_all_flows(
       params_tuple=params_tuple,
       batch=batch,
-      prng_key=prng_key,
+      prng_key=next(prng_seq),
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
-      sample_shape=(num_samples,),
+      smi_eta=smi_eta_elbo,
       include_random_anchor=include_random_anchor,
       kernel_name=kernel_name,
       kernel_kwargs=kernel_kwargs,
       num_samples_gamma_profiles=num_samples_gamma_profiles,
       gp_jitter=gp_jitter,
   )
-
-  is_smi = False if smi_eta is None else True
 
   shared_params_names = [
       'gamma_inducing',
@@ -466,56 +388,53 @@ def elbo_estimate(
   ]
 
   # ELBO stage 1: Power posterior
-  if is_smi:
-    posterior_sample_dict_stg1 = {}
-    for key in shared_params_names:
-      posterior_sample_dict_stg1[key] = q_distr_out['posterior_sample'][key]
-    for key in refit_params_names:
-      posterior_sample_dict_stg1[key] = q_distr_out['posterior_sample'][key +
-                                                                        '_aux']
-    log_prob_joint_stg1 = log_prob_fun.log_prob_joint(
-        batch=batch,
-        posterior_sample_dict=posterior_sample_dict_stg1,
-        smi_eta=smi_eta,
-        random_anchor=False,
-        **prior_hparams,
-    )
-    log_q_stg1 = (
-        q_distr_out['global_params_log_prob'] +
-        q_distr_out['loc_floating_aux_log_prob'])
+  posterior_sample_dict_stg1 = {}
+  for key in shared_params_names:
+    posterior_sample_dict_stg1[key] = q_distr_out['posterior_sample'][key]
+  for key in refit_params_names:
+    posterior_sample_dict_stg1[key] = q_distr_out['posterior_sample'][key +
+                                                                      '_aux']
 
-    elbo_stg1 = log_prob_joint_stg1 - log_q_stg1
-  else:
-    elbo_stg1 = 0.
+  log_prob_joint_stg1 = jax.vmap(
+      lambda posterior_sample_i, smi_eta_i: log_prob_fun.log_prob_joint(
+          batch=batch,
+          posterior_sample_dict=posterior_sample_i,
+          smi_eta=smi_eta_i,
+          **prior_hparams,
+      ))(
+          jax.tree_map(lambda x: jnp.expand_dims(x, 1),
+                       posterior_sample_dict_stg1),
+          smi_eta_elbo,
+      )
+  log_q_stg1 = (
+      q_distr_out['global_params_log_prob'] +
+      q_distr_out['loc_floating_aux_log_prob'])
+
+  elbo_stg1 = log_prob_joint_stg1.reshape(-1) - log_q_stg1
 
   # ELBO stage 2: Refit locations floating profiles
   posterior_sample_dict_stg2 = {}
   for key in shared_params_names:
-    if is_smi:
-      posterior_sample_dict_stg2[key] = jax.lax.stop_gradient(
-          q_distr_out['posterior_sample'][key])
-    else:
-      posterior_sample_dict_stg2[key] = q_distr_out['posterior_sample'][key]
+    posterior_sample_dict_stg2[key] = jax.lax.stop_gradient(
+        q_distr_out['posterior_sample'][key])
   for key in refit_params_names:
     posterior_sample_dict_stg2[key] = q_distr_out['posterior_sample'][key]
 
-  log_prob_joint_stg2 = log_prob_fun.log_prob_joint(
-      batch=batch,
-      posterior_sample_dict=posterior_sample_dict_stg2,
-      smi_eta=None,
-      random_anchor=False,
-      **prior_hparams,
-  )
-  if is_smi:
-    log_q_stg2 = (
-        jax.lax.stop_gradient(q_distr_out['global_params_log_prob']) +
-        q_distr_out['loc_floating_log_prob'])
-  else:
-    log_q_stg2 = (
-        q_distr_out['global_params_log_prob'] +
-        q_distr_out['loc_floating_log_prob'])
+  log_prob_joint_stg2 = jax.vmap(
+      lambda posterior_sample_i: log_prob_fun.log_prob_joint(
+          batch=batch,
+          posterior_sample_dict=posterior_sample_i,
+          smi_eta=None,
+          **prior_hparams,
+      ))(
+          jax.tree_map(lambda x: jnp.expand_dims(x, 1),
+                       posterior_sample_dict_stg2))
 
-  elbo_stg2 = log_prob_joint_stg2 - log_q_stg2
+  log_q_stg2 = (
+      jax.lax.stop_gradient(q_distr_out['global_params_log_prob']) +
+      q_distr_out['loc_floating_log_prob'])
+
+  elbo_stg2 = log_prob_joint_stg2.reshape(-1) - log_q_stg2
 
   # For model evaluation,
   if include_random_anchor:
@@ -540,18 +459,22 @@ def elbo_estimate(
     for key in grad_params_names:
       posterior_sample_dict_stg3[key] = q_distr_out['posterior_sample'][key]
 
-    log_prob_joint_stg3 = log_prob_fun.log_prob_joint(
-        batch=batch,
-        posterior_sample_dict=posterior_sample_dict_stg3,
-        smi_eta=None,
-        random_anchor=True,
-        **prior_hparams,
-    )
+    log_prob_joint_stg3 = jax.vmap(
+        lambda posterior_sample_i: log_prob_fun.log_prob_joint(
+            batch=batch,
+            posterior_sample_dict=posterior_sample_i,
+            smi_eta=None,
+            random_anchor=True,
+            **prior_hparams,
+        ))(
+            jax.tree_map(lambda x: jnp.expand_dims(x, 1),
+                         posterior_sample_dict_stg3))
+
     log_q_stg3 = (
         jax.lax.stop_gradient(q_distr_out['global_params_log_prob']) +
         q_distr_out['loc_random_anchor_log_prob'])
 
-    elbo_stg3 = log_prob_joint_stg3 - log_q_stg3
+    elbo_stg3 = log_prob_joint_stg3.reshape(-1) - log_q_stg3
   else:
     elbo_stg3 = 0.
 
@@ -568,7 +491,8 @@ def loss(params_tuple: Tuple[hk.Params], *args, **kwargs) -> Array:
   """Define training loss function."""
 
   ### Compute ELBO ###
-  elbo_dict = elbo_estimate(params_tuple=params_tuple, *args, **kwargs)
+  elbo_dict = elbo_estimate_along_eta(
+      params_tuple=params_tuple, *args, **kwargs)
 
   # Our loss is the Negative ELBO
   loss_avg = -(
@@ -583,14 +507,16 @@ def log_images(
     batch: Batch,
     prng_key: PRNGKey,
     config: ConfigDict,
+    profile_is_anchor: Array,
     show_basis_fields: bool,
     show_linguistic_fields: bool,
     num_loc_random_anchor_plot: Optional[int],
     num_loc_floating_plot: Optional[int],
+    show_eval_metric: bool,
+    eta_grid_len: int,
     show_mixing_weights: bool,
     show_loc_given_y: bool,
     use_gamma_anchor: bool = False,
-    suffix: Optional[str] = None,
     summary_writer: Optional[SummaryWriter] = None,
     workdir_png: Optional[str] = None,
 ) -> None:
@@ -598,71 +524,145 @@ def log_images(
 
   prng_seq = hk.PRNGSequence(prng_key)
 
-  # Sample from variational posterior
-  # Sample from variational posteriors
-  q_distr_out = sample_all_flows(
-      params_tuple=[state.params for state in state_list],
-      batch=batch,
-      prng_key=next(prng_seq),
-      flow_name=config.flow_name,
-      flow_kwargs=config.flow_kwargs,
-      sample_shape=(config.num_samples_plot,),
-      include_random_anchor=config.include_random_anchor,
-      kernel_name=config.kernel_name,
-      kernel_kwargs=config.kernel_kwargs,
-      num_samples_gamma_profiles=(config.num_samples_gamma_profiles
-                                  if use_gamma_anchor else 0),
-      gp_jitter=config.gp_jitter,
-  )
+  eta_plot = jnp.array(config.eta_plot)
 
-  plot.posterior_samples(
-      posterior_sample_dict=q_distr_out['posterior_sample'],
-      batch=batch,
-      prng_key=next(prng_seq),
-      kernel_name=config.kernel_name,
-      kernel_kwargs=config.kernel_kwargs,
-      gp_jitter=config.gp_jitter,
-      step=state_list[0].step,
-      show_basis_fields=show_basis_fields,
-      show_linguistic_fields=show_linguistic_fields,
-      num_loc_random_anchor_plot=(num_loc_random_anchor_plot
-                                  if config.include_random_anchor else None),
-      num_loc_floating_plot=num_loc_floating_plot,
-      show_mixing_weights=show_mixing_weights,
-      show_loc_given_y=show_loc_given_y,
-      suffix=suffix,
-      summary_writer=summary_writer,
-      workdir_png=workdir_png,
-      use_gamma_anchor=use_gamma_anchor,
-  )
+  assert eta_plot.ndim == 2
 
+  # Plot posterior samples
+  key_flow = next(prng_seq)
+  for i, eta_i in enumerate(eta_plot):
 
-def error_locations_estimate(
-    posterior_sample_dict: Dict[str, Any],
-    batch: Optional[Batch],
-) -> Dict[str, Array]:
-  """Compute average distance error."""
+    eta_i_profiles_floating = jnp.broadcast_to(
+        eta_i, (config.num_samples_plot,) + eta_i.shape)
 
-  error_loc_out = {}
+    smi_eta_i_plot = {
+        'profiles':
+            jax.vmap(lambda eta_profiles_floating: jnp.where(
+                profile_is_anchor,
+                1.,
+                eta_profiles_floating,
+            ))(eta_i_profiles_floating),
+        'items':
+            jnp.ones((config.num_samples_plot, len(batch['num_forms_tuple']))),
+    }
 
-  # Anchor profiles
-  if 'loc_random_anchor' in posterior_sample_dict:
-    predictions = posterior_sample_dict['loc_random_anchor']
-    targets = jnp.broadcast_to(
-        batch['loc'][:batch['num_profiles_anchor'], :],
-        shape=posterior_sample_dict['loc_random_anchor'].shape)
-    distances = jnp.linalg.norm(predictions - targets, ord=2, axis=-1)
-    error_loc_out['distance_random_anchor'] = distances.mean()
+    q_distr_out = sample_all_flows(
+        params_tuple=[state.params for state in state_list],
+        batch=batch,
+        prng_key=key_flow,
+        flow_name=config.flow_name,
+        flow_kwargs=config.flow_kwargs,
+        smi_eta=smi_eta_i_plot,
+        include_random_anchor=config.include_random_anchor,
+        kernel_name=config.kernel_name,
+        kernel_kwargs=config.kernel_kwargs,
+        num_samples_gamma_profiles=(config.num_samples_gamma_profiles
+                                    if use_gamma_anchor else 0),
+        gp_jitter=config.gp_jitter,
+    )
 
-  # Floating profiles
-  predictions = posterior_sample_dict['loc_floating']
-  targets = jnp.broadcast_to(
-      batch['loc'][batch['num_profiles_anchor']:, :],
-      shape=posterior_sample_dict['loc_floating'].shape)
-  distances = jnp.linalg.norm(predictions - targets, ord=2, axis=-1)
-  error_loc_out['distance_floating'] = distances.mean()
+    plot.posterior_samples(
+        posterior_sample_dict=q_distr_out['posterior_sample'],
+        batch=batch,
+        prng_key=next(prng_seq),
+        kernel_name=config.kernel_name,
+        kernel_kwargs=config.kernel_kwargs,
+        gp_jitter=config.gp_jitter,
+        step=state_list[0].step,
+        show_basis_fields=show_basis_fields,
+        show_linguistic_fields=show_linguistic_fields,
+        num_loc_random_anchor_plot=(num_loc_random_anchor_plot
+                                    if config.include_random_anchor else None),
+        num_loc_floating_plot=num_loc_floating_plot,
+        show_mixing_weights=show_mixing_weights,
+        show_loc_given_y=show_loc_given_y,
+        suffix=f"eta_floating_{float(eta_plot[i, :]):.3f}",
+        summary_writer=summary_writer,
+        workdir_png=workdir_png,
+        use_gamma_anchor=use_gamma_anchor,
+    )
 
-  return error_loc_out
+  ### Evaluation metrics ###
+  if show_eval_metric:
+
+    eta_eval_grid = jnp.linspace(0, 1, eta_grid_len).reshape(-1, 1)
+
+    smi_eta_grid = {
+        'profiles':
+            jax.vmap(lambda eta_profiles_floating: jnp.where(
+                profile_is_anchor,
+                1.,
+                eta_profiles_floating,
+            ))(eta_eval_grid),
+        'items':
+            jnp.ones((eta_grid_len, len(batch['num_forms_tuple']))),
+    }
+
+    smi_eta_grid_expanded = jax.tree_map(
+        lambda x: jnp.repeat(
+            x[:, np.newaxis, ...], config.num_samples_eval, axis=1),
+        smi_eta_grid)
+
+    # Sample from flow
+    posterior_sample_eta_grid = jax.vmap(lambda smi_eta_i: sample_all_flows(
+        params_tuple=[state.params for state in state_list],
+        batch=batch,
+        prng_key=prng_key,
+        flow_name=config.flow_name,
+        flow_kwargs=config.flow_kwargs,
+        smi_eta=smi_eta_i,
+        include_random_anchor=config.include_random_anchor,
+        kernel_name=config.kernel_name,
+        kernel_kwargs=config.kernel_kwargs,
+        num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+        gp_jitter=config.gp_jitter,
+    ))(smi_eta_grid_expanded)['posterior_sample']
+
+    error_loc_dict = jax.vmap(
+        lambda posterior_sample_dict_i: error_locations_estimate(
+            posterior_sample_dict=posterior_sample_dict_i,
+            batch=batch,
+        ))(
+            posterior_sample_eta_grid)
+
+    images = []
+
+    plot_name = 'lalme_vmp_distance_floating'
+    fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+    # Plot distance_floating as a function of eta
+    axs.plot(eta_eval_grid, error_loc_dict['distance_floating'])
+    axs.set_xlabel('eta_floating')
+    axs.set_ylabel('Mean distance')
+    axs.set_title('Mean distance for floating profiles\n' +
+                  '(posterior vs. linguistic guess)')
+    fig.tight_layout()
+    if workdir_png:
+      fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    if summary_writer:
+      images.append(plot_to_image(fig))
+
+    if config.include_random_anchor:
+      plot_name = 'lalme_vmp_distance_random_anchor'
+      fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+      # Plot distance_floating as a function of eta
+      axs.plot(eta_eval_grid, error_loc_dict['distance_random_anchor'])
+      axs.set_xlabel('eta_floating')
+      axs.set_ylabel('Mean distance')
+      axs.set_title('Mean distance for anchor profiles\n' +
+                    '(posterior vs. real location)')
+      fig.tight_layout()
+      if workdir_png:
+        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      if summary_writer:
+        images.append(plot_to_image(fig))
+
+      if summary_writer:
+        plot_name = 'lalme_vmp_distance'
+        summary_writer.image(
+            tag=plot_name,
+            image=normalize_images(images),
+            step=state_list[0].step,
+        )
 
 
 def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
@@ -708,19 +708,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       gp_jitter=config.gp_jitter,
   )
 
-  smi_eta = dict(config.flow_kwargs.smi_eta)
-  is_smi = any(v is not None for v in smi_eta.values())
-  if is_smi:
-    if 'profiles_floating' in smi_eta:
-      smi_eta['profiles'] = jnp.where(
-          jnp.arange(train_ds['num_profiles']) <
-          train_ds['num_profiles_anchor'],
-          1.,
-          smi_eta['profiles_floating'],
-      )
-      del smi_eta['profiles_floating']
-    smi_eta['items'] = jnp.ones(len(train_ds['num_forms_tuple']))
-
   # These parameters affect the dimension of the flow
   # so they are also part of the flow parameters
   config.flow_kwargs.num_profiles_anchor = dataset['num_profiles_anchor']
@@ -728,7 +715,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   config.flow_kwargs.num_forms_tuple = dataset['num_forms_tuple']
   config.flow_kwargs.num_inducing_points = int(
       math.prod(config.flow_kwargs.inducing_grid_shape))
-  config.flow_kwargs.is_smi = is_smi
+  config.flow_kwargs.is_smi = True
+
   # Get locations bounds
   # These define the range of values produced by the posterior of locations
   loc_bounds = np.stack(
@@ -742,6 +730,13 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   #   -Global parameters
   #   -Posterior locations for floating profiles
   #   -Posterior locations for anchor profiles (treated as floating)
+
+  smi_eta_init = {
+      'profiles':
+          jnp.ones((config.num_samples_elbo, train_ds['num_profiles'])),
+      'items':
+          jnp.ones((config.num_samples_elbo, len(train_ds['num_forms_tuple']))),
+  }
 
   # Global parameters
   checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints')
@@ -757,7 +752,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           forward_fn_kwargs={
               'flow_name': config.flow_name,
               'flow_kwargs': config.flow_kwargs,
-              'sample_shape': (config.num_samples_elbo,),
+              'eta': smi_eta_init['profiles'],
           },
           prng_key=next(prng_seq),
           optimizer=make_optimizer(**config.optim_kwargs),
@@ -770,7 +765,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       next(prng_seq),
       flow_name=config.flow_name,
       flow_kwargs=config.flow_kwargs,
-      sample_shape=(config.num_samples_elbo,),
+      eta=smi_eta_init['profiles'],
   )['global_params_base_sample']
 
   state_list.append(
@@ -781,6 +776,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
               'flow_name': config.flow_name,
               'flow_kwargs': config.flow_kwargs,
               'global_params_base_sample': global_params_base_sample_init,
+              'eta': smi_eta_init['profiles'],
               'is_aux': False,
           },
           prng_key=next(prng_seq),
@@ -795,6 +791,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
               'flow_name': config.flow_name,
               'flow_kwargs': config.flow_kwargs,
               'global_params_base_sample': global_params_base_sample_init,
+              'eta': smi_eta_init['profiles'],
               'is_aux': True,
           },
           prng_key=next(prng_seq),
@@ -817,7 +814,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           prng_key,
           flow_name=config.flow_name,
           flow_kwargs=config.flow_kwargs,
-          sample_shape=(config.num_samples_elbo,),
+          eta=smi_eta_init['profiles'],
       ),
       columns=(
           "module",
@@ -839,6 +836,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           flow_name=config.flow_name,
           flow_kwargs=config.flow_kwargs,
           global_params_base_sample=global_params_base_sample_init,
+          eta=smi_eta_init['profiles'],
           is_aux=False,
       ),
       columns=(
@@ -862,6 +860,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                 'flow_name': config.flow_name,
                 'flow_kwargs': config.flow_kwargs,
                 'global_params_base_sample': global_params_base_sample_init,
+                'eta': smi_eta_init['profiles'],
             },
             prng_key=next(prng_seq),
             optimizer=make_optimizer(**config.optim_kwargs),
@@ -875,6 +874,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             flow_name=config.flow_name,
             flow_kwargs=config.flow_kwargs,
             global_params_base_sample=global_params_base_sample_init,
+            eta=smi_eta_init['profiles'],
         ),
         columns=(
             "module",
@@ -888,8 +888,11 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     for line in summary.split("\n"):
       logging.info(line)
 
+  profile_is_anchor = jnp.arange(
+      train_ds['num_profiles']) < train_ds['num_profiles_anchor']
+
   @jax.jit
-  def update_states_jit(state_list, batch, prng_key, smi_eta):
+  def update_states_jit(state_list, batch, prng_key):
     return update_states(
         state_list=state_list,
         batch=batch,
@@ -900,9 +903,11 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             'num_samples': config.num_samples_elbo,
             'flow_name': config.flow_name,
             'flow_kwargs': config.flow_kwargs,
-            'smi_eta': smi_eta,
+            'eta_sampling_a': config.eta_sampling_a,
+            'eta_sampling_b': config.eta_sampling_b,
             'include_random_anchor': config.include_random_anchor,
             'prior_hparams': config.prior_hparams,
+            'profile_is_anchor': profile_is_anchor,
             'kernel_name': config.kernel_name,
             'kernel_kwargs': config.kernel_kwargs,
             'num_samples_gamma_profiles': config.num_samples_gamma_profiles,
@@ -910,39 +915,43 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         },
     )
 
+  # globals().update(loss_fn_kwargs)
+
   @jax.jit
-  def elbo_validation_jit(state_list, batch, prng_key, smi_eta):
-    return elbo_estimate(
+  def elbo_validation_jit(state_list, batch, prng_key):
+    return elbo_estimate_along_eta(
         params_tuple=[state.params for state in state_list],
         batch=batch,
         prng_key=prng_key,
         num_samples=config.num_samples_eval,
         flow_name=config.flow_name,
         flow_kwargs=config.flow_kwargs,
-        smi_eta=smi_eta,
+        eta_sampling_a=1.0,
+        eta_sampling_b=1.0,
         include_random_anchor=config.include_random_anchor,
         prior_hparams=config.prior_hparams,
+        profile_is_anchor=profile_is_anchor,
         kernel_name=config.kernel_name,
         kernel_kwargs=config.kernel_kwargs,
         num_samples_gamma_profiles=config.num_samples_gamma_profiles,
         gp_jitter=config.gp_jitter,
     )
 
-  @jax.jit
-  def sample_eval_jit(state_list, batch, prng_key):
-    return sample_all_flows(
-        params_tuple=[state.params for state in state_list],
-        batch=batch,
-        prng_key=prng_key,
-        flow_name=config.flow_name,
-        flow_kwargs=config.flow_kwargs,
-        sample_shape=(config.num_samples_eval,),
-        include_random_anchor=config.include_random_anchor,
-        kernel_name=config.kernel_name,
-        kernel_kwargs=config.kernel_kwargs,
-        num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-        gp_jitter=config.gp_jitter,
-    )['posterior_sample']
+  # error_locations_estimate_jit = lambda state_list, batch, prng_key: error_locations_estimate(
+  #     params_tuple=[state.params for state in state_list],
+  #     batch=batch,
+  #     prng_key=prng_key,
+  #     num_samples=config.num_samples_eval,
+  #     flow_name=config.flow_name,
+  #     flow_kwargs=config.flow_kwargs,
+  #     include_random_anchor=config.include_random_anchor,
+  #     kernel_name=config.kernel_name,
+  #     kernel_kwargs=config.kernel_kwargs,
+  #     num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+  #     gp_jitter=config.gp_jitter,
+  # )
+  # # TODO: This doesn't work after jitting.
+  # # error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
 
   if state_list[0].step < config.training_steps:
     logging.info('Training variational posterior...')
@@ -950,6 +959,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     prng_seq = hk.PRNGSequence(config.seed)
 
   while state_list[0].step < config.training_steps:
+    # step = 0
 
     # Plots to monitor training
     if (state_list[0].step == 0) or (state_list[0].step % config.log_img_steps
@@ -960,14 +970,16 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           batch=train_ds,
           prng_key=next(prng_seq),
           config=config,
+          profile_is_anchor=profile_is_anchor,
           show_basis_fields=config.show_basis_fields_during_training,
           show_linguistic_fields=config.show_linguistic_fields_during_training,
           num_loc_random_anchor_plot=5,
           num_loc_floating_plot=5,
+          show_eval_metric=True,
+          eta_grid_len=10,
           show_mixing_weights=False,
           show_loc_given_y=False,
           use_gamma_anchor=False,
-          suffix=f"eta_floating_{float(smi_eta['profiles'][-1]):.3f}",
           summary_writer=summary_writer,
           workdir_png=workdir,
       )
@@ -985,7 +997,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         state_list=state_list,
         batch=train_ds,
         prng_key=next(prng_seq),
-        smi_eta=smi_eta,
     )
 
     summary_writer.scalar(
@@ -1008,7 +1019,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           state_list=state_list,
           batch=train_ds,
           prng_key=next(prng_seq),
-          smi_eta=smi_eta,
       )
       for k, v in elbo_dict_eval.items():
         summary_writer.scalar(
@@ -1017,24 +1027,18 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             step=state_list[0].step,
         )
 
-      # Estimate posterior distance to true locations
-      # Sample from flow
-      posterior_sample_eval = sample_eval_jit(
-          state_list=state_list,
-          batch=train_ds,
-          prng_key=next(prng_seq),
-      )
-
-      error_loc_dict = error_locations_estimate(
-          posterior_sample_dict=posterior_sample_eval,
-          batch=train_ds,
-      )
-      for k, v in error_loc_dict.items():
-        summary_writer.scalar(
-            tag=k,
-            value=float(v),
-            step=state_list[0].step,
-        )
+      # # Estimate posterior distance to true locations
+      # error_loc_dict = error_locations_estimate_jit(
+      #     state_list=state_list,
+      #     batch=train_ds,
+      #     prng_key=next(prng_seq),
+      # )
+      # for k, v in error_loc_dict.items():
+      #   summary_writer.scalar(
+      #       tag=k,
+      #       value=v.mean(),
+      #       step=state_list[0].step,
+      #   )
 
     if state_list[0].step % config.checkpoint_steps == 0:
       for state, state_name in zip(state_list, state_name_list):
@@ -1065,14 +1069,16 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       batch=train_ds,
       prng_key=next(prng_seq),
       config=config,
+      profile_is_anchor=profile_is_anchor,
       show_basis_fields=True,
       show_linguistic_fields=True,
       num_loc_random_anchor_plot=20,
       num_loc_floating_plot=20,
+      show_eval_metric=True,
+      eta_grid_len=10,
       show_mixing_weights=False,
       show_loc_given_y=False,
       use_gamma_anchor=False,
-      suffix=f"eta_floating_{float(smi_eta['profiles'][-1]):.3f}",
       summary_writer=summary_writer,
       workdir_png=workdir,
   )
@@ -1080,7 +1086,5 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
 # # For debugging
 # config = get_config()
-# config.flow_kwargs.smi_eta.update({'profiles_floating': 0.001,})
-# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/mf_mini/eta_floating_0.001'
-# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/nsf/eta_floating_0.001'
+# workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/nsf/vmp_flow'
 # train_and_evaluate(config, workdir)

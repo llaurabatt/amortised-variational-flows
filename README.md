@@ -32,7 +32,7 @@ git clone https://github.com/chriscarmona/spatial-smi.git
 ```
 4. Install dependencies
 ```bash
-pip install -U pip wheel
+cd spatial-smi
 pip install -r requirements.txt
 ```
 
@@ -59,21 +59,36 @@ If you find this work relevant for your scientific publication, we encourage you
 }
 ```
 
+## Train experiments using Sagemaker
+1. Install aditional dependencies locally
+```bash
+pip install -r sagemaker/requirements.txt
+```
+2. Build Docker image with CUDA support and upload it to AWS ECR
+```bash
+sh sagemaker/push_ecr_image.sh
+```
+4. Send Training Jobs using Sagemaker
+```bash
+python sagemaker/run_sm.py
+```
+### Hyper-Parameter Optimization (HPO) with Syne-tune and Sagemaker
+```bash
+pip install -r sagemaker/requirements.txt
+python sagemaker/run_hpo_sm.py
+```
+
 ### Creating a virtual environment
 
-For OSX or Linux, you can use `venv` (see the [venv documentation](https://docs.python.org/3/library/venv.html)).
+For MacOS or Linux, you can use `venv` (see the [venv documentation](https://docs.python.org/3/library/venv.html)).
 
 Create `spatial-smi` virtual environment
 ```bash
+rm -rf ~/.virtualenvs/spatial-smi
 python3 -m venv ~/.virtualenvs/spatial-smi
-```
-Activate the virtual environment
-```bash
 source ~/.virtualenvs/spatial-smi/bin/activate
-```
-Upgrade pip
-```bash
 pip install -U pip
+pip install -U setuptools wheel
 ```
 
 Feel free to modify the directory for the virtual environment by replacing `~/.virtualenvs/spatial-smi` with a path of your choice.
