@@ -19,18 +19,16 @@ RUN pip --no-cache-dir install -U pip
 # Install useful python modules
 RUN pip install -U wheel setuptools pylint==2.13.9 yapf
 
-# Install Jax with CUDA support
-RUN pip --no-cache-dir install -U "jax[cuda11_cudnn805]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-ENV LD_LIBRARY_PATH '${LD_LIBRARY_PATH}:/usr/local/cuda/lib64'
-ENV PATH "${PATH}:/usr/local/cuda/bin"
-
 # Sagemaker
 RUN pip install -U sagemaker-training
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Install modularbayes
-RUN pip install git+https://github.com/chriscarmona/modularbayes --ignore-installed PyYAML
+# Install Jax with CUDA support
+# RUN ln -s /usr/lib/cuda /usr/local/cuda-11.1
+ENV LD_LIBRARY_PATH "${LD_LIBRARY_PATH}:/usr/local/cuda/lib64"
+ENV PATH "${PATH}:/usr/local/cuda/bin"
+RUN pip --no-cache-dir install -U "jax[cuda11_cudnn805]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 # Add a non-root user
 # https://code.visualstudio.com/remote/advancedcontainers/add-nonroot-user

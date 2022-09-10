@@ -24,14 +24,15 @@ RUN ln -sf /usr/bin/pip3 /usr/bin/pip
 
 RUN pip --no-cache-dir install --upgrade pip setuptools_rust
 
-# Install ML Packages built with CUDA11 support
-RUN ln -s /usr/lib/cuda /usr/local/cuda-11.1
-RUN pip --no-cache-dir install -U "jax[cuda11_cudnn805]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-ENV LD_LIBRARY_PATH '${LD_LIBRARY_PATH}:/usr/local/cuda/lib64'
-ENV PATH "${PATH}:/usr/local/cuda/bin"
-
 RUN pip --no-cache-dir install sagemaker-training matplotlib
 
 # Setting some environment variables related to logging
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+
+# Install ML Packages built with CUDA11 support
+RUN ln -s /usr/lib/cuda /usr/local/cuda-11.1
+ENV LD_LIBRARY_PATH "${LD_LIBRARY_PATH}:/usr/local/cuda/lib64"
+ENV PATH "${PATH}:/usr/local/cuda/bin"
+RUN pip --no-cache-dir install -U "jax[cuda11_cudnn805]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+
