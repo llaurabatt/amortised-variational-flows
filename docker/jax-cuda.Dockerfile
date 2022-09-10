@@ -28,6 +28,8 @@ RUN pip install -U wheel setuptools pylint==2.13.9 yapf
 
 # Install Jax with CUDA support
 RUN pip --no-cache-dir install -U "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+ENV LD_LIBRARY_PATH '${LD_LIBRARY_PATH}:/usr/local/cuda/lib64'
+ENV PATH "${PATH}:/usr/local/cuda/bin"
 
 # For Sagemaker
 RUN pip install -U sagemaker-training
