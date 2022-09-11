@@ -1,6 +1,7 @@
 git+https://github.com/chriscarmona/modularbayes
-# git+https://github.com/awslabs/syne-tune.git
-# # syne-tune installed from git requires additional packages
-# s3fs
-# xgboost
-# autograd
+git+https://github.com/awslabs/syne-tune.git
+# syne-tune installed from git requires additional packages
+autograd
+botocore
+s3fs
+xgboost

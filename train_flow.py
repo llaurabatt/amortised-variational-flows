@@ -8,6 +8,7 @@ from absl import logging
 import numpy as np
 
 from flax.metrics import tensorboard
+import syne_tune
 
 import jax
 from jax import numpy as jnp
@@ -17,11 +18,6 @@ import optax
 
 from tensorflow_probability.substrates import jax as tfp
 
-import data
-import flows
-import log_prob_fun
-import plot
-
 from modularbayes._src.utils.training import TrainState
 from modularbayes import (flatten_dict, issymmetric, initial_state_ckpt,
                           update_states, save_checkpoint)
@@ -29,6 +25,11 @@ from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
                                       IntLike, List, Optional, PRNGKey,
                                       Sequence, SmiEta, SummaryWriter, Tuple,
                                       Union)
+
+import data
+import flows
+import log_prob_fun
+import plot
 
 kernels = tfp.math.psd_kernels
 
@@ -805,8 +806,12 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   if jax.process_index() == 0 and state_list[0].step < config.training_steps:
     summary_writer = tensorboard.SummaryWriter(workdir)
     summary_writer.hparams(flatten_dict(config))
+
+    # Syne-tune for HPO
+    synetune_report = syne_tune.Reporter()
   else:
     summary_writer = None
+    synetune_report = None
 
   # Print a useful summary of the execution of the flows.
   logging.info('FLOW GLOBAL PARAMETERS:')
@@ -1034,6 +1039,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             value=float(v),
             step=state_list[0].step,
         )
+        # Report the metric used by syne-tune
+        if k == 'distance_floating':
+          synetune_report(distance_floating=float(v))
 
     if state_list[0].step % config.checkpoint_steps == 0:
       for state, state_name in zip(state_list, state_name_list):
@@ -1080,6 +1088,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 # # For debugging
 # config = get_config()
 # config.flow_kwargs.smi_eta.update({'profiles_floating': 0.001,})
-# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/mf_mini/eta_floating_0.001'
-# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/nsf/eta_floating_0.001'
+# workdir = pathlib.Path.home() / 'spatial-smi-output/8_items/mf_mini/eta_floating_0.001'
+# workdir = pathlib.Path.home() / 'spatial-smi-output/8_items/nsf/eta_floating_0.001'
 # train_and_evaluate(config, workdir)
