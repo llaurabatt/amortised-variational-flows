@@ -25,9 +25,7 @@ config_flags.DEFINE_config_file(
     lock_config=False)
 
 
-def main(argv):
-  if len(argv) > 1:
-    raise app.UsageError('Too many command-line arguments.')
+def main(_):
 
   # log to a file
   if FLAGS.log_dir:
