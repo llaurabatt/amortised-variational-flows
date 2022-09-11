@@ -73,18 +73,18 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
         'config.eta_profiles_floating':
             config_space.uniform(0., 1.0),
         "config.kernel_kwargs.amplitude":
-            config_space.uniform(0., 1.0),
+            config_space.uniform(0.03, 1.0),
         "config.kernel_kwargs.length_scale":
-            config_space.uniform(0., 1.0),
+            config_space.uniform(0.03, 1.0),
         "config.optim_kwargs.lr_schedule_kwargs.peak_value":
             config_space.loguniform(1e-4, 1e-1),
         "config.optim_kwargs.lr_schedule_kwargs.decay_rate":
             config_space.uniform(0., 1.0),
     }
-  elif smi_method == 'vmp':
+  elif smi_method == 'vmp_flow':
     raise NotImplementedError('VMP not implemented yet.')
   else:
-    raise ValueError('smi_method must be either "flow" or "vmp".')
+    raise ValueError('smi_method must be either "flow" or "vmp_flow".')
 
   sm_estimator = JaxEstimator(
       image_uri=_get_ecr_image(container_name=container_name),

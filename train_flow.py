@@ -112,7 +112,8 @@ def get_inducing_points(
   dataset['cov_inducing'] = dataset['cov_inducing'] + gp_jitter * jnp.eye(
       num_inducing_points)
   # Check that the covarince is symmetric
-  assert issymmetric(dataset['cov_inducing'])
+  assert issymmetric(
+      dataset['cov_inducing']), 'Covariance Matrix is not symmetric'
 
   # Cholesky factor of covariance
   dataset['cov_inducing_chol'] = jnp.linalg.cholesky(dataset['cov_inducing'])
@@ -128,7 +129,8 @@ def get_inducing_points(
       cov_inducing_chol_inv.T, cov_inducing_chol_inv, precision='highest')
 
   # Check that the inverse is symmetric
-  assert issymmetric(dataset['cov_inducing_inv'])
+  assert issymmetric(
+      dataset['cov_inducing_inv']), 'Covariance Matrix is not symmetric'
   # Check that there are no NaNs
   assert ~jnp.any(jnp.isnan(dataset['cov_inducing_inv']))
   # Cross covariance between anchor and inducing values

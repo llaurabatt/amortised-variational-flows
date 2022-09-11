@@ -98,12 +98,12 @@ def get_config():
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
 
-  # Random seed
-  config.seed = 0
-
   # Use random location for anchor profiles for evaluation
   config.include_random_anchor = True
   # Metric for Hyperparameter Optimization
   config.synetune_metric = 'distance_random_anchor'
+
+  # Random seed
+  config.seed = 0
 
   return config

@@ -90,12 +90,12 @@ def get_config():
   # Number of profiles locations to plot
   config.num_profiles_plot = 20
 
-  # Random seed
-  config.seed = 0
-
   # Use random location for anchor profiles for evaluation
   config.include_random_anchor = True
   # Metric for Hyperparameter Optimization
   config.synetune_metric = 'distance_random_anchor'
+
+  # Random seed
+  config.seed = 0
 
   return config
