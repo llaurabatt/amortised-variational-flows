@@ -83,9 +83,6 @@ def get_config():
 
   config.num_samples_eval = 100
 
-  # Use random location for anchor profiles for evaluation
-  config.include_random_anchor = True
-
   # How often to generate posterior plots.
   config.log_img_steps = config.training_steps // 5
   config.show_basis_fields_during_training = False
@@ -104,5 +101,10 @@ def get_config():
 
   # Random seed
   config.seed = 0
+
+  # Use random location for anchor profiles for evaluation
+  config.include_random_anchor = True
+  # Metrics for Hyperparameter Optimization
+  config.synetune_metric = 'distance_random_anchor'
 
   return config

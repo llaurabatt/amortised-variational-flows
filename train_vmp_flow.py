@@ -962,27 +962,29 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     # step = 0
 
     # Plots to monitor training
-    if (state_list[0].step == 0) or (state_list[0].step % config.log_img_steps
-                                     == 0):
-      # print("Logging images...\n")
-      log_images(
-          state_list=state_list,
-          batch=train_ds,
-          prng_key=next(prng_seq),
-          config=config,
-          profile_is_anchor=profile_is_anchor,
-          show_basis_fields=config.show_basis_fields_during_training,
-          show_linguistic_fields=config.show_linguistic_fields_during_training,
-          num_loc_random_anchor_plot=5,
-          num_loc_floating_plot=5,
-          show_eval_metric=True,
-          eta_grid_len=10,
-          show_mixing_weights=False,
-          show_loc_given_y=False,
-          use_gamma_anchor=False,
-          summary_writer=summary_writer,
-          workdir_png=workdir,
-      )
+    if config.log_img_steps > 0:
+      if (state_list[0].step == 0) or (state_list[0].step % config.log_img_steps
+                                       == 0):
+        # print("Logging images...\n")
+        log_images(
+            state_list=state_list,
+            batch=train_ds,
+            prng_key=next(prng_seq),
+            config=config,
+            profile_is_anchor=profile_is_anchor,
+            show_basis_fields=config.show_basis_fields_during_training,
+            show_linguistic_fields=config
+            .show_linguistic_fields_during_training,
+            num_loc_random_anchor_plot=5,
+            num_loc_floating_plot=5,
+            show_eval_metric=True,
+            eta_grid_len=10,
+            show_mixing_weights=False,
+            show_loc_given_y=False,
+            use_gamma_anchor=False,
+            summary_writer=summary_writer,
+            workdir_png=workdir,
+        )
 
     # Log learning rate
     summary_writer.scalar(

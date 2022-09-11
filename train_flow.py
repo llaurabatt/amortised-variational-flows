@@ -957,25 +957,27 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   while state_list[0].step < config.training_steps:
 
     # Plots to monitor training
-    if (state_list[0].step == 0) or (state_list[0].step % config.log_img_steps
-                                     == 0):
-      # print("Logging images...\n")
-      log_images(
-          state_list=state_list,
-          batch=train_ds,
-          prng_key=next(prng_seq),
-          config=config,
-          show_basis_fields=config.show_basis_fields_during_training,
-          show_linguistic_fields=config.show_linguistic_fields_during_training,
-          num_loc_random_anchor_plot=5,
-          num_loc_floating_plot=5,
-          show_mixing_weights=False,
-          show_loc_given_y=False,
-          use_gamma_anchor=False,
-          suffix=f"eta_floating_{float(smi_eta['profiles'][-1]):.3f}",
-          summary_writer=summary_writer,
-          workdir_png=workdir,
-      )
+    if config.log_img_steps > 0:
+      if (state_list[0].step == 0) or (state_list[0].step % config.log_img_steps
+                                       == 0):
+        # print("Logging images...\n")
+        log_images(
+            state_list=state_list,
+            batch=train_ds,
+            prng_key=next(prng_seq),
+            config=config,
+            show_basis_fields=config.show_basis_fields_during_training,
+            show_linguistic_fields=config
+            .show_linguistic_fields_during_training,
+            num_loc_random_anchor_plot=5,
+            num_loc_floating_plot=5,
+            show_mixing_weights=False,
+            show_loc_given_y=False,
+            use_gamma_anchor=False,
+            suffix=f"eta_floating_{float(smi_eta['profiles'][-1]):.3f}",
+            summary_writer=summary_writer,
+            workdir_png=workdir,
+        )
 
     # Log learning rate
     summary_writer.scalar(
@@ -1041,8 +1043,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             step=state_list[0].step,
         )
         # Report the metric used by syne-tune
-        if k == 'distance_floating':
-          synetune_report(distance_floating=float(v))
+        if k == config.synetune_metric:
+          synetune_report(**{k: float(v)})
 
     if state_list[0].step % config.checkpoint_steps == 0:
       for state, state_name in zip(state_list, state_name_list):

@@ -52,8 +52,8 @@ def get_config():
 
   config.mcmc_step_size = 0.01
 
-  config.iterate_smi_eta = ()
-  config.smi_eta = {'items': None, 'profiles': None}
+  # SMI degree of influence of floating profiles
+  config.eta_profiles_floating = 1.0
 
   config.seed = 0
 
