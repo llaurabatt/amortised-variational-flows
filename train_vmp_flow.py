@@ -9,6 +9,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from flax.metrics import tensorboard
+import syne_tune
 
 import jax
 from jax import numpy as jnp
@@ -502,6 +503,56 @@ def loss(params_tuple: Tuple[hk.Params], *args, **kwargs) -> Array:
   return loss_avg
 
 
+def error_locations_vector_estimate(
+    state_list: List[TrainState],
+    batch: Optional[Batch],
+    prng_key: PRNGKey,
+    config: ConfigDict,
+    eta_eval_grid: Array,
+    profile_is_anchor: Array,
+) -> Dict[str, Array]:
+  """Compute average distance error."""
+
+  smi_eta_grid = {
+      'profiles':
+          jax.vmap(lambda eta_profiles_floating: jnp.where(
+              profile_is_anchor,
+              1.,
+              eta_profiles_floating,
+          ))(eta_eval_grid.reshape(-1, 1)),
+      'items':
+          jnp.ones((len(eta_eval_grid), len(batch['num_forms_tuple']))),
+  }
+
+  smi_eta_grid_expanded = jax.tree_map(
+      lambda x: jnp.repeat(
+          x[:, np.newaxis, ...], config.num_samples_eval, axis=1), smi_eta_grid)
+
+  # Sample from flow
+  posterior_sample_eta_grid = jax.vmap(lambda smi_eta_i: sample_all_flows(
+      params_tuple=[state.params for state in state_list],
+      batch=batch,
+      prng_key=prng_key,
+      flow_name=config.flow_name,
+      flow_kwargs=config.flow_kwargs,
+      smi_eta=smi_eta_i,
+      include_random_anchor=config.include_random_anchor,
+      kernel_name=config.kernel_name,
+      kernel_kwargs=config.kernel_kwargs,
+      num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+      gp_jitter=config.gp_jitter,
+  ))(smi_eta_grid_expanded)['posterior_sample']
+
+  error_loc_dict = jax.vmap(
+      lambda posterior_sample_dict_i: error_locations_estimate(
+          posterior_sample_dict=posterior_sample_dict_i,
+          batch=batch,
+      ))(
+          posterior_sample_eta_grid)
+
+  return error_loc_dict
+
+
 def log_images(
     state_list: List[TrainState],
     batch: Batch,
@@ -513,7 +564,7 @@ def log_images(
     num_loc_random_anchor_plot: Optional[int],
     num_loc_floating_plot: Optional[int],
     show_eval_metric: bool,
-    eta_grid_len: int,
+    eta_eval_grid: Array,
     show_mixing_weights: bool,
     show_loc_given_y: bool,
     use_gamma_anchor: bool = False,
@@ -585,46 +636,14 @@ def log_images(
   ### Evaluation metrics ###
   if show_eval_metric:
 
-    eta_eval_grid = jnp.linspace(0, 1, eta_grid_len).reshape(-1, 1)
-
-    smi_eta_grid = {
-        'profiles':
-            jax.vmap(lambda eta_profiles_floating: jnp.where(
-                profile_is_anchor,
-                1.,
-                eta_profiles_floating,
-            ))(eta_eval_grid),
-        'items':
-            jnp.ones((eta_grid_len, len(batch['num_forms_tuple']))),
-    }
-
-    smi_eta_grid_expanded = jax.tree_map(
-        lambda x: jnp.repeat(
-            x[:, np.newaxis, ...], config.num_samples_eval, axis=1),
-        smi_eta_grid)
-
-    # Sample from flow
-    posterior_sample_eta_grid = jax.vmap(lambda smi_eta_i: sample_all_flows(
-        params_tuple=[state.params for state in state_list],
+    error_loc_dict = error_locations_vector_estimate(
+        state_list=state_list,
         batch=batch,
-        prng_key=prng_key,
-        flow_name=config.flow_name,
-        flow_kwargs=config.flow_kwargs,
-        smi_eta=smi_eta_i,
-        include_random_anchor=config.include_random_anchor,
-        kernel_name=config.kernel_name,
-        kernel_kwargs=config.kernel_kwargs,
-        num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-        gp_jitter=config.gp_jitter,
-    ))(smi_eta_grid_expanded)['posterior_sample']
-
-    error_loc_dict = jax.vmap(
-        lambda posterior_sample_dict_i: error_locations_estimate(
-            posterior_sample_dict=posterior_sample_dict_i,
-            batch=batch,
-        ))(
-            posterior_sample_eta_grid)
-
+        prng_key=next(prng_seq),
+        config=config,
+        eta_eval_grid=eta_eval_grid,
+        profile_is_anchor=profile_is_anchor,
+    )
     images = []
 
     plot_name = 'lalme_vmp_distance_floating'
@@ -803,8 +822,12 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   if jax.process_index() == 0 and state_list[0].step < config.training_steps:
     summary_writer = tensorboard.SummaryWriter(workdir)
     summary_writer.hparams(flatten_dict(config))
+
+    # Syne-tune for HPO
+    synetune_report = syne_tune.Reporter()
   else:
     summary_writer = None
+    synetune_report = None
 
   # Print a useful summary of the execution of the flows.
   logging.info('FLOW GLOBAL PARAMETERS:')
@@ -978,7 +1001,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             num_loc_random_anchor_plot=5,
             num_loc_floating_plot=5,
             show_eval_metric=True,
-            eta_grid_len=10,
+            eta_eval_grid=jnp.linspace(0, 1, 10),
             show_mixing_weights=False,
             show_loc_given_y=False,
             use_gamma_anchor=False,
@@ -1029,18 +1052,41 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             step=state_list[0].step,
         )
 
-      # # Estimate posterior distance to true locations
-      # error_loc_dict = error_locations_estimate_jit(
-      #     state_list=state_list,
-      #     batch=train_ds,
-      #     prng_key=next(prng_seq),
-      # )
-      # for k, v in error_loc_dict.items():
-      #   summary_writer.scalar(
-      #       tag=k,
-      #       value=v.mean(),
-      #       step=state_list[0].step,
-      #   )
+      # Estimate posterior distance to true locations
+      eta_eval_grid_ = jnp.linspace(0, 1, 20)
+      error_loc_dict = error_locations_vector_estimate(
+          state_list=state_list,
+          batch=train_ds,
+          prng_key=next(prng_seq),
+          config=config,
+          eta_eval_grid=eta_eval_grid_,
+          profile_is_anchor=profile_is_anchor,
+      )
+      for k, v in error_loc_dict.items():
+        summary_writer.scalar(
+            tag=k + '_min',
+            value=jnp.min(v),
+            step=state_list[0].step,
+        )
+        summary_writer.scalar(
+            tag=k + '_min_eta',
+            value=eta_eval_grid_[jnp.argmin(v)],
+            step=state_list[0].step,
+        )
+        summary_writer.scalar(
+            tag=k + '_max',
+            value=jnp.max(v),
+            step=state_list[0].step,
+        )
+        summary_writer.scalar(
+            tag=k + '_max_eta',
+            value=eta_eval_grid_[jnp.argmax(v)],
+            step=state_list[0].step,
+        )
+        # Report the metric used by syne-tune
+        if k == config.synetune_metric:
+          synetune_report(**{k + '_min': float(jnp.min(v))})
+          # synetune_report(**{k + '_max': float(jnp.max(v))})
 
     if state_list[0].step % config.checkpoint_steps == 0:
       for state, state_name in zip(state_list, state_name_list):
@@ -1077,7 +1123,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       num_loc_random_anchor_plot=20,
       num_loc_floating_plot=20,
       show_eval_metric=True,
-      eta_grid_len=10,
+      eta_eval_grid=jnp.linspace(0, 1, 10),
       show_mixing_weights=False,
       show_loc_given_y=False,
       use_gamma_anchor=False,

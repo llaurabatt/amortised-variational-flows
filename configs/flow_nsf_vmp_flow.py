@@ -80,8 +80,6 @@ def get_config():
   config.eval_steps = config.training_steps // 10
   config.num_samples_eval = 100
 
-  config.include_random_anchor = True
-
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5
   config.show_basis_fields_during_training = False
@@ -105,6 +103,11 @@ def get_config():
   # Number of samples of eta for Meta-Posterior training
   config.eta_sampling_a = 0.5
   config.eta_sampling_b = 0.5
+
+  # Use random location for anchor profiles for evaluation
+  config.include_random_anchor = True
+  # Metric for Hyperparameter Optimization
+  config.synetune_metric = 'distance_random_anchor'
 
   # Random seed
   config.seed = 123
