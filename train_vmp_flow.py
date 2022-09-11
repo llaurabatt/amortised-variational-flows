@@ -1054,7 +1054,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
       # Estimate posterior distance to true locations
       eta_eval_grid_ = jnp.linspace(0, 1, 20)
-      error_loc_dict = error_locations_vector_estimate(
+      # Each element is a vector across eta
+      error_loc_all_eta_dict = error_locations_vector_estimate(
           state_list=state_list,
           batch=train_ds,
           prng_key=next(prng_seq),
@@ -1062,30 +1063,23 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           eta_eval_grid=eta_eval_grid_,
           profile_is_anchor=profile_is_anchor,
       )
+      # Summarize the distances
+      error_loc_dict = {}
+      for k, v in error_loc_all_eta_dict.items():
+        error_loc_dict[k + '_min'] = jnp.min(v)
+        error_loc_dict[k + '_min_eta'] = eta_eval_grid_[jnp.argmin(v)]
+        error_loc_dict[k + '_max'] = jnp.max(v)
+        error_loc_dict[k + '_max_eta'] = eta_eval_grid_[jnp.argmax(v)]
+
       for k, v in error_loc_dict.items():
         summary_writer.scalar(
-            tag=k + '_min',
-            value=jnp.min(v),
-            step=state_list[0].step,
-        )
-        summary_writer.scalar(
-            tag=k + '_min_eta',
-            value=eta_eval_grid_[jnp.argmin(v)],
-            step=state_list[0].step,
-        )
-        summary_writer.scalar(
-            tag=k + '_max',
-            value=jnp.max(v),
-            step=state_list[0].step,
-        )
-        summary_writer.scalar(
-            tag=k + '_max_eta',
-            value=eta_eval_grid_[jnp.argmax(v)],
+            tag=k,
+            value=float(v),
             step=state_list[0].step,
         )
         # Report the metric used by syne-tune
         if k == config.synetune_metric:
-          synetune_report(**{k + '_min': float(jnp.min(v))})
+          synetune_report(**{k: float(v)})
           # synetune_report(**{k + '_max': float(jnp.max(v))})
 
     if state_list[0].step % config.checkpoint_steps == 0:

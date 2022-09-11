@@ -52,8 +52,8 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
 
   mode = "min"
   searcher = 'bayesopt'
-  n_workers = 5
-  stop_criterion = StoppingCriterion(max_num_trials_started=30)
+  n_workers = 10
+  stop_criterion = StoppingCriterion(max_num_trials_started=50)
   container_name = "jax-tf:latest"
   instance_type = "ml.p3.2xlarge"
 
@@ -82,7 +82,29 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
             config_space.uniform(0., 1.0),
     }
   elif smi_method == 'vmp_flow':
-    raise NotImplementedError('VMP not implemented yet.')
+    metric = 'distance_random_anchor_min'
+    config_space_dict = {
+        'config':
+            config_fn,
+        'workdir':
+            '/opt/ml/model/',
+        'undefok':
+            'st_checkpoint_dir,st_instance_count,st_instance_type',
+        "config.log_img_steps":
+            -1,
+        "config.synetune_metric":
+            metric,
+        "config.kernel_kwargs.amplitude":
+            config_space.uniform(0.03, 1.0),
+        "config.kernel_kwargs.length_scale":
+            config_space.uniform(0.03, 1.0),
+        "config.optim_kwargs.lr_schedule_kwargs.peak_value":
+            config_space.loguniform(1e-4, 1e-1),
+        "config.optim_kwargs.lr_schedule_kwargs.decay_rate":
+            config_space.uniform(0., 1.0),
+        "config.training_steps":
+            30000,
+    }
   else:
     raise ValueError('smi_method must be either "flow" or "vmp_flow".')
 
