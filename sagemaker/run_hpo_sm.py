@@ -79,7 +79,15 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
         "config.optim_kwargs.lr_schedule_kwargs.peak_value":
             config_space.loguniform(1e-4, 1e-1),
         "config.optim_kwargs.lr_schedule_kwargs.decay_rate":
-            config_space.uniform(0., 1.0),
+            config_space.uniform(0.1, 1.0),
+        'config.optim_kwargs.lr_schedule_kwargs.transition_steps':
+            10000,
+        "config.training_steps":
+            30000,
+        "config.eval_steps":
+            5000,
+        "config.checkpoint_steps":
+            -1,
     }
   elif smi_method == 'vmp_flow':
     metric = 'distance_random_anchor_min'
@@ -99,11 +107,17 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
         "config.kernel_kwargs.length_scale":
             config_space.uniform(0.03, 1.0),
         "config.optim_kwargs.lr_schedule_kwargs.peak_value":
-            config_space.loguniform(1e-4, 1e-1),
+            config_space.loguniform(1e-5, 1e-2),
         "config.optim_kwargs.lr_schedule_kwargs.decay_rate":
-            config_space.uniform(0., 1.0),
+            config_space.uniform(0.1, 1.0),
+        'config.optim_kwargs.lr_schedule_kwargs.transition_steps':
+            10000,
         "config.training_steps":
             30000,
+        "config.eval_steps":
+            5000,
+        "config.checkpoint_steps":
+            -1,
     }
   else:
     raise ValueError('smi_method must be either "flow" or "vmp_flow".')

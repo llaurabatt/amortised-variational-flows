@@ -1048,13 +1048,14 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         if k == config.synetune_metric:
           synetune_report(**{k: float(v)})
 
-    if state_list[0].step % config.checkpoint_steps == 0:
-      for state, state_name in zip(state_list, state_name_list):
-        save_checkpoint(
-            state=state,
-            checkpoint_dir=f'{checkpoint_dir}/{state_name}',
-            keep=config.checkpoints_keep,
-        )
+    if config.checkpoint_steps > 0:
+      if state_list[0].step % config.checkpoint_steps == 0:
+        for state, state_name in zip(state_list, state_name_list):
+          save_checkpoint(
+              state=state,
+              checkpoint_dir=f'{checkpoint_dir}/{state_name}',
+              keep=config.checkpoints_keep,
+          )
 
     # Wait until computations are done before the next step
     # jax.random.normal(jax.random.PRNGKey(0), ()).block_until_ready()
