@@ -1,7 +1,9 @@
 #!/bin/bash
+set -e
+set -x
 
-IMG_NAME="jax-cuda"
-# IMG_NAME="jax-tf"
+# IMG_NAME="jax-cuda"
+IMG_NAME="jax-tf"
 # IMG_NAME="sagemaker-jax"
 
 account=$(aws sts get-caller-identity --query Account --output text)

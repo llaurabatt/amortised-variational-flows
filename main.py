@@ -14,9 +14,6 @@ import train_flow
 import train_vmp_flow
 import run_mcmc
 
-# TODO: Remove when Haiku stop producing "jax.tree_leaves is deprecated" warning
-warnings.simplefilter(action='ignore', category=FutureWarning)
-
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('workdir', None, 'Directory to store model data.')
@@ -70,6 +67,12 @@ def main(argv):
         run_mcmc.sample_and_evaluate(FLAGS.config,
                                      FLAGS.workdir + f"_{eta_floating:.3f}")
 
+# TODO: Remove when Haiku stop producing "jax.tree_leaves is deprecated" warning
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
+# On GPU this may be needed for jax to find the accelerator
+os.environ["PATH"] = '/usr/local/cuda/bin:' + os.environ["PATH"]
+os.environ["LD_LIBRARY_PATH"] = '/usr/local/cuda/lib64:' + os.environ["LD_LIBRARY_PATH"]
 
 if __name__ == '__main__':
   flags.mark_flags_as_required(['config', 'workdir'])

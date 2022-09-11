@@ -1,4 +1,6 @@
 #!/bin/bash
+set -e
+set -x
 
 # Assume we are located at main repo directory
 REPO_DIR=$PWD
