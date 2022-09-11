@@ -379,18 +379,20 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       gp_jitter=config.gp_jitter,
   )
 
-  smi_eta = dict(config.smi_eta)
-  is_smi = any(v is not None for v in smi_eta.values())
-  if is_smi:
-    if 'profiles_floating' in smi_eta:
-      smi_eta['profiles'] = jnp.where(
-          jnp.arange(train_ds['num_profiles']) <
-          train_ds['num_profiles_anchor'],
-          1.,
-          smi_eta['profiles_floating'],
-      )
-      del smi_eta['profiles_floating']
-    smi_eta['items'] = jnp.ones(len(train_ds['num_forms_tuple']))
+  # In general, it would be possible to modulate the influence given per
+  # individual profile and item.
+  # For now, we only tune the influence of the floating profiles
+  smi_eta = {
+      'profiles':
+          jnp.where(
+              jnp.arange(train_ds['num_profiles']) <
+              train_ds['num_profiles_anchor'],
+              1.,
+              config.eta_profiles_floating,
+          ),
+      'items':
+          jnp.ones(len(train_ds['num_forms_tuple']))
+  }
 
   if jax.process_index() == 0:
     summary_writer = tensorboard.SummaryWriter(workdir)

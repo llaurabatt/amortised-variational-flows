@@ -708,19 +708,20 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       gp_jitter=config.gp_jitter,
   )
 
-  smi_eta = dict(config.flow_kwargs.smi_eta)
-  is_smi = any(v is not None for v in smi_eta.values())
-  if is_smi:
-    if 'profiles_floating' in smi_eta:
-      smi_eta['profiles'] = jnp.where(
-          jnp.arange(train_ds['num_profiles']) <
-          train_ds['num_profiles_anchor'],
-          1.,
-          smi_eta['profiles_floating'],
-      )
-      del smi_eta['profiles_floating']
-    smi_eta['items'] = jnp.ones(len(train_ds['num_forms_tuple']))
-
+  # In general, it would be possible to modulate the influence given per
+  # individual profile and item.
+  # For now, we only tune the influence of the floating profiles
+  smi_eta = {
+      'profiles':
+          jnp.where(
+              jnp.arange(train_ds['num_profiles']) <
+              train_ds['num_profiles_anchor'],
+              1.,
+              config.eta_profiles_floating,
+          ),
+      'items':
+          jnp.ones(len(train_ds['num_forms_tuple']))
+  }
   # These parameters affect the dimension of the flow
   # so they are also part of the flow parameters
   config.flow_kwargs.num_profiles_anchor = dataset['num_profiles_anchor']
@@ -728,7 +729,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   config.flow_kwargs.num_forms_tuple = dataset['num_forms_tuple']
   config.flow_kwargs.num_inducing_points = int(
       math.prod(config.flow_kwargs.inducing_grid_shape))
-  config.flow_kwargs.is_smi = is_smi
+  config.flow_kwargs.is_smi = True
   # Get locations bounds
   # These define the range of values produced by the posterior of locations
   loc_bounds = np.stack(

@@ -25,8 +25,7 @@ def get_config():
   config.flow_kwargs.loc_y_range = (0., 0.8939394)
 
   # SMI degree of influence of floating profiles
-  config.iterate_smi_eta = ()
-  config.flow_kwargs.smi_eta = {'items': None, 'profiles': None}
+  config.eta_profiles_floating = 1.0
 
   # Define priors
   config.prior_hparams = ml_collections.ConfigDict()

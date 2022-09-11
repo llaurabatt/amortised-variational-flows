@@ -1,7 +1,11 @@
-from absl import app
-from absl import logging
+"""
+Run experiments on Sagemaker.
+"""
 
 import pathlib
+
+from absl import app
+from absl import logging
 
 import boto3
 
@@ -9,6 +13,7 @@ from sagemaker_jax import JaxEstimator
 
 
 def _get_ecr_image():
+  """Get the ECR container to use on training jobs."""
   client = boto3.client("sts")
   account = client.get_caller_identity()["Account"]
 
@@ -22,11 +27,16 @@ def _get_ecr_image():
 
   return ecr_image
 
+
 def _get_execution_role():
+  """Get the execution role for SageMaker."""
+
   client = boto3.client("sts")
   account = client.get_caller_identity()["Account"]
-  exec_role = f"arn:aws:iam::{account}:role/service-role/AmazonSageMaker-ExecutionRole-20220403T231924"
+  exec_role = (f"arn:aws:iam::{account}:role/service-role/" +
+               "AmazonSageMaker-ExecutionRole-20220403T231924")
   return exec_role
+
 
 def main(argv):
   if len(argv) > 1:
@@ -39,14 +49,14 @@ def main(argv):
   experiment_names = []
   experiment_names += ['flow_mf']
 
-  eta_values = [0.,1.]
+  eta_values = [1.]
 
   logging.info('Sending training jobs to Sagemaker...')
   for experiment_ in experiment_names:
     for eta_ in eta_values:
       training_job_name = 'spatial-smi-' + str(experiment_) + f"-eta{eta_:.3f}"
       training_job_name = training_job_name.replace('_', '-').replace('.', 'p')
-      logging.info('\t ' + training_job_name)
+      logging.info('\t %s', training_job_name)
 
       sm_estimator = JaxEstimator(
           image_uri=_get_ecr_image(),
@@ -59,12 +69,10 @@ def main(argv):
           hyperparameters={
               'config': f'configs/{experiment_}.py',
               'workdir': '/opt/ml/model/',
-              'config.iterate_smi_eta':f"({eta_:.3f},)",
+              'config.eta_profiles_floating': eta_,
           },
       )
-      sm_estimator.fit(
-          wait=False,
-      )
+      sm_estimator.fit(wait=False,)
   logging.info('All training jobs send succesfully!')
 
 

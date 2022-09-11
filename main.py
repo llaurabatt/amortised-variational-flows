@@ -1,4 +1,5 @@
 """Main script for running the LALME model."""
+
 import os
 import warnings
 
@@ -12,7 +13,7 @@ import tensorflow as tf
 
 import train_flow
 import train_vmp_flow
-import run_mcmc
+import sample_mcmc
 
 FLAGS = flags.FLAGS
 
@@ -31,7 +32,7 @@ def main(argv):
   # log to a file
   if FLAGS.log_dir:
     if not os.path.exists(FLAGS.log_dir):
-        os.makedirs(FLAGS.log_dir)
+      os.makedirs(FLAGS.log_dir)
     logging.get_absl_handler().use_absl_log_file()
 
   # Hide any GPUs form TensorFlow. Otherwise TF might reserve memory and make
@@ -44,35 +45,22 @@ def main(argv):
   logging.info('JAX device count: %r', jax.device_count())
 
   if FLAGS.config.method == 'flow':
-    if FLAGS.config.iterate_smi_eta == ():
-      train_flow.train_and_evaluate(FLAGS.config, FLAGS.workdir)
-    else:
-      for eta_floating in FLAGS.config.iterate_smi_eta:
-        FLAGS.config.flow_kwargs.smi_eta.update({
-            'profiles_floating': eta_floating,
-        })
-        train_flow.train_and_evaluate(FLAGS.config,
-                                      FLAGS.workdir + f"_{eta_floating:.3f}")
+    train_flow.train_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
   elif FLAGS.config.method == 'vmp_flow':
     train_vmp_flow.train_and_evaluate(FLAGS.config, FLAGS.workdir)
-
   elif FLAGS.config.method == 'mcmc':
-    if FLAGS.config.iterate_smi_eta == ():
-      run_mcmc.sample_and_evaluate(FLAGS.config, FLAGS.workdir)
-    else:
-      for eta_floating in FLAGS.config.iterate_smi_eta:
-        FLAGS.config.smi_eta.update({
-            'profiles_floating': eta_floating,
-        })
-        run_mcmc.sample_and_evaluate(FLAGS.config,
-                                     FLAGS.workdir + f"_{eta_floating:.3f}")
+    sample_mcmc.sample_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
+  else:
+    raise ValueError(f'Unknown method {FLAGS.config.method}')
+
 
 # TODO: Remove when Haiku stop producing "jax.tree_leaves is deprecated" warning
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # On GPU this may be needed for jax to find the accelerator
 os.environ["PATH"] = '/usr/local/cuda/bin:' + os.environ["PATH"]
-os.environ["LD_LIBRARY_PATH"] = '/usr/local/cuda/lib64:' + os.environ["LD_LIBRARY_PATH"]
+os.environ["LD_LIBRARY_PATH"] = '/usr/local/cuda/lib64:' + os.environ[
+    "LD_LIBRARY_PATH"]
 
 if __name__ == '__main__':
   flags.mark_flags_as_required(['config', 'workdir'])

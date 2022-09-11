@@ -53,8 +53,7 @@ def get_config():
   config.gp_jitter = 1e-3
 
   # SMI degree of influence of floating profiles
-  config.iterate_smi_eta = ()
-  config.flow_kwargs.smi_eta = {'items': None, 'profiles': None}
+  config.eta_profiles_floating = 1.0
 
   # Number of training steps to run.
   config.training_steps = 50_000
