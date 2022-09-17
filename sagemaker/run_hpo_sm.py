@@ -100,6 +100,8 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
             'st_checkpoint_dir,st_instance_count,st_instance_type',
         "config.log_img_steps":
             -1,
+        "config.log_img_at_end":
+            False,
         "config.synetune_metric":
             metric,
         "config.kernel_kwargs.amplitude":

@@ -78,7 +78,8 @@ def get_config():
 
   # How often to generate posterior plots.
   config.log_img_steps = config.training_steps // 5
-
+  config.log_img_at_end = True
+  
   # How often to save model checkpoints.
   config.checkpoint_steps = config.training_steps // 2
   # How many checkpoints to keep.

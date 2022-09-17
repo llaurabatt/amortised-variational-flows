@@ -1073,22 +1073,23 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   del state
 
   # Last plot of posteriors
-  log_images(
-      state_list=state_list,
-      batch=train_ds,
-      prng_key=next(prng_seq),
-      config=config,
-      show_basis_fields=True,
-      show_linguistic_fields=True,
-      num_loc_random_anchor_plot=20,
-      num_loc_floating_plot=20,
-      show_mixing_weights=False,
-      show_loc_given_y=False,
-      use_gamma_anchor=False,
-      suffix=f"eta_floating_{float(smi_eta['profiles'][-1]):.3f}",
-      summary_writer=summary_writer,
-      workdir_png=workdir,
-  )
+  if config.log_img_at_end:
+    log_images(
+        state_list=state_list,
+        batch=train_ds,
+        prng_key=next(prng_seq),
+        config=config,
+        show_basis_fields=True,
+        show_linguistic_fields=True,
+        num_loc_random_anchor_plot=20,
+        num_loc_floating_plot=20,
+        show_mixing_weights=False,
+        show_loc_given_y=False,
+        use_gamma_anchor=False,
+        suffix=f"eta_floating_{float(smi_eta['profiles'][-1]):.3f}",
+        summary_writer=summary_writer,
+        workdir_png=workdir,
+    )
 
 
 # # For debugging

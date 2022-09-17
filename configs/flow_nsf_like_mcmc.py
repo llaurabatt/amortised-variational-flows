@@ -84,6 +84,7 @@ def get_config():
 
   # How often to generate posterior plots.
   config.log_img_steps = config.training_steps // 5
+  config.log_img_at_end = True
   config.show_basis_fields_during_training = False
   config.show_linguistic_fields_during_training = False
 

@@ -1082,7 +1082,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           synetune_report(**{k: float(v)})
           # synetune_report(**{k + '_max': float(jnp.max(v))})
 
-    if config.checkpoint_steps>0:
+    if config.checkpoint_steps > 0:
       if state_list[0].step % config.checkpoint_steps == 0:
         for state, state_name in zip(state_list, state_name_list):
           save_checkpoint(
@@ -1107,24 +1107,25 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   del state
 
   # Last plot of posteriors
-  log_images(
-      state_list=state_list,
-      batch=train_ds,
-      prng_key=next(prng_seq),
-      config=config,
-      profile_is_anchor=profile_is_anchor,
-      show_basis_fields=True,
-      show_linguistic_fields=True,
-      num_loc_random_anchor_plot=20,
-      num_loc_floating_plot=20,
-      show_eval_metric=True,
-      eta_eval_grid=jnp.linspace(0, 1, 10),
-      show_mixing_weights=False,
-      show_loc_given_y=False,
-      use_gamma_anchor=False,
-      summary_writer=summary_writer,
-      workdir_png=workdir,
-  )
+  if config.log_img_at_end:
+    log_images(
+        state_list=state_list,
+        batch=train_ds,
+        prng_key=next(prng_seq),
+        config=config,
+        profile_is_anchor=profile_is_anchor,
+        show_basis_fields=True,
+        show_linguistic_fields=True,
+        num_loc_random_anchor_plot=20,
+        num_loc_floating_plot=20,
+        show_eval_metric=True,
+        eta_eval_grid=jnp.linspace(0, 1, 10),
+        show_mixing_weights=False,
+        show_loc_given_y=False,
+        use_gamma_anchor=False,
+        summary_writer=summary_writer,
+        workdir_png=workdir,
+    )
 
 
 # # For debugging
