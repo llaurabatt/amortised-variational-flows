@@ -44,8 +44,8 @@ def get_config():
   config.prior_hparams.a_prior_scale = 1.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
-  config.kernel_kwargs.amplitude = 0.7
-  config.kernel_kwargs.length_scale = 0.5
+  config.kernel_kwargs.amplitude = 0.65
+  config.kernel_kwargs.length_scale = 0.2
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
@@ -60,7 +60,7 @@ def get_config():
       'init_value': 0.,
       'peak_value': 3e-4,
       'warmup_steps': 3_000,
-      'transition_steps': config.training_steps // 3,
+      'transition_steps': 10_000,
       'decay_rate': 0.5,
       'transition_begin': 0,
       'staircase': False,

@@ -48,8 +48,8 @@ def get_config():
   config.prior_hparams.a_prior_scale = 10.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
-  config.kernel_kwargs.amplitude = 0.1
-  config.kernel_kwargs.length_scale = 0.1
+  config.kernel_kwargs.amplitude = 0.65
+  config.kernel_kwargs.length_scale = 0.2
   config.gp_jitter = 1e-3
 
   # SMI degree of influence of floating profiles
