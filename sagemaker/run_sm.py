@@ -50,19 +50,19 @@ def send_experiment_to_sm(
 
   logging.info('Sending training jobs to Sagemaker...')
   for experiment_ in experiment_names:
-    for eta_ in eta_values:
-      training_job_name = 'spatial-smi-' + str(experiment_)
-
-      training_job_name = training_job_name.replace('_', '-').replace('.', 'p')
-
+    for eta_ in eta_values or [None]:
       hyperparameters = {
           'config': f'configs/{experiment_}.py',
           'workdir': '/opt/ml/model/',
       }
+      training_job_name = 'spatial-smi-' + str(experiment_)
 
       if eta_values is not None:
         training_job_name += f"-eta{eta_:.3f}"
         hyperparameters['config.eta_profiles_floating'] = eta_
+
+      training_job_name = training_job_name.replace('_', '-').replace('.', 'p')
+      logging.info('\t %s', training_job_name)
 
       sm_estimator = JaxEstimator(
           image_uri=_get_ecr_image(),
@@ -71,10 +71,9 @@ def send_experiment_to_sm(
           base_job_name=training_job_name,
           source_dir=str(pathlib.Path(__file__).parent.parent),
           entry_point='main.py',
-          instance_type="ml.p2.xlarge",
+          instance_type="ml.p3.2xlarge",
           hyperparameters=hyperparameters,
       )
-      logging.info('\t %s', training_job_name)
       sm_estimator.fit(wait=False,)
   logging.info('All training jobs send succesfully!')
 
@@ -101,8 +100,8 @@ def main(argv):
       eta_values=eta_values)
   # Variational SMI across multiple etas via Meta-posterior
   send_experiment_to_sm(experiment_names=[
-      'flow_nsf_vmp_flow',
       'flow_nsf_vmp_flow_like_mcmc',
+      'flow_nsf_vmp_flow',
   ])
 
 
