@@ -4,6 +4,7 @@ Run experiments on Sagemaker.
 
 import pathlib
 
+from typing import Optional, List
 from absl import app
 from absl import logging
 
@@ -38,25 +39,30 @@ def _get_execution_role():
   return exec_role
 
 
-def main(argv):
-  if len(argv) > 1:
-    raise app.UsageError("Too many command-line arguments.")
+def send_experiment_to_sm(
+    experiment_names: List[str],
+    eta_values: Optional[List[float]] = None,
+):
+  """Send a list of experiments to be executed in AWS Sagemaker."""
 
   # exec_role = sagemaker.get_execution_role()
   exec_role = _get_execution_role()
 
-  ### SMI with single eta fit separately ###
-  experiment_names = []
-  experiment_names += ['flow_mf']
-
-  eta_values = [1.]
-
   logging.info('Sending training jobs to Sagemaker...')
   for experiment_ in experiment_names:
     for eta_ in eta_values:
-      training_job_name = 'spatial-smi-' + str(experiment_) + f"-eta{eta_:.3f}"
+      training_job_name = 'spatial-smi-' + str(experiment_)
+
       training_job_name = training_job_name.replace('_', '-').replace('.', 'p')
-      logging.info('\t %s', training_job_name)
+
+      hyperparameters = {
+          'config': f'configs/{experiment_}.py',
+          'workdir': '/opt/ml/model/',
+      }
+
+      if eta_values is not None:
+        training_job_name += f"-eta{eta_:.3f}"
+        hyperparameters['config.eta_profiles_floating'] = eta_
 
       sm_estimator = JaxEstimator(
           image_uri=_get_ecr_image(),
@@ -65,15 +71,39 @@ def main(argv):
           base_job_name=training_job_name,
           source_dir=str(pathlib.Path(__file__).parent.parent),
           entry_point='main.py',
-          instance_type="ml.p3.2xlarge",
-          hyperparameters={
-              'config': f'configs/{experiment_}.py',
-              'workdir': '/opt/ml/model/',
-              'config.eta_profiles_floating': eta_,
-          },
+          instance_type="ml.p2.xlarge",
+          hyperparameters=hyperparameters,
       )
+      logging.info('\t %s', training_job_name)
       sm_estimator.fit(wait=False,)
   logging.info('All training jobs send succesfully!')
+
+
+def main(argv):
+  if len(argv) > 1:
+    raise app.UsageError("Too many command-line arguments.")
+
+  eta_values = [0.0, 0.2, 0.5, 0.8, 1.]
+
+  # SMI via MCMC
+  send_experiment_to_sm(
+      experiment_names=[
+          'mcmc',
+      ], eta_values=eta_values)
+  # Variational SMI with single eta
+  send_experiment_to_sm(
+      experiment_names=[
+          'flow_mf_like_mcmc',
+          'flow_nsf_like_mcmc',
+          'flow_mf',
+          'flow_nsf',
+      ],
+      eta_values=eta_values)
+  # Variational SMI across multiple etas via Meta-posterior
+  send_experiment_to_sm(experiment_names=[
+      'flow_nsf_vmp_flow',
+      'flow_nsf_vmp_flow_like_mcmc',
+  ])
 
 
 if __name__ == "__main__":

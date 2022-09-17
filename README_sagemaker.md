@@ -1,15 +1,18 @@
 ## Reproduce experiments using Sagemaker
 
-### Run single experiments
-1. Install aditional dependencies locally
+### Before sending jobs...
+Install required modules
 ```bash
+pip install -r requirements.txt
 pip install -r sagemaker/requirements.txt
 ```
-2. Build Docker image with CUDA support and upload it to AWS ECR
+Build Docker image with CUDA support and upload it to AWS ECR
 ```bash
 sh sagemaker/push_ecr_image.sh
 ```
-4. Send Training Jobs using Sagemaker
+
+### Run single experiments
+Send Training Jobs using Sagemaker
 ```bash
 python sagemaker/run_sm.py
 ```
