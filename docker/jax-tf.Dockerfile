@@ -24,8 +24,11 @@ RUN pip install -U sagemaker-training
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Install modularbayes
+# Install Requirements
 RUN pip install git+https://github.com/chriscarmona/modularbayes.git --ignore-installed PyYAML
+RUN pip install git+https://github.com/awslabs/syne-tune.git
+# syne-tune installed from git requires additional packages
+RUN pip install -U autograd botocore s3fs xgboost
 
 # Install Jax with CUDA support
 RUN ln -s /usr/lib/cuda /usr/local/cuda-11.2

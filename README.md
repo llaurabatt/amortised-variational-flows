@@ -9,7 +9,7 @@ This repo contain the implementation of variational methods described in the art
 
 ## Examples
 
-We include code to replicate all the examples from our article. By executing the `run.sh` bash script one can train all variational posteriors and produce visualizations and summaries (follow [*Installation instructions*](#create-a-virtual-environment) before running the script).
+We include code to replicate all the examples from our article. By executing the `run.sh` bash script one can train all variational posteriors and produce visualizations and summaries (follow [*Installation instructions*](#installation-instructions) before running the script).
 
 ```bash
 ./run.sh
@@ -24,7 +24,7 @@ tensorboard --logdir=$WORK_DIR
 
 ## Installation instructions
 
-1. \[Optional] Create a new virtual environment for this project (see [*Create a virtual environment*](#create-a-virtual-environment) below).
+1. \[Optional] Create a new virtual environment for this project (see [*Create a virtual environment*](#creating-a-virtual-environment) below).
 2. Install JAX. This may vary according to your CUDA version (See [JAX installation](https://github.com/google/jax#installation)).
 3. Clone this repository locally
 ```bash
@@ -57,34 +57,6 @@ If you find this work relevant for your scientific publication, we encourage you
     arxivId = {2204.00296},
     keywords = {Cut models, Generalized Bayes, Model misspecification, Scalable inference, Variational Bayes}
 }
-```
-
-## Reproduce experiments using Sagemaker
-
-### Run single experiments
-1. Install aditional dependencies locally
-```bash
-pip install -r sagemaker/requirements.txt
-```
-2. Build Docker image with CUDA support and upload it to AWS ECR
-```bash
-sh sagemaker/push_ecr_image.sh
-```
-4. Send Training Jobs using Sagemaker
-```bash
-python sagemaker/run_sm.py
-```
-### Hyper-Parameter Optimization (HPO) with Syne-tune and Sagemaker
-
-Single eta optimization
-```bash
-pip install -r sagemaker/requirements.txt
-python sagemaker/run_hpo_sm.py --config_fn='configs/flow_mf_like_mcmc.py' --smi_method='flow'
-python sagemaker/run_hpo_sm.py --config_fn='configs/flow_nsf_like_mcmc.py' --smi_method='flow'
-python sagemaker/run_hpo_sm.py --config_fn='configs/flow_mf.py' --smi_method='flow'
-python sagemaker/run_hpo_sm.py --config_fn='configs/flow_nsf.py' --smi_method='flow'
-python sagemaker/run_hpo_sm.py --config_fn='configs/flow_nsf_vmp_flow_like_mcmc.py' --smi_method='vmp_flow'
-python sagemaker/run_hpo_sm.py --config_fn='configs/flow_nsf_vmp_flow.py' --smi_method='vmp_flow'
 ```
 
 ### Creating a virtual environment
