@@ -50,6 +50,10 @@ def load_lalme(dataset_id: str = 'coarsen_8_items') -> Dict[str, Any]:
   forms_all = np.genfromtxt(stream[3], dtype='S', delimiter=',')
   floating_id = np.genfromtxt(stream[4], dtype=int, delimiter=',')
 
+  # Transform bytes into strings
+  items_all = items_all.astype(str)
+  forms_all = [x.astype(str) for x in forms_all]
+
   # Identify anchor/floating profiles
   loc_df['floating'] = loc_df['LP'].isin(floating_id)
 
@@ -70,6 +74,7 @@ def load_lalme(dataset_id: str = 'coarsen_8_items') -> Dict[str, Any]:
       'num_profiles_floating']
 
   ### Profile locations ###
+  data['LP'] = loc_df['LP'].values
   data['loc'] = loc_df[['Easting', 'Northing']].to_numpy()
 
   # Get unique items from data (avoid sorting alphabetically)
@@ -85,7 +90,7 @@ def load_lalme(dataset_id: str = 'coarsen_8_items') -> Dict[str, Any]:
         items_all == item),)
   forms = np.split(forms_all, np.cumsum(data['num_forms_tuple'])[:-1])
   data['forms'] = forms
-  assert all(forms[i].shape[0] == data['num_forms_tuple'][i]
+  assert all(data['forms'][i].shape[0] == data['num_forms_tuple'][i]
              for i in range(data['num_items']))
 
   # Get Y
@@ -167,6 +172,7 @@ def process_lalme(
         [index_profiles_anchor_keep, index_profiles_floating_keep])
 
     # Subset elements in data dictionary
+    data['LP'] = data['LP'][index_profiles_keep]
     data['loc'] = data['loc'][index_profiles_keep, :]
     data['y'] = [y_item[:, index_profiles_keep] for y_item in data['y']]
     data['num_profiles'] = num_profiles_anchor_keep + num_profiles_floating_keep
@@ -175,6 +181,7 @@ def process_lalme(
 
     assert all(
         [y_item.shape[1] == data['num_profiles'] for y_item in data['y']])
+    assert data['LP'].shape[0] == data['num_profiles']
     assert data['loc'].shape[0] == data['num_profiles']
 
   # Items subsetting

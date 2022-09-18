@@ -106,12 +106,9 @@ def log_prob_y_integrated_over_gamma_profiles(
   log_prob_y_item_profile_ = []
   for y_i, log_prob_y_eq_1_i in zip(batch['y'],
                                     log_prob_y_equal_1_pointwise_list):
-    try:
-      log_prob_y_item_profile_.append(
-          jnp.where(y_i, log_prob_y_eq_1_i,
-                    log1mexpm(-log_prob_y_eq_1_i)).mean(axis=0).sum(axis=1))
-    except:
-      breakpoint()
+    log_prob_y_item_profile_.append(
+        jnp.where(y_i, log_prob_y_eq_1_i,
+                  log1mexpm(-log_prob_y_eq_1_i)).mean(axis=0).sum(axis=1))
   log_prob_y_item_profile = jnp.stack(log_prob_y_item_profile_, axis=1)
 
   # assert log_prob_y_item_profile.shape == (num_samples_global,

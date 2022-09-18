@@ -12,7 +12,7 @@ WORK_DIR=$HOME/spatial-smi-output
 mkdir -p $WORK_DIR
 pip install -Ur $REPO_DIR/requirements.txt
 
-all_eta=('0.001' '0.2' '0.5' '1.0')
+all_eta=('0.001' '0.25' '0.5' '0.75' '1.0')
 
 ### 8 ITEMS ###
 
@@ -23,7 +23,7 @@ do
   python3 $REPO_DIR/main.py --config=$REPO_DIR/configs/mcmc.py \
                             --workdir=$WORK_DIR/8_items/mcmc/eta_floating_$eta \
                             --config.eta_profiles_floating=$eta \
-                            --log_dir=$WORK_DIR/8_items/mcmc/log \
+                            --log_dir=$WORK_DIR/8_items/mcmc/eta_floating_$eta/log \
                             --alsologtostderr
 done
 
@@ -34,7 +34,7 @@ do
   python3 $REPO_DIR/main.py --config=$REPO_DIR/configs/flow_mf_like_mcmc.py \
                             --workdir=$WORK_DIR/8_items/mf/eta_floating_$eta \
                             --config.eta_profiles_floating=$eta \
-                            --log_dir=$WORK_DIR/8_items/mf/log \
+                            --log_dir=$WORK_DIR/8_items/mf/eta_floating_$eta/log \
                             --alsologtostderr
 done
 
@@ -45,7 +45,7 @@ do
   python3 $REPO_DIR/main.py --config=$REPO_DIR/configs/flow_nsf_like_mcmc.py \
                             --workdir=$WORK_DIR/8_items/nsf/eta_floating_$eta \
                             --config.eta_profiles_floating=$eta \
-                            --log_dir=$WORK_DIR/8_items/nsf/log_single_eta \
+                            --log_dir=$WORK_DIR/8_items/nsf/eta_floating_$eta/log \
                             --alsologtostderr
 done
 
@@ -53,7 +53,7 @@ done
 ### Neural Spline Flow
 python3 $REPO_DIR/main.py --config=$REPO_DIR/configs/flow_nsf_vmp_flow_like_mcmc.py \
                           --workdir=$WORK_DIR/8_items/nsf/vmp_flow \
-                          --log_dir=$WORK_DIR/8_items/nsf/log_vmp_flow \
+                          --log_dir=$WORK_DIR/8_items/nsf/vmp_flow/log \
                           --alsologtostderr
 
 ### ALL ITEMS ###
@@ -65,7 +65,7 @@ do
                             --workdir=$WORK_DIR/all_items/mf/eta_floating_$eta \
                             --config.eta_profiles_floating=$eta \
                             --config.dataset_id='coarsen_all_items' \
-                            --log_dir=$WORK_DIR/all_items/mf/log \
+                            --log_dir=$WORK_DIR/all_items/mf/eta_floating_$eta/log \
                             --alsologtostderr
 done
 
@@ -76,7 +76,7 @@ do
                             --workdir=$WORK_DIR/all_items/nsf/eta_floating_$eta \
                             --config.eta_profiles_floating=$eta \
                             --config.dataset_id='coarsen_all_items' \
-                            --log_dir=$WORK_DIR/all_items/nsf/log_single_eta \
+                            --log_dir=$WORK_DIR/all_items/nsf/eta_floating_$eta/log \
                             --alsologtostderr
 done
 
@@ -84,5 +84,5 @@ done
 ### Neural Spline Flow
 python3 $REPO_DIR/main.py --config=$REPO_DIR/configs/flow_nsf_vmp_flow.py \
                           --workdir=$WORK_DIR/all_items/nsf/vmp_flow \
-                          --log_dir=$WORK_DIR/all_items/nsf/log_vmp_flow \
+                          --log_dir=$WORK_DIR/all_items/nsf/vmp_flow/log \
                           --alsologtostderr

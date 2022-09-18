@@ -558,6 +558,9 @@ def log_images(
     batch: Batch,
     prng_key: PRNGKey,
     config: ConfigDict,
+    profiles_id: List[str],
+    items_id: List[str],
+    forms_id: List[str],
     profile_is_anchor: Array,
     show_basis_fields: bool,
     show_linguistic_fields: bool,
@@ -620,6 +623,9 @@ def log_images(
         kernel_kwargs=config.kernel_kwargs,
         gp_jitter=config.gp_jitter,
         step=state_list[0].step,
+        profiles_id=profiles_id,
+        items_id=items_id,
+        forms_id=forms_id,
         show_basis_fields=show_basis_fields,
         show_linguistic_fields=show_linguistic_fields,
         num_loc_random_anchor_plot=(num_loc_random_anchor_plot
@@ -994,6 +1000,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             batch=train_ds,
             prng_key=next(prng_seq),
             config=config,
+            profiles_id=dataset['LP'],
+            items_id=dataset['items'],
+            forms_id=dataset['forms'],
             profile_is_anchor=profile_is_anchor,
             show_basis_fields=config.show_basis_fields_during_training,
             show_linguistic_fields=config
@@ -1113,11 +1122,14 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         batch=train_ds,
         prng_key=next(prng_seq),
         config=config,
+        profiles_id=dataset['LP'],
+        items_id=dataset['items'],
+        forms_id=dataset['forms'],
         profile_is_anchor=profile_is_anchor,
         show_basis_fields=True,
         show_linguistic_fields=True,
-        num_loc_random_anchor_plot=20,
-        num_loc_floating_plot=20,
+        num_loc_random_anchor_plot=dataset['num_profiles_anchor'],
+        num_loc_floating_plot=dataset['num_profiles_floating'],
         show_eval_metric=True,
         eta_eval_grid=jnp.linspace(0, 1, 10),
         show_mixing_weights=False,
@@ -1130,5 +1142,5 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
 # # For debugging
 # config = get_config()
-# workdir = pathlib.Path.home() / 'spatial-smi/output/all_items/nsf/vmp_flow'
+# workdir = pathlib.Path.home() / 'spatial-smi-output/all_items/nsf/vmp_flow'
 # train_and_evaluate(config, workdir)

@@ -32,6 +32,8 @@ JointGrid = sns.JointGrid
 def plot_linguistic_field(
     posterior_sample_dict: Dict[str, Any],
     data: Dict[str, Any],
+    items_id: List[str],
+    forms_id: List[str],
     item: int,
     show_loc_anchor: bool = True,
     alpha_loc_anchor: float = 0.3,
@@ -85,13 +87,13 @@ def plot_linguistic_field(
       ncols=axs_ncols,
       figsize=(3. * axs_ncols, 2.5 * axs_nrows),
   )
-  # fig.suptitle(f"item:{item}, {item_names[item]}")
-  fig.suptitle(f"item:{item}")
-  # For each form f
-  for f, ax in enumerate(axs.reshape(-1)[:num_forms]):
+  fig.suptitle(f"item:{str(items_id[item])}")
+
+  # Plot each form on a separate panel
+  for f_, ax in enumerate(axs.reshape(-1)[:num_forms]):
     # Plot the mean of linguistic field
     x_plot, y_plot = np.split(loc, 2, axis=-1)
-    z_plot = np.round(phi_prob_mean[f], 2)
+    z_plot = np.round(phi_prob_mean[f_], 2)
     cntr2 = ax.tricontour(
         x_plot.squeeze(), y_plot.squeeze(), z_plot, cmap="Greys")
     if len(cntr2.levels) > 1:
@@ -110,9 +112,8 @@ def plot_linguistic_field(
       # Infered by the model
       for p in range(data['num_profiles_floating']):
         f_in_profile = (
-            data['y'][item][f][data['num_profiles_anchor'] + p] == 1)
+            data['y'][item][f_][data['num_profiles_anchor'] + p] == 1)
         if f_in_profile:
-          # ax.scatter(data['loc'][data['num_profiles']-data['num_profiles_floating']+p,0], data['loc'][data['num_profiles']-data['num_profiles_floating']+p,1], c='blue', marker=f"${p}$", label='floating (fitting)')
           ax.scatter(
               posterior_sample_dict['loc_floating'][:, p, 0],
               posterior_sample_dict['loc_floating'][:, p, 1],
@@ -124,7 +125,7 @@ def plot_linguistic_field(
     if show_loc_floating_linguist:
       # Plot floating profiles location
       # Assigned by linguists
-      floating_with_f = np.where((data['y'][item][f]).astype(bool) & (
+      floating_with_f = np.where((data['y'][item][f_]).astype(bool) & (
           np.arange(data['num_profiles']) >= data['num_profiles_anchor']))[0]
       if len(floating_with_f) > 0:
         ax.scatter(
@@ -137,7 +138,7 @@ def plot_linguistic_field(
 
     # Plot anchor profiles location
     if show_loc_anchor:
-      anchors_with_f = np.where((data['y'][item][f]).astype(bool) & (
+      anchors_with_f = np.where((data['y'][item][f_]).astype(bool) & (
           np.arange(data['num_profiles']) < data['num_profiles_anchor']))[0]
       if len(anchors_with_f) > 0:
         ax.scatter(
@@ -148,7 +149,8 @@ def plot_linguistic_field(
             alpha=alpha_loc_anchor,
             label='anchor')
 
-    ax.set_title(f"form:{f}")
+    # Set panel title
+    ax.set_title(f"form:{str(forms_id[item][f_])}")
 
   plt.tight_layout()
   return fig, axs
@@ -223,6 +225,7 @@ def plot_basis_fields(
 def plot_profile_location(
     posterior_sample_dict: Dict[str, Any],
     data: Dict[str, Any],
+    profiles_id: List[str],
     profile: int,
     loc_type: str = 'floating',
 ):
@@ -267,7 +270,7 @@ def plot_profile_location(
   )
   ax.set_xlim((0, 1))
   ax.set_ylim((0, 1))
-  ax.set_title(loc_type + ' profile ' + str(profile))
+  ax.set_title(loc_type + ' profile ' + str(profiles_id[data_loc_idx]))
 
   return fig, ax
 
@@ -441,6 +444,9 @@ def posterior_samples(
     kernel_kwargs: Dict[str, Any],
     gp_jitter: Optional[float],
     step: int,
+    profiles_id: List[str],
+    items_id: List[str],
+    forms_id: List[str],
     show_basis_fields: bool,
     show_linguistic_fields: bool,
     num_loc_random_anchor_plot: Optional[int],
@@ -471,13 +477,18 @@ def posterior_samples(
   # Plot linguistic fields
   if show_linguistic_fields:
     images = []
-    for item in range(len(batch['num_forms_tuple'])):
-      plot_name = f"linguistic_field_{item:02d}"
-      plot_name = plot_name + ("" if (suffix is None) else ("_" + suffix))
+    assert len(batch['num_forms_tuple']) == len(forms_id)
+    assert len(forms_id) == len(items_id)
+    for i_, item_id in enumerate(items_id):
+      plot_name = f"linguistic_field_{str(item_id).replace('/', '-')}"
+      if suffix is not None:
+        plot_name += ("_" + suffix)
       fig, _ = plot_linguistic_field(
           posterior_sample_dict=posterior_sample_dict,
           data=batch,
-          item=item,
+          items_id=items_id,
+          forms_id=forms_id,
+          item=i_,
           show_loc_anchor=True,
           alpha_loc_anchor=0.3,
           show_loc_floating_bayes=False,
@@ -492,7 +503,8 @@ def posterior_samples(
 
     if summary_writer:
       plot_name = "lalme_linguistic_fields"
-      plot_name = plot_name + ("" if (suffix is None) else ("_" + suffix))
+      if suffix is not None:
+        plot_name += ("_" + suffix)
       summary_writer.image(
           tag=plot_name,
           image=normalize_images(images),
@@ -508,10 +520,12 @@ def posterior_samples(
         min(num_loc_random_anchor_plot, batch['num_profiles_anchor']))
     for p in profiles_plot:
       plot_name = f"anchor_profile_{p:03d}_random_loc"
-      plot_name = plot_name + ("" if (suffix is None) else ("_" + suffix))
+      if suffix is not None:
+        plot_name += ("_" + suffix)
       fig, _ = plot_profile_location(
           posterior_sample_dict=posterior_sample_dict,
           data=batch,
+          profiles_id=profiles_id,
           profile=p,
           loc_type='random_anchor',
       )
@@ -522,7 +536,8 @@ def posterior_samples(
 
     if summary_writer:
       plot_name = "lalme_anchor_profiles_locations"
-      plot_name = plot_name + ("" if (suffix is None) else ("_" + suffix))
+      if suffix is not None:
+        plot_name += ("_" + suffix)
       summary_writer.image(
           tag=plot_name,
           image=normalize_images(images),
@@ -538,10 +553,12 @@ def posterior_samples(
         min(num_loc_floating_plot, batch['num_profiles_floating']))
     for p in profiles_plot:
       plot_name = f"floating_profile_{p:03d}_loc"
-      plot_name = plot_name + ("" if (suffix is None) else ("_" + suffix))
+      if suffix is not None:
+        plot_name += ("_" + suffix)
       fig, _ = plot_profile_location(
           posterior_sample_dict=posterior_sample_dict,
           data=batch,
+          profiles_id=profiles_id,
           profile=p,
           loc_type='floating',
       )
@@ -552,7 +569,8 @@ def posterior_samples(
 
     if summary_writer:
       plot_name = "lalme_floating_profiles_locations"
-      plot_name = plot_name + ("" if (suffix is None) else ("_" + suffix))
+      if suffix is not None:
+        plot_name += ("_" + suffix)
       summary_writer.image(
           tag=plot_name,
           image=normalize_images(images),
@@ -564,11 +582,11 @@ def posterior_samples(
   # Plot mixing weights
   if show_mixing_weights:
     images = []
-    for item in range(len(batch['num_forms_tuple'])):
-      plot_name = f"lalme_mixing_weights_{item}"
+    for i_ in range(len(batch['num_forms_tuple'])):
+      plot_name = f"lalme_mixing_weights_{i_}"
       fig, _ = plot_mixing_weights(
           posterior_sample_dict=posterior_sample_dict,
-          item=item,
+          item=i_,
       )
       if workdir_png:
         fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
@@ -577,7 +595,8 @@ def posterior_samples(
 
     if summary_writer:
       plot_name = "lalme_mixing_weights"
-      plot_name = plot_name + ("" if (suffix is None) else ("_" + suffix))
+      if suffix is not None:
+        plot_name += ("_" + suffix)
       summary_writer.image(
           tag=plot_name,
           image=normalize_images(images),
