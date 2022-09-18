@@ -598,13 +598,13 @@ def log_images(
     suffix: Optional[str] = None,
     summary_writer: Optional[SummaryWriter] = None,
     workdir_png: Optional[str] = None,
+    samples_path: Optional[str] = None,
 ) -> None:
   """Plots to monitor during training."""
 
   prng_seq = hk.PRNGSequence(prng_key)
 
   # Sample from variational posterior
-  # Sample from variational posteriors
   q_distr_out = sample_all_flows(
       params_tuple=[state.params for state in state_list],
       batch=batch,
@@ -619,6 +619,11 @@ def log_images(
                                   if use_gamma_anchor else 0),
       gp_jitter=config.gp_jitter,
   )
+
+  # Save samples to a file
+  if samples_path is not None:
+    np.savez_compressed(workdir_png + '/' + samples_path,
+                        q_distr_out['posterior_sample'])
 
   plot.posterior_samples(
       posterior_sample_dict=q_distr_out['posterior_sample'],
@@ -1101,6 +1106,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         suffix=f"eta_floating_{float(smi_eta['profiles'][-1]):.3f}",
         summary_writer=summary_writer,
         workdir_png=workdir,
+        samples_path="posterior_sample_dict.npz",
     )
 
 

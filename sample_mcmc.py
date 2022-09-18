@@ -1,5 +1,7 @@
 """MCMC sampling for the LALME model."""
 
+import os
+
 import time
 import math
 
@@ -360,6 +362,10 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   config.num_inducing_points = math.prod(
       config.model_hparams.inducing_grid_shape)
 
+  samples_path_stg1 = workdir + '/posterior_sample_dict_stg1.npz'
+  samples_path_stg2 = workdir + '/posterior_sample_dict_stg2.npz'
+  samples_path = workdir + '/posterior_sample_dict.npz'
+
   # For training, we need a Dictionary compatible with jit
   # we remove string vectors
   train_ds = {k: v for k, v in dataset.items() if k not in ['items', 'forms']}
@@ -406,149 +412,48 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       num_profiles_floating=config.num_profiles_floating,
   )
 
-  ### Sample First Stage ###
-
-  logging.info("\t sampling stage 1...")
-
   times_data = {}
   times_data['start_sampling'] = time.perf_counter()
 
-  posterior_sample_raw_init = concat_samples(
-      samples_dict=posterior_sample_dict_init)[0, :]
+  ### Sample First Stage ###
+  if os.path.exists(samples_path_stg1):
+    logging.info("\t Loading samples for stage 1...")
+    posterior_sample_dict = np.load(
+        str(samples_path_stg1), allow_pickle=True)['arr_0'].item()
+  else:
+    logging.info("\t sampling stage 1...")
 
-  # Verify that split_samples is the inverse of concat_samples
-  assert all([
-      v for v in jax.tree_map(
-          lambda x, y: (x == y).all(),
-          posterior_sample_dict_init,
-          split_samples(
-              samples=jnp.expand_dims(posterior_sample_raw_init, 0),
-              num_forms_tuple=config.num_forms_tuple,
-              num_basis_gps=config.model_hparams.num_basis_gps,
-              num_inducing_points=config.num_inducing_points,
-              num_profiles_floating=config.num_profiles_floating,
-          ),
-      ).values()
-  ])
+    posterior_sample_raw_init = concat_samples(
+        samples_dict=posterior_sample_dict_init)[0, :]
 
-  prng_key_gamma = next(prng_seq)
+    # Verify that split_samples is the inverse of concat_samples
+    assert all([
+        v for v in jax.tree_map(
+            lambda x, y: (x == y).all(),
+            posterior_sample_dict_init,
+            split_samples(
+                samples=jnp.expand_dims(posterior_sample_raw_init, 0),
+                num_forms_tuple=config.num_forms_tuple,
+                num_basis_gps=config.model_hparams.num_basis_gps,
+                num_inducing_points=config.num_inducing_points,
+                num_profiles_floating=config.num_profiles_floating,
+            ),
+        ).values()
+    ])
 
-  @jax.jit
-  def target_log_prob_fn_stg1(posterior_sample_raw):
-    return log_prob_fn(
-        batch=train_ds,
-        prng_key=prng_key_gamma,
-        posterior_sample_raw_1d=posterior_sample_raw,
-        prior_hparams=config.prior_hparams,
-        kernel_name=config.kernel_name,
-        kernel_kwargs=config.kernel_kwargs,
-        num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-        smi_eta_profiles=smi_eta['profiles'] if smi_eta is not None else None,
-        num_forms_tuple=config.num_forms_tuple,
-        num_basis_gps=config.model_hparams.num_basis_gps,
-        num_inducing_points=config.num_inducing_points,
-        num_profiles_floating=config.num_profiles_floating,
-        include_random_anchor=False,
-        gp_jitter=config.gp_jitter,
-    )
-
-  # Define bijector for samples
-  bijector_stg1 = get_kernel_bijector_stg1(
-      num_forms_tuple=config.num_forms_tuple,
-      num_profiles_floating=config.num_profiles_floating,
-      **config.model_hparams,
-  )
-
-  # Test the log probability function
-  _ = target_log_prob_fn_stg1(
-      posterior_sample_raw=bijector_stg1.forward(posterior_sample_raw_init))
-
-  # Define sampling kernel
-  kernel = tfp.mcmc.TransformedTransitionKernel(
-      inner_kernel=tfm.NoUTurnSampler(
-          target_log_prob_fn=target_log_prob_fn_stg1,
-          step_size=config.mcmc_step_size,
-      ),
-      bijector=bijector_stg1)
-
-  # Sample stage 1 chain
-  times_data['start_mcmc_stg_1'] = time.perf_counter()
-  posterior_sample_stg1 = tfm.sample_chain(
-      num_results=config.num_samples,
-      num_burnin_steps=config.num_burnin_steps_stg1,
-      kernel=kernel,
-      current_state=bijector_stg1.forward(posterior_sample_raw_init),
-      trace_fn=None,
-      seed=next(prng_seq),
-  )
-
-  posterior_sample_dict = split_samples(
-      samples=posterior_sample_stg1,
-      num_forms_tuple=config.num_forms_tuple,
-      num_basis_gps=config.model_hparams.num_basis_gps,
-      num_inducing_points=config.num_inducing_points,
-      num_profiles_floating=config.num_profiles_floating,
-  )
-  # Verify that concat_samples is the inverse of split_samples
-  assert (posterior_sample_stg1 == concat_samples(
-      samples_dict=posterior_sample_dict)).all()
-  global_params_sample, loc_floating_aux_sample = jnp.split(
-      posterior_sample_stg1, [
-          get_global_params_dim(
-              num_forms_tuple=config.num_forms_tuple,
-              num_basis_gps=config.model_hparams.num_basis_gps,
-              num_inducing_points=config.num_inducing_points,
-          )
-      ],
-      axis=-1)
-  assert loc_floating_aux_sample.shape == (config.num_samples,
-                                           2 * config.num_profiles_floating)
-
-  logging.info("posterior means mu %s",
-               str(posterior_sample_dict['mu'].mean(axis=0)))
-
-  times_data['end_mcmc_stg_1'] = time.perf_counter()
-
-  ### Sample Second Stage ###
-  if smi_eta is not None:
-    # Define parameters split for SMI
-    shared_params_names = [
-        'gamma_inducing',
-        'mixing_weights_list',
-        'mixing_offset_list',
-        'mu',
-        'zeta',
-    ]
-    refit_params_names = [
-        'loc_floating',
-    ]
-    for key in refit_params_names:
-      posterior_sample_dict[key + '_aux'] = posterior_sample_dict[key]
-      del posterior_sample_dict[key]
-
-    logging.info("posterior means loc_floating_aux %s",
-                 str(posterior_sample_dict['loc_floating_aux'].mean(axis=0)))
-
-    logging.info("\t sampling stage 2...")
-
-    # Define bijector for samples
-    bijector_stg2 = get_kernel_bijector_stg2(
-        num_profiles_floating=config.num_profiles_floating,
-        **config.model_hparams,
-    )
+    prng_key_gamma = next(prng_seq)
 
     @jax.jit
-    def target_log_prob_fn_stg2(global_params, loc_floating_sample):
+    def target_log_prob_fn_stg1(posterior_sample_raw):
       return log_prob_fn(
           batch=train_ds,
           prng_key=prng_key_gamma,
-          posterior_sample_raw_1d=jnp.concatenate(
-              [global_params, loc_floating_sample], axis=-1),
+          posterior_sample_raw_1d=posterior_sample_raw,
           prior_hparams=config.prior_hparams,
           kernel_name=config.kernel_name,
           kernel_kwargs=config.kernel_kwargs,
           num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-          smi_eta_profiles=None,
+          smi_eta_profiles=smi_eta['profiles'] if smi_eta is not None else None,
           num_forms_tuple=config.num_forms_tuple,
           num_basis_gps=config.model_hparams.num_basis_gps,
           num_inducing_points=config.num_inducing_points,
@@ -557,116 +462,242 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
           gp_jitter=config.gp_jitter,
       )
 
+    # Define bijector for samples
+    bijector_stg1 = get_kernel_bijector_stg1(
+        num_forms_tuple=config.num_forms_tuple,
+        num_profiles_floating=config.num_profiles_floating,
+        **config.model_hparams,
+    )
+
     # Test the log probability function
-    _ = target_log_prob_fn_stg2(
-        global_params_sample[0],
-        bijector_stg2.forward(5 * jnp.zeros(2 * config.num_profiles_floating)),
+    _ = target_log_prob_fn_stg1(
+        posterior_sample_raw=bijector_stg1.forward(posterior_sample_raw_init))
+
+    # Define sampling kernel
+    kernel = tfp.mcmc.TransformedTransitionKernel(
+        inner_kernel=tfm.NoUTurnSampler(
+            target_log_prob_fn=target_log_prob_fn_stg1,
+            step_size=config.mcmc_step_size,
+        ),
+        bijector=bijector_stg1)
+
+    # Sample stage 1 chain
+
+    times_data['start_mcmc_stg_1'] = time.perf_counter()
+    posterior_sample_stg1 = tfm.sample_chain(
+        num_results=config.num_samples,
+        num_burnin_steps=config.num_burnin_steps_stg1,
+        kernel=kernel,
+        current_state=bijector_stg1.forward(posterior_sample_raw_init),
+        trace_fn=None,
+        seed=next(prng_seq),
     )
 
-    def sample_stg2(
-        global_params: Array,
-        loc_floating_init: Array,
-        num_samples_subchain_stg2: int,
-        prng_key: PRNGKey,
-    ):
+    posterior_sample_dict = split_samples(
+        samples=posterior_sample_stg1,
+        num_forms_tuple=config.num_forms_tuple,
+        num_basis_gps=config.model_hparams.num_basis_gps,
+        num_inducing_points=config.num_inducing_points,
+        num_profiles_floating=config.num_profiles_floating,
+    )
+    # Verify that concat_samples is the inverse of split_samples
+    assert (posterior_sample_stg1 == concat_samples(
+        samples_dict=posterior_sample_dict)).all()
+    global_params_sample, loc_floating_aux_sample = jnp.split(
+        posterior_sample_stg1, [
+            get_global_params_dim(
+                num_forms_tuple=config.num_forms_tuple,
+                num_basis_gps=config.model_hparams.num_basis_gps,
+                num_inducing_points=config.num_inducing_points,
+            )
+        ],
+        axis=-1)
+    assert loc_floating_aux_sample.shape == (config.num_samples,
+                                             2 * config.num_profiles_floating)
 
-      inner_kernel = tfm.NoUTurnSampler(
-          target_log_prob_fn=lambda x: target_log_prob_fn_stg2(
-              global_params, x),
-          step_size=config.mcmc_step_size,
+    logging.info("posterior means mu %s",
+                 str(posterior_sample_dict['mu'].mean(axis=0)))
+
+    times_data['end_mcmc_stg_1'] = time.perf_counter()
+
+    # Save MCMC samples from stage 1
+    np.savez_compressed(samples_path_stg1, posterior_sample_dict)
+
+  ### Sample Second Stage ###
+
+  if os.path.exists(samples_path_stg2):
+    logging.info("\t Loading samples for stage 2...")
+
+    posterior_sample_dict = np.load(
+        str(samples_path_stg2), allow_pickle=True)['arr_0'].item()
+  else:
+
+    if smi_eta is not None:
+
+      logging.info("\t sampling stage 2...")
+
+      # Define parameters split for SMI
+      shared_params_names = [
+          'gamma_inducing',
+          'mixing_weights_list',
+          'mixing_offset_list',
+          'mu',
+          'zeta',
+      ]
+      refit_params_names = [
+          'loc_floating',
+      ]
+      for key in refit_params_names:
+        posterior_sample_dict[key + '_aux'] = posterior_sample_dict[key]
+        del posterior_sample_dict[key]
+
+      logging.info("posterior means loc_floating_aux %s",
+                   str(posterior_sample_dict['loc_floating_aux'].mean(axis=0)))
+      # Define bijector for samples
+      bijector_stg2 = get_kernel_bijector_stg2(
+          num_profiles_floating=config.num_profiles_floating,
+          **config.model_hparams,
       )
 
-      kernel = tfp.mcmc.TransformedTransitionKernel(
-          inner_kernel=inner_kernel, bijector=bijector_stg2)
-
-      posterior_sample = tfm.sample_chain(
-          num_results=1,
-          num_burnin_steps=num_samples_subchain_stg2 - 1,
-          kernel=kernel,
-          current_state=loc_floating_init,
-          trace_fn=None,
-          seed=prng_key,
-      )
-
-      return posterior_sample
-
-    # # Get one sample of parameters in stage 2
-    # loc_floating_sample_ = sample_stg2(
-    #     global_params=global_params_sample[0],
-    #     loc_floating_init=loc_floating_aux_sample[0],
-    #     num_samples_subchain_stg2=5,
-    #     prng_key=next(prng_seq),
-    # )
-
-    # Define function to parallelize sample_stage2
-    # TODO(chris): use pmap?
-    sample_stg2_vmap = jax.vmap(
-        lambda global_params, loc_floating_init, prng_key: sample_stg2(
-            global_params=global_params,
-            loc_floating_init=loc_floating_init,
-            num_samples_subchain_stg2=config.num_samples_subchain_stg2,
-            prng_key=prng_key,
-        ))
-
-    def _sample_stage2_loop(chunk_size):
-      """Sequential sampling of stage 2.
-
-      Improve performance of nested HMC by splitting the total number of samples
-      into several steps, initialising the chains of each step in values
-      obtained from the previous step.
-      """
-
-      assert (config.num_samples % chunk_size) == 0
-
-      # Initialize loc_floating
-      loc_floating = [loc_floating_aux_sample[:chunk_size, :]]
-
-      for i in range(config.num_samples // chunk_size):
-        # i=0
-        loc_floating_i = sample_stg2_vmap(
-            global_params=global_params_sample[(i *
-                                                chunk_size):((i + 1) *
-                                                             chunk_size), :],
-            loc_floating_init=loc_floating[-1],
-            prng_key=jax.random.split(next(prng_seq), chunk_size),
+      @jax.jit
+      def target_log_prob_fn_stg2(global_params, loc_floating_sample):
+        return log_prob_fn(
+            batch=train_ds,
+            prng_key=prng_key_gamma,
+            posterior_sample_raw_1d=jnp.concatenate(
+                [global_params, loc_floating_sample], axis=-1),
+            prior_hparams=config.prior_hparams,
+            kernel_name=config.kernel_name,
+            kernel_kwargs=config.kernel_kwargs,
+            num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+            smi_eta_profiles=None,
+            num_forms_tuple=config.num_forms_tuple,
+            num_basis_gps=config.model_hparams.num_basis_gps,
+            num_inducing_points=config.num_inducing_points,
+            num_profiles_floating=config.num_profiles_floating,
+            include_random_anchor=False,
+            gp_jitter=config.gp_jitter,
         )
-        loc_floating.append(loc_floating_i.squeeze(1))
 
-      loc_floating = jnp.concatenate(loc_floating[1:], axis=0)
+      # Test the log probability function
+      _ = target_log_prob_fn_stg2(
+          global_params_sample[0],
+          bijector_stg2.forward(5 *
+                                jnp.zeros(2 * config.num_profiles_floating)),
+      )
 
-      return loc_floating
+      def sample_stg2(
+          global_params: Array,
+          loc_floating_init: Array,
+          num_samples_subchain_stg2: int,
+          prng_key: PRNGKey,
+      ):
 
-    # Sample loc_floating
-    times_data['start_mcmc_stg_2'] = time.perf_counter()
-    loc_floating_sample = _sample_stage2_loop(chunk_size=config.num_samples //
-                                              config.num_chunks_stg2)
-    posterior_sample_dict_stg2 = split_flow_locations(
-        samples=loc_floating_sample,
-        num_profiles=config.num_profiles_floating,
-        name='loc_floating',
-        is_aux=False,
-    )
-    posterior_sample_dict.update(posterior_sample_dict_stg2)
+        inner_kernel = tfm.NoUTurnSampler(
+            target_log_prob_fn=lambda x: target_log_prob_fn_stg2(
+                global_params, x),
+            step_size=config.mcmc_step_size,
+        )
 
-  logging.info("posterior means loc_floating %s",
-               str(posterior_sample_dict['loc_floating'].mean(axis=0)))
+        kernel = tfp.mcmc.TransformedTransitionKernel(
+            inner_kernel=inner_kernel, bijector=bijector_stg2)
 
-  times_data['end_mcmc_stg_2'] = time.perf_counter()
+        posterior_sample = tfm.sample_chain(
+            num_results=1,
+            num_burnin_steps=num_samples_subchain_stg2 - 1,
+            kernel=kernel,
+            current_state=loc_floating_init,
+            trace_fn=None,
+            seed=prng_key,
+        )
+
+        return posterior_sample
+
+      # # Get one sample of parameters in stage 2
+      # loc_floating_sample_ = sample_stg2(
+      #     global_params=global_params_sample[0],
+      #     loc_floating_init=loc_floating_aux_sample[0],
+      #     num_samples_subchain_stg2=5,
+      #     prng_key=next(prng_seq),
+      # )
+
+      # Define function to parallelize sample_stage2
+      # TODO(chris): use pmap?
+      sample_stg2_vmap = jax.vmap(
+          lambda global_params, loc_floating_init, prng_key: sample_stg2(
+              global_params=global_params,
+              loc_floating_init=loc_floating_init,
+              num_samples_subchain_stg2=config.num_samples_subchain_stg2,
+              prng_key=prng_key,
+          ))
+
+      def _sample_stage2_loop(chunk_size):
+        """Sequential sampling of stage 2.
+
+        Improve performance of nested HMC by splitting the total number of samples
+        into several steps, initialising the chains of each step in values
+        obtained from the previous step.
+        """
+
+        assert (config.num_samples % chunk_size) == 0
+
+        # Initialize loc_floating
+        loc_floating = [loc_floating_aux_sample[:chunk_size, :]]
+
+        for i in range(config.num_samples // chunk_size):
+          # i=0
+          loc_floating_i = sample_stg2_vmap(
+              global_params=global_params_sample[(i *
+                                                  chunk_size):((i + 1) *
+                                                               chunk_size), :],
+              loc_floating_init=loc_floating[-1],
+              prng_key=jax.random.split(next(prng_seq), chunk_size),
+          )
+          loc_floating.append(loc_floating_i.squeeze(1))
+
+        loc_floating = jnp.concatenate(loc_floating[1:], axis=0)
+
+        return loc_floating
+
+      # Sample loc_floating
+      times_data['start_mcmc_stg_2'] = time.perf_counter()
+      loc_floating_sample = _sample_stage2_loop(chunk_size=config.num_samples //
+                                                config.num_chunks_stg2)
+      posterior_sample_dict_stg2 = split_flow_locations(
+          samples=loc_floating_sample,
+          num_profiles=config.num_profiles_floating,
+          name='loc_floating',
+          is_aux=False,
+      )
+      posterior_sample_dict.update(posterior_sample_dict_stg2)
+
+    logging.info("posterior means loc_floating %s",
+                 str(posterior_sample_dict['loc_floating'].mean(axis=0)))
+
+    times_data['end_mcmc_stg_2'] = time.perf_counter()
+
+    # Save MCMC samples from stage 2
+    np.savez_compressed(samples_path_stg2, posterior_sample_dict)
 
   times_data['end_sampling'] = time.perf_counter()
 
   logging.info("Sampling times:")
   logging.info("\t Total: %s",
                str(times_data['end_sampling'] - times_data['start_sampling']))
-  logging.info(
-      "\t Stg 1: %s",
-      str(times_data['end_mcmc_stg_1'] - times_data['start_mcmc_stg_1']))
-  if smi_eta is not None:
+  if ('start_mcmc_stg_1' in times_data) and ('end_mcmc_stg_1' in times_data):
+    logging.info(
+        "\t Stg 1: %s",
+        str(times_data['end_mcmc_stg_1'] - times_data['start_mcmc_stg_1']))
+  if ('start_mcmc_stg_2' in times_data) and ('end_mcmc_stg_2' in times_data):
     logging.info(
         "\t Stg 2: %s",
         str(times_data['end_mcmc_stg_2'] - times_data['start_mcmc_stg_2']))
 
   logging.info("Plotting results...")
+
+  # Save final MCMC samples
+  np.savez_compressed(samples_path, posterior_sample_dict)
+
   ### Plot SMI samples ###
   plot.posterior_samples(
       posterior_sample_dict=posterior_sample_dict,
@@ -705,9 +736,6 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 # config.num_burnin_steps_stg1 = 5
 # config.num_samples_subchain_stg2 = 5
 # config.num_chunks_stg2 = 5
-# config.smi_eta.update({
-#     'profiles_floating': 0.001,
-# })
 # import pathlib
-# workdir = pathlib.Path.home() / 'spatial-smi/output/8_items/mcmc/eta_floating_0.001'
+# workdir = pathlib.Path.home() / 'spatial-smi-output/8_items/mcmc/eta_floating_0.001'
 # sample_and_evaluate(config, workdir)

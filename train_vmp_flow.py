@@ -573,6 +573,7 @@ def log_images(
     use_gamma_anchor: bool = False,
     summary_writer: Optional[SummaryWriter] = None,
     workdir_png: Optional[str] = None,
+    samples_path: Optional[str] = None,
 ) -> None:
   """Plots to monitor during training."""
 
@@ -614,6 +615,11 @@ def log_images(
                                     if use_gamma_anchor else 0),
         gp_jitter=config.gp_jitter,
     )
+
+    # Save samples to a file
+    if samples_path is not None:
+      np.savez_compressed(workdir_png + f'/eta{eta_i:.3f}' + samples_path,
+                          q_distr_out['posterior_sample'])
 
     plot.posterior_samples(
         posterior_sample_dict=q_distr_out['posterior_sample'],
@@ -1137,6 +1143,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         use_gamma_anchor=False,
         summary_writer=summary_writer,
         workdir_png=workdir,
+        samples_path="posterior_sample_dict.npz",
     )
 
 
