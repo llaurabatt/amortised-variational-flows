@@ -618,8 +618,9 @@ def log_images(
 
     # Save samples to a file
     if samples_path is not None:
-      np.savez_compressed(workdir_png + f'/eta{eta_i:.3f}' + samples_path,
-                          q_distr_out['posterior_sample'])
+      np.savez_compressed(
+          workdir_png + f'/eta{float(eta_i):.3f}_' + samples_path,
+          q_distr_out['posterior_sample'])
 
     plot.posterior_samples(
         posterior_sample_dict=q_distr_out['posterior_sample'],
