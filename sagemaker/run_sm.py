@@ -82,7 +82,7 @@ def main(argv):
   if len(argv) > 1:
     raise app.UsageError("Too many command-line arguments.")
 
-  eta_values = [0.0, 0.2, 0.5, 0.8, 1.]
+  eta_values = [0.001, 0.25, 0.5, 0.75, 1.]
 
   # SMI via MCMC
   send_experiment_to_sm(
