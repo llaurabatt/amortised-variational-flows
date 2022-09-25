@@ -89,7 +89,7 @@ def get_config():
   config.show_linguistic_fields_during_training = False
 
   # Number of posteriors samples used in the plots.
-  config.num_samples_plot = 2_000
+  config.num_samples_plot = 10_000
 
   # Number of profiles locations to plot
   config.num_profiles_plot = 20

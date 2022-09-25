@@ -87,12 +87,13 @@ def get_config():
   config.show_linguistic_fields_during_training = True
 
   # Number of posteriors samples used in the plots.
-  config.num_samples_plot = 2_000
+  config.num_samples_plot = 10_000
 
   config.eta_plot = [
       [0.001],
-      [0.2],
+      [0.25],
       [0.5],
+      [0.75],
       [1.0],
   ]
 

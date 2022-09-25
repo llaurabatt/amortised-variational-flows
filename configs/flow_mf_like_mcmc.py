@@ -86,7 +86,7 @@ def get_config():
   config.checkpoints_keep = 1
 
   # Number of posteriors samples used in the plots.
-  config.num_samples_plot = 2_000
+  config.num_samples_plot = 10_000
 
   # Number of profiles locations to plot
   config.num_profiles_plot = 20
