@@ -12,7 +12,7 @@ WORK_DIR=$HOME/spatial-smi-output
 mkdir -p $WORK_DIR
 pip install -Ur $REPO_DIR/requirements.txt
 
-all_eta=('0.001' '0.25' '0.5' '0.75' '1.0')
+all_eta=('0.001' '0.250' '0.500' '0.750' '1.000')
 
 ### 8 ITEMS ###
 
