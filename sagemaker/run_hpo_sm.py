@@ -1,5 +1,5 @@
 """
-Hyper-Parameter Optimasation (HOP) with Synetune and Sagemaker.
+Hyper-Parameter Optimization (HOP) with Synetune and Sagemaker.
 """
 import os
 import pathlib
