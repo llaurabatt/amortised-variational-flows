@@ -19,7 +19,6 @@ python sagemaker/run_sm.py
 
 ### Hyper-Parameter Optimization (HPO) with Syne-tune and Sagemaker
 
-Single eta optimization
 ```bash
 pip install -r sagemaker/requirements.txt
 python sagemaker/run_hpo_sm.py --config_fn='configs/flow_mf_like_mcmc.py' --smi_method='flow'

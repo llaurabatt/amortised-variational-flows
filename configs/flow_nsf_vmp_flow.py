@@ -49,7 +49,7 @@ def get_config():
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 50_000
+  config.training_steps = 100_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -112,6 +112,6 @@ def get_config():
   config.synetune_metric = 'distance_random_anchor_min'
 
   # Random seed
-  config.seed = 123
+  config.seed = 321
 
   return config
