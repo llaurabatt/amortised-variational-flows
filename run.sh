@@ -20,7 +20,7 @@ all_eta=('0.001' '0.25' '0.5' '0.75' '1.0')
 ## Single eta
 for eta in "${all_eta[@]}"
 do
-  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/mcmc.py \
+  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_mcmc.py \
                             --workdir $WORK_DIR/8_items/mcmc/eta_floating_$eta \
                             --config.eta_profiles_floating $eta \
                             --log_dir $WORK_DIR/8_items/mcmc/eta_floating_$eta/log \
@@ -31,7 +31,7 @@ done
 ## Single eta, Mean field (MFVI)
 for eta in "${all_eta[@]}"
 do
-  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/flow_mf_like_mcmc.py \
+  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_mf.py \
                             --workdir $WORK_DIR/8_items/mf/eta_floating_$eta \
                             --config.eta_profiles_floating $eta \
                             --log_dir $WORK_DIR/8_items/mf/eta_floating_$eta/log \
@@ -42,7 +42,7 @@ done
 ## Single eta, Neural Spline Flow
 for eta in "${all_eta[@]}"
 do
-  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/flow_nsf_like_mcmc.py \
+  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_nsf.py \
                             --workdir $WORK_DIR/8_items/nsf/eta_floating_$eta \
                             --config.eta_profiles_floating $eta \
                             --log_dir $WORK_DIR/8_items/nsf/eta_floating_$eta/log \
@@ -51,7 +51,7 @@ done
 
 ## Variational Meta-Posterior via VMP-flow, replication of MCMC
 ### Neural Spline Flow
-python3 $REPO_DIR/main.py --config $REPO_DIR/configs/flow_nsf_vmp_flow_like_mcmc.py \
+python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_nsf_vmp_flow.py \
                           --workdir $WORK_DIR/8_items/nsf/vmp_flow \
                           --log_dir $WORK_DIR/8_items/nsf/vmp_flow/log \
                           --alsologtostderr
@@ -61,7 +61,7 @@ python3 $REPO_DIR/main.py --config $REPO_DIR/configs/flow_nsf_vmp_flow_like_mcmc
 ## Single eta, Mean field
 for eta in "${all_eta[@]}"
 do
-  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/flow_mf.py \
+  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_mf.py \
                             --workdir $WORK_DIR/all_items/mf/eta_floating_$eta \
                             --config.eta_profiles_floating $eta \
                             --config.dataset_id 'coarsen_all_items' \
@@ -72,7 +72,7 @@ done
 ## Single eta, Neural Spline Flow
 for eta in "${all_eta[@]}"
 do
-  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/flow_nsf.py \
+  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf.py \
                             --workdir $WORK_DIR/all_items/nsf/eta_floating_$eta \
                             --config.eta_profiles_floating $eta \
                             --config.dataset_id 'coarsen_all_items' \
@@ -82,7 +82,7 @@ done
 
 ## Variational Meta-Posterior via VMP-flow
 ### Neural Spline Flow
-python3 $REPO_DIR/main.py --config $REPO_DIR/configs/flow_nsf_vmp_flow.py \
+python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf_vmp_flow.py \
                           --workdir $WORK_DIR/all_items/nsf/vmp_flow \
                           --log_dir $WORK_DIR/all_items/nsf/vmp_flow/log \
                           --alsologtostderr

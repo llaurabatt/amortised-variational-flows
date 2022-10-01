@@ -21,7 +21,7 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
     name='config_fn',
-    default='flow_mf_like_mcmc.py',
+    default='8_items_flow_nsf_vmp_flow.py',
     help='Path to the config file with parameters to be optimized.' +
     'The path is relative to the main repo directory.',
 )
