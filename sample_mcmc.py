@@ -693,10 +693,19 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         "\t Stg 2: %s",
         str(times_data['end_mcmc_stg_2'] - times_data['start_mcmc_stg_2']))
 
-  logging.info("Plotting results...")
-
   # Save final MCMC samples
   np.savez_compressed(samples_path, posterior_sample_dict)
+
+  # Load samples to compare MCMC vs Variational posteriors
+  if config.path_variational_samples != '':
+    logging.info("Loading variational samples for comparison...")
+    posterior_sample_dict_variational = np.load(
+        str(config.path_variational_samples),
+        allow_pickle=True)['arr_0'].item()
+  else:
+    posterior_sample_dict_variational = None
+
+  logging.info("Plotting results...")
 
   ### Plot SMI samples ###
   plot.posterior_samples(
@@ -720,6 +729,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       summary_writer=summary_writer,
       workdir_png=workdir,
       use_gamma_anchor=False,
+      posterior_sample_dict_2=posterior_sample_dict_variational,
   )
 
   # j = 1
@@ -737,5 +747,5 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 # config.num_samples_subchain_stg2 = 5
 # config.num_chunks_stg2 = 5
 # import pathlib
-# workdir = pathlib.Path.home() / 'spatial-smi-output/8_items/mcmc/eta_floating_0.001'
+# workdir = str(pathlib.Path.home() / 'spatial-smi-output/8_items/mcmc/eta_floating_0.001')
 # sample_and_evaluate(config, workdir)

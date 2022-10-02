@@ -228,45 +228,70 @@ def plot_profile_location(
     profiles_id: List[str],
     profile: int,
     loc_type: str = 'floating',
+    posterior_sample_dict_2: Optional[Dict[str, Any]] = None,
+    kde_x_range: Optional[Tuple[float]] = (0., 1.),
+    kde_y_range: Optional[Tuple[float]] = (0., 1.),
 ):
 
   assert loc_type in ['floating', 'random_anchor']
 
   fig, ax = plt.subplots(figsize=(5, 5))
 
-  # Random locations
-  if ('loc_' + loc_type) in posterior_sample_dict:
+  # Samples from posterior Profile locations
+  assert ('loc_' + loc_type) in posterior_sample_dict
+  loc_x, loc_y = [
+      x.flatten() for x in np.split(
+          posterior_sample_dict['loc_' + loc_type][:, profile, :],
+          2,
+          -1,
+      )
+  ]
+  # sns.kdeplot(
+  #     x=loc_x,
+  #     y=loc_y,
+  #     shade=True,
+  #     cmap="PuBu",
+  #     ax=ax,
+  # )
+  _ = ax.hist2d(
+      x=loc_x,
+      y=loc_y,
+      bins=20,
+      cmap="Blues",
+      range=[[0., 1.], [0., 1.]],
+  )
+
+  # Additional Samples from posterior Profile locations
+  if posterior_sample_dict_2 is not None:
+    assert ('loc_' + loc_type) in posterior_sample_dict_2
     loc_x, loc_y = [
         x.flatten() for x in np.split(
-            posterior_sample_dict['loc_' + loc_type][:, profile, :],
+            posterior_sample_dict_2['loc_' + loc_type][:, profile, :],
             2,
             -1,
         )
     ]
-    # sns.kdeplot(
-    #     x=loc_x,
-    #     y=loc_y,
-    #     shade=True,
-    #     cmap="PuBu",
-    #     ax=ax,
-    # )
-    _ = ax.hist2d(
-        x=loc_x,
-        y=loc_y,
-        bins=20,
-        cmap="Blues",
-        range=[[0., 1.], [0., 1.]],
-    )
+    # Peform the kernel density estimate
+    xx, yy = np.mgrid[kde_x_range[0]:kde_x_range[1]:100j,
+                      kde_y_range[0]:kde_y_range[1]:100j]
+    positions = np.vstack([xx.ravel(), yy.ravel()])
+    values = np.vstack([loc_x, loc_y])
+    kernel = scipy.stats.gaussian_kde(values)
+    f = np.reshape(kernel(positions).T, xx.shape)
+
+    cset = ax.contour(xx, yy, f, cmap='copper')
+    ax.clabel(cset, inline=1)
 
   data_loc_idx = (data['num_profiles_anchor']
                   if loc_type == 'floating' else 0) + profile
-  sns.scatterplot(
+
+  # Add Location of Profile from LALME data
+  ax.scatter(
       x=data['loc'][[data_loc_idx], 0],
       y=data['loc'][[data_loc_idx], 1],
       marker="X",
-      s=200,
+      s=100,
       color="red",
-      ax=ax,
   )
   ax.set_xlim((0, 1))
   ax.set_ylim((0, 1))
@@ -457,6 +482,7 @@ def posterior_samples(
     summary_writer: Optional[SummaryWriter] = None,
     workdir_png: Optional[str] = None,
     use_gamma_anchor: bool = False,
+    posterior_sample_dict_2: Optional[Mapping[str, Any]] = None,
 ) -> None:
   """Visualise samples from the approximate posterior distribution."""
 
@@ -578,6 +604,38 @@ def posterior_samples(
           max_outputs=len(images),
       )
       del images
+
+    # For comparison of samples: MCMC vs Variational
+    if posterior_sample_dict_2 is not None:
+      images_2_samples = []
+      for p in profiles_plot:
+        plot_name = f"floating_profile_{p:03d}_loc_2_samples"
+        if suffix is not None:
+          plot_name += ("_" + suffix)
+        fig, _ = plot_profile_location(
+            posterior_sample_dict=posterior_sample_dict,
+            data=batch,
+            profiles_id=profiles_id,
+            profile=p,
+            loc_type='floating',
+            posterior_sample_dict_2=posterior_sample_dict_2,
+            kde_x_range=(0., 1.),
+            kde_y_range=(0., 0.8939394),
+        )
+        if workdir_png:
+          fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+        images_2_samples.append(plot_to_image(fig))
+      if summary_writer:
+        plot_name = "lalme_floating_profiles_locations_2_samples"
+        if suffix is not None:
+          plot_name += ("_" + suffix)
+        summary_writer.image(
+            tag=plot_name,
+            image=normalize_images(images_2_samples),
+            step=step,
+            max_outputs=len(images_2_samples),
+        )
+        del images_2_samples
 
   # Plot mixing weights
   if show_mixing_weights:

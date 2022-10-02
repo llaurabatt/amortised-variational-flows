@@ -49,7 +49,7 @@ done
 
 # Download VMP-flow results on 8 items dataset
 all_files=( \
-  's3://sagemaker-us-east-1-467525936083/spatial-smi-flow-nsf-vmp-flow-like-mcmc-2022-09-18-21-37-25-107/output/model.tar.gz' \
+  's3://sagemaker-us-east-1-467525936083/spatial-smi-8-items-flow-nsf-vmp-flow-2022-10-02-10-05-21-650/output/model.tar.gz' \
 )
 for i in {0..0}
 do

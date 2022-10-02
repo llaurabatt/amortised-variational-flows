@@ -57,4 +57,7 @@ def get_config():
 
   config.seed = 0
 
+  # Samples from variational posterior to compare locations
+  config.path_variational_samples = ''
+
   return config
