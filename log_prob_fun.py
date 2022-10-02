@@ -328,9 +328,9 @@ def log_prob_joint(
 
   # P(Gamma_Z) : Prior on the GPs on inducing points
   log_prob_gamma = distrax.Independent(
-      modularbayes.MultivariateNormalTriL(
+      distrax.MultivariateNormalTri(
           loc=jnp.zeros((1, 1, num_inducing_points)),
-          scale_tril=batch['cov_inducing_chol']),
+          scale_tri=batch['cov_inducing_chol']),
       reinterpreted_batch_ndims=1).log_prob
 
   # P(loc_floating) : Prior on the floating locations
@@ -536,8 +536,10 @@ def gp_F_given_U(
   assert cov_tril_f_given_u.shape[-2:] == (x_dim, x_dim)
 
   p_f_given_u = distrax.Independent(
-      modularbayes.MultivariateNormalTriL(
-          loc=mean_f_given_u, scale_tril=cov_tril_f_given_u),
+      distrax.MultivariateNormalTri(
+          loc=mean_f_given_u,
+          scale_tri=cov_tril_f_given_u,
+      ),
       reinterpreted_batch_ndims=1)
 
   return p_f_given_u
