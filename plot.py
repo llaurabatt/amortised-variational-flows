@@ -290,7 +290,7 @@ def plot_profile_location(
       x=data['loc'][[data_loc_idx], 0],
       y=data['loc'][[data_loc_idx], 1],
       marker="X",
-      s=100,
+      s=200,
       color="red",
   )
   ax.set_xlim((0, 1))

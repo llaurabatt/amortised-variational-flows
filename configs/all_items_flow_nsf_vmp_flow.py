@@ -17,8 +17,8 @@ def get_config():
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
-  config.flow_kwargs.num_basis_gps = 7
-  config.flow_kwargs.inducing_grid_shape = (10, 10)
+  config.flow_kwargs.num_basis_gps = 10
+  config.flow_kwargs.inducing_grid_shape = (11, 11)
   # Number of layers to use in the flow.
   config.flow_kwargs.num_layers = 6
   # Hidden sizes of the MLP conditioner.

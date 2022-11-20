@@ -1112,7 +1112,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
 # # For debugging
 # config = get_config()
-# config.flow_kwargs.smi_eta.update({'profiles_floating': 0.001,})
-# workdir = pathlib.Path.home() / 'spatial-smi-output/8_items/mf_mini/eta_floating_0.001'
-# workdir = pathlib.Path.home() / 'spatial-smi-output/8_items/nsf/eta_floating_0.001'
+# config.eta_profiles_floating = 0.001
+# workdir = pathlib.Path.home() / 'spatial-smi-output/8_items/mf/eta_floating_0.001'
 # train_and_evaluate(config, workdir)

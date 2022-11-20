@@ -17,8 +17,8 @@ def get_config():
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
-  config.flow_kwargs.num_basis_gps = 7
-  config.flow_kwargs.inducing_grid_shape = (10, 10)
+  config.flow_kwargs.num_basis_gps = 10
+  config.flow_kwargs.inducing_grid_shape = (11, 11)
   # Ranges of posterior locations
   # (NOTE: these will be modified in the training script)
   config.flow_kwargs.loc_x_range = (0., 1.)
@@ -79,7 +79,7 @@ def get_config():
   # How often to generate posterior plots.
   config.log_img_steps = config.training_steps // 5
   config.log_img_at_end = True
-  
+
   # How often to save model checkpoints.
   config.checkpoint_steps = config.training_steps // 2
   # How many checkpoints to keep.

@@ -23,7 +23,7 @@ def get_config():
   # Number of basis GPs
   config.model_hparams.num_basis_gps = 5
   # Grid of inducing points
-  config.model_hparams.inducing_grid_shape = (10, 10)
+  config.model_hparams.inducing_grid_shape = (11, 11)
   # Ranges of posterior locations
   # (NOTE: these will be modified in the training script)
   config.model_hparams.loc_x_range = (0., 1.)
