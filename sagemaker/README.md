@@ -11,10 +11,17 @@ Build Docker image with CUDA support and upload it to AWS ECR
 sh sagemaker/push_ecr_image.sh
 ```
 
-### Run single experiments
+### Run all experiments
 Send Training Jobs using Sagemaker
 ```bash
 python sagemaker/run_sm.py
+```
+
+### Download all results
+Send Training Jobs using Sagemaker
+```bash
+cd sagemaker
+sh download_sm_res.sh
 ```
 
 ### Hyper-Parameter Optimization (HPO) with Syne-tune and Sagemaker

@@ -87,8 +87,9 @@ def main(argv):
   # SMI via MCMC
   send_experiment_to_sm(
       experiment_names=[
-          'all_items_mcmc',
+          '8_items_mcmc',
       ], eta_values=eta_values)
+
   # Variational SMI with single eta
   send_experiment_to_sm(
       experiment_names=[
@@ -98,6 +99,7 @@ def main(argv):
           'all_items_flow_nsf',
       ],
       eta_values=eta_values)
+
   # Variational SMI across multiple etas via Meta-posterior
   send_experiment_to_sm(experiment_names=[
       '8_items_flow_nsf_vmp_flow',
