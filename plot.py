@@ -482,7 +482,6 @@ def posterior_samples(
     summary_writer: Optional[SummaryWriter] = None,
     workdir_png: Optional[str] = None,
     use_gamma_anchor: bool = False,
-    posterior_sample_dict_2: Optional[Mapping[str, Any]] = None,
 ) -> None:
   """Visualise samples from the approximate posterior distribution."""
 
@@ -545,7 +544,7 @@ def posterior_samples(
     profiles_plot = range(
         min(num_loc_random_anchor_plot, batch['num_profiles_anchor']))
     for p in profiles_plot:
-      plot_name = f"anchor_profile_{p:03d}_random_loc"
+      plot_name = f"anchor_profile_{profiles_id[p]:03d}_random_loc"
       if suffix is not None:
         plot_name += ("_" + suffix)
       fig, _ = plot_profile_location(
@@ -578,7 +577,7 @@ def posterior_samples(
     profiles_plot = range(
         min(num_loc_floating_plot, batch['num_profiles_floating']))
     for p in profiles_plot:
-      plot_name = f"floating_profile_{p:03d}_loc"
+      plot_name = f"floating_profile_{profiles_id[batch['num_profiles_anchor']+p]:03d}_loc"
       if suffix is not None:
         plot_name += ("_" + suffix)
       fig, _ = plot_profile_location(
@@ -604,38 +603,6 @@ def posterior_samples(
           max_outputs=len(images),
       )
       del images
-
-    # For comparison of samples: MCMC vs Variational
-    if posterior_sample_dict_2 is not None:
-      images_2_samples = []
-      for p in profiles_plot:
-        plot_name = f"floating_profile_{p:03d}_loc_2_samples"
-        if suffix is not None:
-          plot_name += ("_" + suffix)
-        fig, _ = plot_profile_location(
-            posterior_sample_dict=posterior_sample_dict,
-            data=batch,
-            profiles_id=profiles_id,
-            profile=p,
-            loc_type='floating',
-            posterior_sample_dict_2=posterior_sample_dict_2,
-            kde_x_range=(0., 1.),
-            kde_y_range=(0., 0.8939394),
-        )
-        if workdir_png:
-          fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-        images_2_samples.append(plot_to_image(fig))
-      if summary_writer:
-        plot_name = "lalme_floating_profiles_locations_2_samples"
-        if suffix is not None:
-          plot_name += ("_" + suffix)
-        summary_writer.image(
-            tag=plot_name,
-            image=normalize_images(images_2_samples),
-            step=step,
-            max_outputs=len(images_2_samples),
-        )
-        del images_2_samples
 
   # Plot mixing weights
   if show_mixing_weights:
@@ -681,3 +648,58 @@ def posterior_samples(
       fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
     if summary_writer:
       summary_writer.image(plot_name, plot_to_image(fig), step=step)
+
+
+def posterior_samples_compare(
+    batch: Batch,
+    # prng_key: PRNGKey,
+    posterior_sample_dict_1: Mapping[str, Any],
+    posterior_sample_dict_2: Mapping[str, Any],
+    step: int,
+    profiles_id: List[str],
+    num_loc_floating_plot: Optional[int],
+    suffix: Optional[str] = None,
+    summary_writer: Optional[SummaryWriter] = None,
+    workdir_png: Optional[str] = None,
+):
+  """Plot comparison two sets of posterior samples.
+
+  This method is mainly intended to compare MCMC vs Variational.
+  The first dictionary of samples is plotted as a heatmap, the second dictionary
+  overplaced as level curves.
+  """
+
+  # Plot floating profiles locations
+  if num_loc_floating_plot is not None:
+    profiles_plot = range(
+        min(num_loc_floating_plot, batch['num_profiles_floating']))
+
+    images = []
+    for p in profiles_plot:
+      plot_name = f"floating_profile_{profiles_id[batch['num_profiles_anchor']+p]:03d}_loc_2_samples"
+      if suffix is not None:
+        plot_name += ("_" + suffix)
+      fig, _ = plot_profile_location(
+          posterior_sample_dict=posterior_sample_dict_1,
+          data=batch,
+          profiles_id=profiles_id,
+          profile=p,
+          loc_type='floating',
+          posterior_sample_dict_2=posterior_sample_dict_2,
+          kde_x_range=(0., 1.),
+          kde_y_range=(0., 0.8939394),
+      )
+      if workdir_png:
+        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      images.append(plot_to_image(fig))
+    if summary_writer:
+      plot_name = "floating_profiles_locations_2_samples"
+      if suffix is not None:
+        plot_name += ("_" + suffix)
+      summary_writer.image(
+          tag=plot_name,
+          image=normalize_images(images),
+          step=step,
+          max_outputs=len(images),
+      )
+      del images

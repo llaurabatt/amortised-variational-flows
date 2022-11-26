@@ -18,7 +18,7 @@ We include code to replicate all the examples from our article. By executing the
 We recommend to monitor training via tensorboard
 
 ```bash
-WORK_DIR=$HOME/spatial-smi/output
+WORK_DIR=$HOME/spatial-smi-output
 tensorboard --logdir=$WORK_DIR
 ```
 

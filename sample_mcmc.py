@@ -696,15 +696,6 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   # Save final MCMC samples
   np.savez_compressed(samples_path, posterior_sample_dict)
 
-  # Load samples to compare MCMC vs Variational posteriors
-  if config.path_variational_samples != '':
-    logging.info("Loading variational samples for comparison...")
-    posterior_sample_dict_variational = np.load(
-        str(config.path_variational_samples),
-        allow_pickle=True)['arr_0'].item()
-  else:
-    posterior_sample_dict_variational = None
-
   logging.info("Plotting results...")
 
   ### Plot SMI samples ###
@@ -729,8 +720,27 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       summary_writer=summary_writer,
       workdir_png=workdir,
       use_gamma_anchor=False,
-      posterior_sample_dict_2=posterior_sample_dict_variational,
   )
+
+  # Load samples to compare MCMC vs Variational posteriors
+  if (config.path_variational_samples != '') and (os.path.exists(
+      config.path_variational_samples)):
+    logging.info("Loading variational samples for comparison...")
+    posterior_sample_dict_variational = np.load(
+        str(config.path_variational_samples),
+        allow_pickle=True)['arr_0'].item()
+
+    plot.posterior_samples_compare(
+        batch=train_ds,
+        posterior_sample_dict_1=posterior_sample_dict_variational,
+        posterior_sample_dict_2=posterior_sample_dict,
+        step=0,
+        profiles_id=dataset['LP'],
+        num_loc_floating_plot=dataset['num_profiles_floating'],
+        suffix=f"eta_floating_{float(config.eta_profiles_floating):.3f}",
+        summary_writer=summary_writer,
+        workdir_png=workdir,
+    )
 
   # j = 1
   # fig, axs = plt.subplots(2, 1)
@@ -746,6 +756,8 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 # config.num_burnin_steps_stg1 = 5
 # config.num_samples_subchain_stg2 = 5
 # config.num_chunks_stg2 = 5
+# eta = 0.001
 # import pathlib
-# workdir = str(pathlib.Path.home() / 'spatial-smi-output/8_items/mcmc/eta_floating_0.001')
+# workdir = str(pathlib.Path.home() / f'spatial-smi-output/8_items/mcmc/eta_floating_{eta:.3f}')
+# config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output/8_items/nsf/eta_floating_{eta:.3f}/posterior_sample_dict.npz')
 # sample_and_evaluate(config, workdir)
