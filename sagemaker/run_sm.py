@@ -42,6 +42,7 @@ def _get_execution_role():
 def send_experiment_to_sm(
     experiment_names: List[str],
     eta_values: Optional[List[float]] = None,
+    hyperparameters_extra: Optional[dict] = None,
 ):
   """Send a list of experiments to be executed in AWS Sagemaker."""
 
@@ -54,12 +55,16 @@ def send_experiment_to_sm(
       hyperparameters = {
           'config': f'configs/{experiment_}.py',
           'workdir': '/opt/ml/model/',
+          'log_dir': '/opt/ml/model/log_dir/',
       }
       training_job_name = 'spatial-smi-' + str(experiment_)
 
       if eta_values is not None:
         training_job_name += f"-eta{eta_:.3f}"
         hyperparameters['config.eta_profiles_floating'] = eta_
+
+      if hyperparameters_extra is not None:
+        hyperparameters.update(hyperparameters_extra)
 
       training_job_name = training_job_name.replace('_', '-').replace('.', 'p')
       logging.info('\t %s', training_job_name)
@@ -88,7 +93,10 @@ def main(argv):
   send_experiment_to_sm(
       experiment_names=[
           '8_items_mcmc',
-      ], eta_values=eta_values)
+          # 'all_items_mcmc',
+      ],
+      eta_values=eta_values,
+  )
 
   # Variational SMI with single eta
   send_experiment_to_sm(
@@ -98,13 +106,27 @@ def main(argv):
           'all_items_flow_mf',
           'all_items_flow_nsf',
       ],
-      eta_values=eta_values)
+      eta_values=eta_values,
+  )
 
   # Variational SMI across multiple etas via Meta-posterior
   send_experiment_to_sm(experiment_names=[
       '8_items_flow_nsf_vmp_flow',
       'all_items_flow_nsf_vmp_flow',
   ])
+
+  # SMI via MCMC, measure timing
+  for num_profiles_floating_keep in [10, 20, 40, 80]:
+    for num_items_keep in [8, 16, 32, 64]:
+      send_experiment_to_sm(
+          experiment_names=[
+              'all_items_mcmc',
+          ],
+          hyperparameters_extra={
+              'config.num_profiles_floating_keep': num_profiles_floating_keep,
+              'config.num_items_keep': num_items_keep,
+          },
+      )
 
 
 if __name__ == "__main__":
