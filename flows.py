@@ -738,11 +738,11 @@ def split_flow_locations(
   samples_dict = {}
 
   # Two options to reshape the flow into paired locations
-  # The second is favoured because the coupling conditioner mask alternates 0,1,0,1,...
+  # Option 2 is favoured because the coupling conditioner mask alternates 0,1,0,1,...
 
-  # # This reshaping assumes that coordinates in the flow come (x1,...,xn,y1,...,yn)
+  # # 1) Assume that coordinates in the flow come (x1,...,xn,y1,...,yn)
   # locations = samples.reshape((num_samples, 2, num_profiles)).swapaxes(1, 2)
-  # This reshaping assumes that coordinates in the flow come (x1,y1,...,xn,yn)
+  # 2) Assume that coordinates in the flow come (x1,y1,...,xn,yn)
   locations = samples.reshape((num_samples, num_profiles, 2))
 
   samples_dict[name + ('_aux' if is_aux else '')] = locations
@@ -808,7 +808,15 @@ def concat_samples_locations(
   # Get sizes
   num_samples, num_profiles, _ = samples_dict[key].shape
 
-  samples = samples_dict[key].swapaxes(1, 2).reshape(num_samples, -1)
+  # Unfolding the location samples depend on the choice made in split_flow_locations
+  # Two options to reshape the flow into paired locations
+  # Option 2 is favoured because the coupling conditioner mask alternates 0,1,0,1,...
+
+  # # 1) Assume that coordinates in the flow come (x1,...,xn,y1,...,yn)
+  # samples = samples_dict[key].swapaxes(1, 2).reshape(num_samples, -1)
+  # 2) Assume that coordinates in the flow come (x1,y1,...,xn,yn)
+  samples = samples_dict[key].reshape(num_samples, -1)
+
   assert samples.shape == (num_samples, 2 * num_profiles)
 
   return samples

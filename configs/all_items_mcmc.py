@@ -13,9 +13,9 @@ def get_config():
   config.dataset_id = 'coarsen_all_items'
 
   # Data specification
-  config.num_profiles_anchor_keep = None
-  config.num_profiles_floating_keep = None
-  config.num_items_keep = None
+  config.num_profiles_anchor_keep = 120
+  config.num_profiles_floating_keep = 247
+  config.num_items_keep = 71
   config.remove_empty_forms = True
 
   # Model hyperparameters.
@@ -50,7 +50,7 @@ def get_config():
   config.num_samples_subchain_stg2 = 50
   config.num_chunks_stg2 = 10
 
-  config.mcmc_step_size = 0.01
+  config.mcmc_step_size = 0.001
 
   # SMI degree of influence of floating profiles
   config.eta_profiles_floating = 1.0
