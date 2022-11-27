@@ -1,1 +1,3 @@
 git+https://github.com/chriscarmona/modularbayes
+scikit-learn
+seaborn
