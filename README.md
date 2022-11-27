@@ -12,7 +12,7 @@ This repo contain the implementation of variational methods described in the art
 We include code to replicate all the examples from our article. By executing the `run.sh` bash script one can train all variational posteriors and produce visualizations and summaries (follow [*Installation instructions*](#installation-instructions) before running the script).
 
 ```bash
-./run.sh
+bash run.sh
 ```
 
 We recommend to monitor training via tensorboard

@@ -56,6 +56,7 @@ def send_experiment_to_sm(
           'config': f'configs/{experiment_}.py',
           'workdir': '/opt/ml/model/',
           'log_dir': '/opt/ml/model/log_dir/',
+          'alsologtostderr': '',
       }
       training_job_name = 'spatial-smi-' + str(experiment_)
 
@@ -69,17 +70,21 @@ def send_experiment_to_sm(
       training_job_name = training_job_name.replace('_', '-').replace('.', 'p')
       logging.info('\t %s', training_job_name)
 
+      # Source dir is the main repo directory
+      # source_dir = str(pathlib.Path.home() / 'spatial-smi')
+      source_dir = str(pathlib.Path(__file__).parent.parent)
+
       sm_estimator = JaxEstimator(
           image_uri=_get_ecr_image(),
           role=exec_role,
           instance_count=1,
           base_job_name=training_job_name,
-          source_dir=str(pathlib.Path(__file__).parent.parent),
+          source_dir=source_dir,
           entry_point='main.py',
           instance_type="ml.p3.2xlarge",
           hyperparameters=hyperparameters,
       )
-      sm_estimator.fit(wait=False,)
+      sm_estimator.fit(wait=False)
   logging.info('All training jobs send succesfully!')
 
 

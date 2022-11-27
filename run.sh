@@ -34,7 +34,7 @@ do
   python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_nsf.py \
                             --workdir $WORK_DIR/8_items/nsf/eta_floating_$eta \
                             --config.eta_profiles_floating $eta \
-                            --log_dir $WORK_DIR/8_items/nsf/eta_floating_$eta/log \
+                            --log_dir $WORK_DIR/8_items/nsf/eta_floating_$eta/log_dir \
                             --alsologtostderr
 done
 
@@ -65,7 +65,6 @@ do
   python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_mf.py \
                             --workdir $WORK_DIR/all_items/mf/eta_floating_$eta \
                             --config.eta_profiles_floating $eta \
-                            --config.dataset_id 'coarsen_all_items' \
                             --log_dir $WORK_DIR/all_items/mf/eta_floating_$eta/log_dir \
                             --alsologtostderr
 done
@@ -76,7 +75,6 @@ do
   python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf.py \
                             --workdir $WORK_DIR/all_items/nsf/eta_floating_$eta \
                             --config.eta_profiles_floating $eta \
-                            --config.dataset_id 'coarsen_all_items' \
                             --log_dir $WORK_DIR/all_items/nsf/eta_floating_$eta/log_dir \
                             --alsologtostderr
 done
