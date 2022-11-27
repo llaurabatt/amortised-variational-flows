@@ -8,36 +8,10 @@ import distrax
 from tensorflow_probability.substrates import jax as tfp
 
 import modularbayes
-from modularbayes._src.typing import Any, Array, Dict, Optional, Sequence, Tuple
+from modularbayes._src.typing import Any, Array, Dict, Sequence, Tuple
 
 tfb = tfp.bijectors
 tfd = tfp.distributions
-
-
-class MeanField(hk.Module):
-  """Auxiliary Module to assign loc and log_scale to a module.
-
-  These parameters could be directly defined within the mean_field() function,
-  but the module makes them discoverable by hk.experimental.tabulate"""
-
-  def __init__(
-      self,
-      flow_dim: int,
-      name: Optional[str] = 'mean_field',
-  ):
-    super().__init__(name=name)
-    self.flow_dim = flow_dim
-
-  def __call__(self,):
-    event_shape = (self.flow_dim,)
-
-    loc = hk.get_parameter(
-        "loc", event_shape, init=hk.initializers.VarianceScaling())
-    # log_scale = jnp.zeros(event_shape)
-    log_scale = hk.get_parameter(
-        "log_scale", event_shape, init=hk.initializers.VarianceScaling())
-
-    return loc, log_scale
 
 
 def mean_field_global_params(
@@ -73,8 +47,9 @@ def mean_field_global_params(
   flow_layers = []
 
   # Layer 1: Trainable Affine transformation
-  mf_module = MeanField(flow_dim=flow_dim, name='mf_global_params')
-  loc, log_scale = mf_module()
+  conditioner = modularbayes.MeanFieldConditioner(
+      flow_dim=flow_dim, name='mf_global_params')
+  loc, log_scale = conditioner()
   flow_layers.append(
       distrax.Block(distrax.ScalarAffine(shift=loc, log_scale=log_scale), 1))
 
@@ -131,8 +106,9 @@ def mean_field_locations(
 
   # Layer 1: Trainable Affine transformation
   # loc = jnp.zeros(event_shape)
-  mf_module = MeanField(flow_dim=flow_dim, name='mf_locations')
-  loc, log_scale = mf_module()
+  conditioner = modularbayes.MeanFieldConditioner(
+      flow_dim=flow_dim, name='mf_locations')
+  loc, log_scale = conditioner()
   flow_layers.append(
       distrax.Block(distrax.ScalarAffine(shift=loc, log_scale=log_scale), 1))
 
@@ -170,43 +146,6 @@ def mean_field_locations(
   q_distr = modularbayes.ConditionalTransformed(base_distribution, flow)
 
   return q_distr
-
-
-class CouplingConditioner(hk.Module):
-  """Auxiliary Module to assign loc and log_scale to a module.
-
-  These parameters could be directly defined within the mean_field() function,
-  but the module makes them discoverable by hk.experimental.tabulate"""
-
-  def __init__(
-      self,
-      output_dim: int,
-      hidden_sizes: Sequence[int],
-      num_bijector_params: int,
-      name: Optional[str] = 'nsf_conditioner',
-  ):
-    super().__init__(name=name)
-    self.output_dim = output_dim
-    self.hidden_sizes = hidden_sizes
-    self.num_bijector_params = num_bijector_params
-
-  def __call__(self, inputs):
-
-    out = hk.Flatten(preserve_dims=-1)(inputs)
-    out = hk.nets.MLP(self.hidden_sizes, activate_final=True)(out)
-
-    # We initialize this linear layer to zero so that the flow is initialized
-    # to the identity function.
-    out = hk.Linear(
-        self.output_dim * self.num_bijector_params,
-        w_init=jnp.zeros,
-        b_init=jnp.zeros)(
-            out)
-    out = hk.Reshape(
-        (self.output_dim,) + (self.num_bijector_params,), preserve_dims=-1)(
-            out)
-
-    return out
 
 
 def nsf_global_params(
@@ -267,8 +206,7 @@ def nsf_global_params(
     layer = distrax.MaskedCoupling(
         mask=mask,
         bijector=bijector_fn,
-        conditioner=CouplingConditioner(
-            # input_dim=math.prod(event_shape),
+        conditioner=modularbayes.MLPConditioner(
             output_dim=math.prod(event_shape),
             hidden_sizes=hidden_sizes,
             num_bijector_params=num_bijector_params,
@@ -366,7 +304,7 @@ def nsf_locations(
     layer = modularbayes.ConditionalMaskedCoupling(
         mask=mask,
         bijector=bijector_fn,
-        conditioner=CouplingConditioner(
+        conditioner=modularbayes.MLPConditioner(
             output_dim=math.prod(event_shape),
             hidden_sizes=hidden_sizes,
             num_bijector_params=num_bijector_params,
@@ -395,8 +333,8 @@ def nsf_locations(
         distrax.ScalarAffine(
             shift=loc_y_range[0], scale=loc_y_range[1] - loc_y_range[0]), 1)
 
-  block_bijectors = [loc_x_range_bijector, loc_y_range_bijector]
-  block_sizes = [num_profiles, num_profiles]
+  block_bijectors = [loc_x_range_bijector, loc_y_range_bijector] * num_profiles
+  block_sizes = [1, 1] * num_profiles
   flow_layers.append(
       modularbayes.Blockwise(
           bijectors=block_bijectors, block_sizes=block_sizes))
@@ -474,13 +412,13 @@ def meta_nsf_global_params(
     layer = modularbayes.EtaConditionalMaskedCoupling(
         mask=mask,
         bijector=bijector_fn,
-        conditioner_eta=CouplingConditioner(
+        conditioner_eta=modularbayes.MLPConditioner(
             output_dim=math.prod(event_shape),
             hidden_sizes=hidden_sizes_conditioner_eta,
             num_bijector_params=num_bijector_params,
             name='conditioner_eta_global_params',
         ),
-        conditioner=CouplingConditioner(
+        conditioner=modularbayes.MLPConditioner(
             output_dim=math.prod(event_shape),
             hidden_sizes=hidden_sizes_conditioner,
             num_bijector_params=num_bijector_params,
@@ -579,13 +517,13 @@ in the LALME model.
     layer = modularbayes.EtaConditionalMaskedCoupling(
         mask=mask,
         bijector=bijector_fn,
-        conditioner_eta=CouplingConditioner(
+        conditioner_eta=modularbayes.MLPConditioner(
             output_dim=math.prod(event_shape),
             hidden_sizes=hidden_sizes_conditioner_eta,
             num_bijector_params=num_bijector_params,
             name='conditioner_eta_locations',
         ),
-        conditioner=CouplingConditioner(
+        conditioner=modularbayes.MLPConditioner(
             output_dim=math.prod(event_shape),
             hidden_sizes=hidden_sizes_conditioner,
             num_bijector_params=num_bijector_params,
@@ -799,9 +737,13 @@ def split_flow_locations(
 
   samples_dict = {}
 
-  # This reshaping guarantees that all profiles x's go first
-  # (instead of (x,y) for each profile)
-  locations = samples.reshape((num_samples, 2, num_profiles)).swapaxes(1, 2)
+  # Two options to reshape the flow into paired locations
+  # The second is favoured because the coupling conditioner mask alternates 0,1,0,1,...
+
+  # # This reshaping assumes that coordinates in the flow come (x1,...,xn,y1,...,yn)
+  # locations = samples.reshape((num_samples, 2, num_profiles)).swapaxes(1, 2)
+  # This reshaping assumes that coordinates in the flow come (x1,y1,...,xn,yn)
+  locations = samples.reshape((num_samples, num_profiles, 2))
 
   samples_dict[name + ('_aux' if is_aux else '')] = locations
 
