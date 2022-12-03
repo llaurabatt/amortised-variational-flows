@@ -147,7 +147,7 @@ def process_lalme(
 
   ### Subsetting data ###
 
-  # Profiles subsetting #
+  ## Profiles subsetting ##
   num_profiles_anchor = data['num_profiles_anchor']
   num_profiles_floating = data['num_profiles_floating']
   num_profiles_anchor_keep = int(
@@ -184,7 +184,31 @@ def process_lalme(
     assert data['LP'].shape[0] == data['num_profiles']
     assert data['loc'].shape[0] == data['num_profiles']
 
-  # Items subsetting
+  ## Forms subsetting ##
+  if remove_empty_forms:
+    for i in range(data['num_items']):
+      # identifies forms that actually appear in profiles
+      form_used = np.where(data['y'][i].sum(axis=1) > 0)[0]
+      # Only keep those form with at least one observation
+      data['num_forms_tuple'] = data['num_forms_tuple'][:i] + (
+          len(form_used),) + data['num_forms_tuple'][(i + 1):]
+      data['forms'][i] = data['forms'][i][form_used]
+      data['y'][i] = data['y'][i][form_used, :]
+
+  ## Items subsetting ##
+
+  # Keep only items with at least two forms
+  # (otherwise, the model cannot be trained because softmax over fields is undefined)
+  items_ok = np.array([f_i >= 2 for f_i in data['num_forms_tuple']])
+  index_items_keep = np.where(items_ok)[0]
+  data['items'] = data['items'][index_items_keep]
+  data['num_items'] = np.sum(items_ok)
+  data['num_forms_tuple'] = tuple(
+      data['num_forms_tuple'][i] for i in index_items_keep)
+  data['forms'] = [data['forms'][i] for i in index_items_keep]
+  data['y'] = [data['y'][i] for i in index_items_keep]
+
+  # Keep a defined subset of items
   num_items = data['num_items']
   num_items_keep = (
       int(num_items_keep) if num_items_keep is not None else num_items)
@@ -198,17 +222,5 @@ def process_lalme(
         data['num_forms_tuple'][i] for i in index_items_keep)
     data['forms'] = [data['forms'][i] for i in index_items_keep]
     data['y'] = [data['y'][i] for i in index_items_keep]
-
-  # Forms subsetting
-
-  if remove_empty_forms:
-    for i in range(data['num_items']):
-      # identifies forms that actually appear in profiles
-      form_used = np.where(data['y'][i].sum(axis=1) > 0)[0]
-      # Only keep those in the data
-      data['num_forms_tuple'] = data['num_forms_tuple'][:i] + (
-          len(form_used),) + data['num_forms_tuple'][(i + 1):]
-      data['forms'][i] = data['forms'][i][form_used]
-      data['y'][i] = data['y'][i][form_used, :]
 
   return data
