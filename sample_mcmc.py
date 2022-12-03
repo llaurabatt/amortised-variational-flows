@@ -43,7 +43,7 @@ np.set_printoptions(suppress=True, precision=4)
 
 def split_samples(
     samples: Array,
-    num_forms_tuple: Tuple[int],
+    num_forms_tuple: Tuple[int, ...],
     num_basis_gps: int,
     num_inducing_points: int,
     num_profiles_floating: int,
@@ -117,7 +117,7 @@ def concat_samples(samples_dict: Dict[str, Any]) -> Array:
 
 
 def get_posterior_sample_init_stg1(
-    num_forms_tuple: Tuple[int],
+    num_forms_tuple: Tuple[int, ...],
     num_basis_gps: int,
     num_inducing_points: int,
     num_profiles_floating: int,
@@ -156,12 +156,12 @@ def get_posterior_sample_init_stg1(
 
 
 def get_kernel_bijector_stg1(
-    num_forms_tuple: int,
+    num_forms_tuple: Tuple[int, ...],
     num_profiles_floating: int,
     num_basis_gps: int,
-    inducing_grid_shape: Tuple[int],
-    loc_x_range: Tuple[float],
-    loc_y_range: Tuple[float],
+    inducing_grid_shape: Tuple[int, int],
+    loc_x_range: Tuple[float, float],
+    loc_y_range: Tuple[float, float],
 ):
   """Define kernel bijector for stage 1.
 
@@ -227,8 +227,9 @@ def get_kernel_bijector_stg1(
     # TODO(chrcarm): enable shift
     # loc_y_range_bijector = tfp.Shift(shift=loc_y_range[0])
 
-  block_bijectors_loc_floating = [loc_x_range_bijector, loc_y_range_bijector]
-  block_sizes_loc_floating = [num_profiles_floating, num_profiles_floating]
+  block_bijectors_loc_floating = [loc_x_range_bijector, loc_y_range_bijector
+                                 ] * num_profiles_floating
+  block_sizes_loc_floating = [1, 1] * num_profiles_floating
   bijector_loc_floating_layers.append(
       tfb.Blockwise(
           bijectors=block_bijectors_loc_floating,
@@ -245,8 +246,8 @@ def get_kernel_bijector_stg1(
 
 def get_kernel_bijector_stg2(
     num_profiles_floating: int,
-    loc_x_range: Tuple[float],
-    loc_y_range: Tuple[float],
+    loc_x_range: Tuple[float, float],
+    loc_y_range: Tuple[float, float],
     **kwargs,
 ):
   """Define kernel bijector for stage 2."""
@@ -286,12 +287,12 @@ def log_prob_fn(
     batch: Batch,
     prng_key: PRNGKey,
     posterior_sample_raw_1d: Array,
-    prior_hparams: Mapping[str, Any],
+    prior_hparams: Dict[str, Any],
     kernel_name: str,
-    kernel_kwargs: Mapping[str, Any],
+    kernel_kwargs: Dict[str, Any],
     num_samples_gamma_profiles: int,
     smi_eta_profiles: Optional[Array],
-    num_forms_tuple: int,
+    num_forms_tuple: Tuple[int, ...],
     num_basis_gps: int,
     num_inducing_points: int,
     num_profiles_floating: int,
@@ -537,13 +538,13 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       logging.info("\t sampling stage 2...")
 
       # Define parameters split for SMI
-      shared_params_names = [
-          'gamma_inducing',
-          'mixing_weights_list',
-          'mixing_offset_list',
-          'mu',
-          'zeta',
-      ]
+      # shared_params_names = [
+      #     'gamma_inducing',
+      #     'mixing_weights_list',
+      #     'mixing_offset_list',
+      #     'mu',
+      #     'zeta',
+      # ]
       refit_params_names = [
           'loc_floating',
       ]
@@ -756,8 +757,12 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 # config.num_burnin_steps_stg1 = 5
 # config.num_samples_subchain_stg2 = 5
 # config.num_chunks_stg2 = 5
-# eta = 0.001
+# config.mcmc_step_size = 0.001
+# eta = 1.000
+# config.num_items_keep = 20
+# config.num_profiles_floating_keep = 20
+# config.eta_profiles_floating = eta
 # import pathlib
-# workdir = str(pathlib.Path.home() / f'spatial-smi-output/8_items/mcmc/eta_floating_{eta:.3f}')
-# config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output/8_items/nsf/eta_floating_{eta:.3f}/posterior_sample_dict.npz')
+# workdir = str(pathlib.Path.home() / f'spatial-smi-output-exp/all_items/mcmc/eta_floating_{eta:.3f}')
+# config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output-exp/all_items/nsf/eta_floating_{eta:.3f}/posterior_sample_dict.npz')
 # sample_and_evaluate(config, workdir)

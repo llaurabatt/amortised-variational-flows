@@ -15,7 +15,7 @@ tfd = tfp.distributions
 
 
 def mean_field_global_params(
-    num_forms_tuple: Tuple,
+    num_forms_tuple: Tuple[int, ...],
     num_basis_gps: int,
     num_inducing_points: int,
     **_,
@@ -90,8 +90,8 @@ def mean_field_global_params(
 
 def mean_field_locations(
     num_profiles: int,
-    loc_x_range: Tuple[float],
-    loc_y_range: Tuple[float],
+    loc_x_range: Tuple[float, float],
+    loc_y_range: Tuple[float, float],
     **_,
 ) -> modularbayes.ConditionalTransformed:
   """Mean Field Flow for the unknown locations of profiles in the LALME model.
@@ -149,7 +149,7 @@ def mean_field_locations(
 
 
 def nsf_global_params(
-    num_forms_tuple: Tuple,
+    num_forms_tuple: Tuple[int, ...],
     num_basis_gps: int,
     num_inducing_points: int,
     num_layers: int,
@@ -260,8 +260,8 @@ def nsf_locations(
     num_layers: int,
     hidden_sizes: Sequence[int],
     num_bins: int,
-    loc_x_range: Tuple[float],
-    loc_y_range: Tuple[float],
+    loc_x_range: Tuple[float, float],
+    loc_y_range: Tuple[float, float],
     **_,
 ) -> modularbayes.ConditionalTransformed:
   """Creates the Rational Quadratic Flow for the unknown locations of profiles
@@ -354,7 +354,7 @@ def nsf_locations(
 
 
 def meta_nsf_global_params(
-    num_forms_tuple: Tuple,
+    num_forms_tuple: Tuple[int, ...],
     num_basis_gps: int,
     num_inducing_points: int,
     num_layers: int,
@@ -473,8 +473,8 @@ def meta_nsf_locations(
     hidden_sizes_conditioner: Sequence[int],
     hidden_sizes_conditioner_eta: Sequence[int],
     num_bins: int,
-    loc_x_range: Tuple[float],
-    loc_y_range: Tuple[float],
+    loc_x_range: Tuple[float, float],
+    loc_y_range: Tuple[float, float],
     **_,
 ) -> modularbayes.ConditionalTransformed:
   """Creates the Rational Quadratic Flow for the unknown locations of profiles
@@ -569,7 +569,7 @@ in the LALME model.
 
 
 def get_global_params_dim(
-    num_forms_tuple: Tuple[int],
+    num_forms_tuple: Tuple[int, ...],
     num_basis_gps: int,
     num_inducing_points: int,
 ):
@@ -591,7 +591,7 @@ def get_global_params_dim(
 
 def split_flow_global_params(
     samples: Array,
-    num_forms_tuple: Tuple[int],
+    num_forms_tuple: Tuple[int, ...],
     num_basis_gps: int,
     num_inducing_points: int,
     **_,
