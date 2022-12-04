@@ -1,3 +1,5 @@
+arviz
+git+https://github.com/blackjax-devs/blackjax
 modularbayes
 scikit-learn
 seaborn

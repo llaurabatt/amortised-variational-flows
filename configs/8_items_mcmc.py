@@ -49,8 +49,10 @@ def get_config():
   config.num_burnin_steps_stg1 = 1_000
   config.num_samples_subchain_stg2 = 50
   config.num_chunks_stg2 = 10
+  config.num_steps_call_warmup_stg1 = 100
 
   config.mcmc_step_size = 0.01
+  config.nun_chains = 4
 
   # SMI degree of influence of floating profiles
   config.eta_profiles_floating = 1.0

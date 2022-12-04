@@ -568,11 +568,33 @@ in the LALME model.
   return modularbayes.ConditionalTransformed(base_distribution, flow)
 
 
+def get_global_params_shapes(
+    num_forms_tuple: Tuple[int, ...],
+    num_basis_gps: int,
+    num_inducing_points: int,
+) -> Dict[str, Any]:
+  """Computes shapes of global parameters as expected by the model."""
+
+  num_items = len(num_forms_tuple)
+
+  params_shapes = {
+      'gamma_inducing': (num_basis_gps, num_inducing_points),
+      'mixing_weights_list': [
+          (num_basis_gps, num_forms_i) for num_forms_i in num_forms_tuple
+      ],
+      'mixing_offset_list': [(num_forms_i,) for num_forms_i in num_forms_tuple],
+      'mu': (num_items,),
+      'zeta': (num_items,),
+  }
+
+  return params_shapes
+
+
 def get_global_params_dim(
     num_forms_tuple: Tuple[int, ...],
     num_basis_gps: int,
     num_inducing_points: int,
-):
+) -> int:
   """Computes dimension of vector with global parameters."""
   num_items = len(num_forms_tuple)
   gamma_inducing_dim = num_basis_gps * num_inducing_points

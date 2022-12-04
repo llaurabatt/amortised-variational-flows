@@ -27,10 +27,10 @@ def issymmetric(a, rtol=1e-05, atol=1e-08):
   return jnp.allclose(a, a.T, rtol=rtol, atol=atol)
 
 
-def force_symmetric(A, lower=True):
+def force_symmetric(x, lower=True):
   """Create a symmetric matrix by copying lower/upper diagonal"""
-  A_tri = jnp.tril(A) if lower else jnp.triu(A)
-  return A_tri + A_tri.T - jnp.diag(jnp.diag(A_tri))
+  x_tri = jnp.tril(x) if lower else jnp.triu(x)
+  return x_tri + x_tri.T - jnp.diag(jnp.diag(x_tri))
 
 
 def log1mexpm(x):
