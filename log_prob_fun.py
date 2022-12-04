@@ -8,10 +8,10 @@ from tensorflow_probability.substrates import jax as tfp
 
 import haiku as hk
 
-import modularbayes
-from modularbayes import log1mexpm, force_symmetric
 from modularbayes._src.typing import (Any, Array, Batch, Dict, List, Optional,
                                       PRNGKey, SmiEta)
+
+from misc import log1mexpm, force_symmetric
 
 tfd = tfp.distributions
 kernels = tfp.math.psd_kernels

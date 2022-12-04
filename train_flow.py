@@ -19,8 +19,8 @@ import optax
 from tensorflow_probability.substrates import jax as tfp
 
 from modularbayes._src.utils.training import TrainState
-from modularbayes import (flatten_dict, issymmetric, initial_state_ckpt,
-                          update_states, save_checkpoint)
+from modularbayes import (flatten_dict, initial_state_ckpt, update_states,
+                          save_checkpoint)
 from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
                                       IntLike, List, Optional, PRNGKey,
                                       Sequence, SmiEta, SummaryWriter, Tuple,
@@ -30,6 +30,7 @@ import data
 import flows
 import log_prob_fun
 import plot
+from misc import issymmetric
 
 kernels = tfp.math.psd_kernels
 

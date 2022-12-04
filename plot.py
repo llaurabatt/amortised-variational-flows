@@ -17,10 +17,12 @@ from tensorflow_probability.substrates import jax as tfp
 
 import log_prob_fun
 
-from modularbayes import log1mexpm, plot_to_image, normalize_images
+from modularbayes import plot_to_image, normalize_images
 from modularbayes._src.typing import (Any, Array, Batch, Dict, Kernel, List,
                                       Mapping, Optional, PRNGKey, SummaryWriter,
                                       Tuple)
+
+from misc import log1mexpm
 
 kernels = tfp.math.psd_kernels
 
