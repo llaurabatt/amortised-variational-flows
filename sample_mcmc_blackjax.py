@@ -59,6 +59,172 @@ jax.config.update('jax_default_matmul_precision', 'float32')
 np.set_printoptions(suppress=True, precision=4)
 
 
+def call_warmup(
+    prng_key: PRNGKey,
+    logprob_fn: Callable,
+    model_params: PyTree,
+    num_steps: int,
+) -> Tuple:
+  warmup = blackjax.window_adaptation(
+      algorithm=blackjax.nuts,
+      logprob_fn=logprob_fn,
+  )
+  initial_states, _, hmc_params = warmup.run(
+      rng_key=prng_key,
+      position=model_params,
+      num_steps=num_steps,
+  )
+  return initial_states, hmc_params
+
+
+def inference_loop_one_chain(
+    prng_key: PRNGKey,
+    initial_state: HMCState,
+    hmc_params: Dict[str, Array],
+    logprob_fn: Callable,
+    num_samples: int,
+) -> Tuple[HMCState, NUTSInfo]:
+
+  def one_step(state, rng_key):
+    kernel_fn = lambda state_, key_, hmc_param_: blackjax.nuts.kernel()(
+        rng_key=key_,
+        state=state_,
+        logprob_fn=logprob_fn,
+        step_size=hmc_param_['step_size'],
+        inverse_mass_matrix=hmc_param_['inverse_mass_matrix'],
+    )
+    state_new, info_new = kernel_fn(state, rng_key, hmc_params)
+    return state_new, (state_new, info_new)
+
+  prng_keys = jax.random.split(prng_key, num_samples)
+  _, (states, infos) = jax.lax.scan(one_step, initial_state, prng_keys)
+
+  return states, infos
+
+
+def inference_loop_multiple_chains(
+    prng_key: PRNGKey,
+    initial_states: HMCState,
+    hmc_params: Dict[str, Array],
+    logprob_fn: Callable,
+    num_samples: int,
+    num_chains: int,
+) -> Tuple[HMCState, NUTSInfo]:
+
+  def one_step(states, rng_key):
+    rng_keys = jax.random.split(rng_key, num_chains)
+    kernel_fn_multichain = jax.vmap(
+        lambda state_, key_, hmc_param_: blackjax.nuts.kernel()(
+            rng_key=key_,
+            state=state_,
+            logprob_fn=logprob_fn,
+            step_size=hmc_param_['step_size'],
+            inverse_mass_matrix=hmc_param_['inverse_mass_matrix'],
+        ))
+    states_new, infos_new = kernel_fn_multichain(states, rng_keys, hmc_params)
+    return states_new, (states_new, infos_new)
+
+  prng_keys = jax.random.split(prng_key, num_samples)
+  _, (states, infos) = jax.lax.scan(one_step, initial_states, prng_keys)
+
+  return states, infos
+
+
+def inference_loop_stg2(
+    prng_key: PRNGKey,
+    initial_states: HMCState,
+    hmc_params: Dict[str, Array],
+    logprob_fn: Callable,
+    model_params_global_unb_samples: ModelParamsGlobal,
+    num_samples_stg1: int,
+    num_samples_stg2: int,
+    num_chains: int,
+):
+
+  # We only need to keep the last sample of the subchains
+  # so instead of using jax.lax.scan, we use jax.lax.fori_loop
+  # This allow us to save memory
+  def one_step_fori(_, states_infos_key):
+    states, _, key_ = states_infos_key
+
+    kernel_fn_multichain = jax.vmap(
+        lambda state, cond, key, hmc_param: blackjax.nuts.kernel()(
+            rng_key=key,
+            state=state,
+            logprob_fn=lambda param_: logprob_fn(
+                conditioning=cond,
+                model_params=param_,
+            ),
+            step_size=hmc_param['step_size'],
+            inverse_mass_matrix=hmc_param['inverse_mass_matrix'],
+        ))
+    kernel_fn_multicond_multichain = jax.vmap(
+        lambda states_, conds_, keys_: kernel_fn_multichain(
+            states_,
+            conds_,
+            keys_,
+            hmc_params,
+        ))
+
+    key_out, key_aux = jax.random.split(key_)
+    keys = jax.random.split(key_aux, num_samples_stg1 * num_chains).reshape(
+        (num_samples_stg1, num_chains, 2))
+    states_new, infos_new = kernel_fn_multicond_multichain(
+        states,
+        model_params_global_unb_samples,
+        keys,
+    )
+
+    return states_new, infos_new, key_out
+
+  initial_states_infos_key = one_step_fori(None,
+                                           (initial_states, None, prng_key))
+
+  states, infos, _ = jax.lax.fori_loop(0, num_samples_stg2, one_step_fori,
+                                       initial_states_infos_key)
+
+  return states, infos
+
+
+def arviz_trace_from_samples(
+    position: PyTree,
+    burn_in: int = 0,
+    info: Optional[NUTSInfo] = None,
+):
+  position = position._asdict()
+
+  samples = {}
+  for key, param_ in position.items():
+    # k='mu'; v_ = position[k]
+    param_list_ = isinstance(param_, List)
+    for i in range(1 if not param_list_ else len(param_)):
+      if param_list_:
+        param = param_[i]
+      else:
+        param = param_
+
+      ndims = len(param.shape)
+      if ndims >= 2:
+        samples[key + (f"_{str(i)}" if param_list_ else "")] = jnp.swapaxes(
+            param, 0, 1)[:, burn_in:]  # swap n_samples and n_chains
+        if info:
+          divergence = jnp.swapaxes(info.is_divergent[burn_in:], 0, 1)
+
+      if ndims == 1:
+        samples[key] = param[burn_in:]
+        if info:
+          divergence = info.is_divergent[burn_in:]
+
+  trace_posterior = az.convert_to_inference_data(samples)
+
+  if info:
+    trace_sample_stats = az.convert_to_inference_data({"diverging": divergence},
+                                                      group="sample_stats")
+    trace = az.concat(trace_posterior, trace_sample_stats)
+
+  return trace
+
+
 def init_param_fn_stg1(
     prng_key: PRNGKey,
     num_forms_tuple: Tuple[int, ...],
@@ -68,7 +234,8 @@ def init_param_fn_stg1(
 ):
   """Get dictionary with parametes to initialize MCMC.
 
-  The order of the parameters
+  This function produce unbounded values, i.e. before bijectors to map into the
+  domain of the model parameters.
   """
 
   prng_seq = hk.PRNGSequence(prng_key)
@@ -98,7 +265,7 @@ def init_param_fn_stg1(
 def transform_model_params(
     model_params_global_unb: ModelParamsGlobal,
     model_params_locations_unb: ModelParamsLocations,
-):
+) -> Tuple[ModelParamsGlobal, ModelParamsLocations, Array]:
   """Apply transformations to map into model parameters domain."""
 
   bijectors_ = {
@@ -210,82 +377,6 @@ def log_prob_lalme(
   return log_prob + log_det_jacob_transformed
 
 
-def call_warmup(
-    prng_key: PRNGKey,
-    logprob_fn: Callable,
-    model_params: PyTree,
-    num_steps: int,
-) -> Tuple:
-  warmup = blackjax.window_adaptation(
-      algorithm=blackjax.nuts,
-      logprob_fn=logprob_fn,
-  )
-  initial_states, _, tuned_params = warmup.run(
-      rng_key=prng_key,
-      position=model_params,
-      num_steps=num_steps,
-  )
-  return initial_states, tuned_params
-
-
-def inference_loop_multiple_chains(
-    prng_key: PRNGKey,
-    initial_states: HMCState,
-    tuned_params: Dict[str, Array],
-    logprob_fn: Callable,
-    num_samples: int,
-    num_chains: int,
-) -> Tuple[HMCState, NUTSInfo]:
-  step_fn = blackjax.nuts.kernel()
-
-  def kernel(key, state, **params):
-    return step_fn(key, state, logprob_fn, **params)
-
-  def one_step(states, rng_key):
-    keys = jax.random.split(rng_key, num_chains)
-    states, infos = jax.vmap(kernel)(keys, states, **tuned_params)
-    return states, (states, infos)
-
-  prng_keys = jax.random.split(prng_key, num_samples)
-  _, (states, infos) = jax.lax.scan(one_step, initial_states, prng_keys)
-
-  return states, infos
-
-
-def arviz_trace_from_samples(
-    position: PyTree,
-    info: NUTSInfo,
-    burn_in: int = 0,
-):
-  position = position._asdict()
-
-  samples = {}
-  for key, param_ in position.items():
-    # k='mu'; v_ = position[k]
-    param_list_ = isinstance(param_, List)
-    for i in range(1 if not param_list_ else len(param_)):
-      if param_list_:
-        param = param_[i]
-      else:
-        param = param_
-
-      ndims = len(param.shape)
-      if ndims >= 2:
-        samples[key + (f"_{str(i)}" if param_list_ else "")] = jnp.swapaxes(
-            param, 0, 1)[:, burn_in:]  # swap n_samples and n_chains
-        divergence = jnp.swapaxes(info.is_divergent[burn_in:], 0, 1)
-
-      if ndims == 1:
-        divergence = info.is_divergent[burn_in:]
-        samples[key] = param[burn_in:]
-
-  trace_posterior = az.convert_to_inference_data(samples)
-  trace_sample_stats = az.convert_to_inference_data({"diverging": divergence},
-                                                    group="sample_stats")
-  trace = az.concat(trace_posterior, trace_sample_stats)
-  return trace
-
-
 def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   """Sample and evaluate the random effects model."""
 
@@ -352,9 +443,9 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   if os.path.exists(samples_path_stg1):
     logging.info("\t Loading samples for stage 1...")
     aux_ = np.load(str(samples_path_stg1), allow_pickle=True)['arr_0']
-    model_params_stg1_unb = ModelParamsStg1(*aux_)
+    model_params_stg1_unb_samples = ModelParamsStg1(*aux_)
   else:
-    logging.info("\t sampling stage 1...")
+    logging.info("\t Stage 1...")
 
     # Define target log_prob as a function of the model parameters only
     prng_key_gamma = next(prng_seq)
@@ -388,19 +479,40 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       )
       return log_prob
 
-    # Sanity check
-    model_params_ = init_param_fn_stg1(
-        prng_key=next(prng_seq),
-        num_forms_tuple=config.num_forms_tuple,
-        num_basis_gps=config.model_hparams.num_basis_gps,
-        num_inducing_points=config.num_inducing_points,
-        num_profiles_floating=config.num_profiles_floating,
-    )
-    log_prob_fn_stg1(model_params_)
+    # Sanity check stg1
+    # Sample one chain
+    sanity_check_stg1 = False
+    if sanity_check_stg1:
+      logging.info("\t sanity check stg 1...")
+      model_params_stg1_unb_init_ = init_param_fn_stg1(
+          prng_key=next(prng_seq),
+          num_forms_tuple=config.num_forms_tuple,
+          num_basis_gps=config.model_hparams.num_basis_gps,
+          num_inducing_points=config.num_inducing_points,
+          num_profiles_floating=config.num_profiles_floating,
+      )
+      log_prob_fn_stg1(model_params_stg1_unb_init_)
 
-    # initilize model parameters
-    # These are unbounded values, i.e. before bijectors
-    # (vmap to initialize over multiple MCMC chains)
+      initial_state_, hmc_params_ = call_warmup(
+          prng_key=next(prng_seq),
+          logprob_fn=log_prob_fn_stg1,
+          model_params=model_params_stg1_unb_init_,
+          num_steps=config.num_steps_call_warmup,
+      )
+
+      # 5 NUTS samples on a single chain
+      inference_loop_one_chain(
+          prng_key=next(prng_seq),
+          initial_state=initial_state_,
+          hmc_params=hmc_params_,
+          logprob_fn=log_prob_fn_stg1,
+          num_samples=5,
+      )
+      del model_params_stg1_unb_init_, initial_state_, hmc_params_
+      logging.info("\t Sanity check stg1 finished succesfully.")
+
+    # initial positions of model parameters
+    # (vmap to produce one for each MCMC chains)
     model_params_stg1_unb_init = jax.vmap(lambda prng_key: init_param_fn_stg1(
         prng_key=prng_key,
         num_forms_tuple=config.num_forms_tuple,
@@ -408,88 +520,215 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         num_inducing_points=config.num_inducing_points,
         num_profiles_floating=config.num_profiles_floating,
     ))(
-        jax.random.split(next(prng_seq), config.nun_chains))
+        jax.random.split(next(prng_seq), config.num_chains))
 
-    initial_states, tuned_params = jax.vmap(
+    # Tune HMC parameters automatically
+    logging.info('\t tuning HMC parameters stg1...')
+    initial_states_stg1, hmc_params_stg1 = jax.vmap(
         lambda prng_key, model_params: call_warmup(
             prng_key=prng_key,
             logprob_fn=log_prob_fn_stg1,
             model_params=model_params,
-            num_steps=config.num_steps_call_warmup_stg1,
+            num_steps=config.num_steps_call_warmup,
         ))(
-            jax.random.split(next(prng_seq), config.nun_chains),
+            jax.random.split(next(prng_seq), config.num_chains),
             model_params_stg1_unb_init,
         )
 
-    states, infos = inference_loop_multiple_chains(
+    # Sampling loop stage 1
+    logging.info('\t sampling stage 1...')
+    states_stg1, infos_stg1 = inference_loop_multiple_chains(
         prng_key=next(prng_seq),
-        initial_states=initial_states,
-        tuned_params=tuned_params,
+        initial_states=initial_states_stg1,
+        hmc_params=hmc_params_stg1,
         logprob_fn=log_prob_fn_stg1,
         num_samples=config.num_samples,
-        num_chains=config.nun_chains,
+        num_chains=config.num_chains,
     )
 
-    model_params_stg1_unb = states.position
+    model_params_stg1_unb_samples = states_stg1.position
 
     # Save MCMC samples from stage 1
-    np.savez_compressed(samples_path_stg1, model_params_stg1_unb)
+    np.savez_compressed(samples_path_stg1, model_params_stg1_unb_samples)
 
-    logging.info("posterior means mu %s",
-                 str(model_params_stg1_unb.mu.mean(axis=[0, 1])))
+    logging.info("\t\t posterior means mu %s",
+                 str(model_params_stg1_unb_samples.mu.mean(axis=[0, 1])))
 
     times_data['end_mcmc_stg_1'] = time.perf_counter()
 
-  model_params_global_unb = ModelParamsGlobal(
-      gamma_inducing=model_params_stg1_unb.gamma_inducing,
-      mixing_weights_list=model_params_stg1_unb.mixing_weights_list,
-      mixing_offset_list=model_params_stg1_unb.mixing_offset_list,
-      mu=model_params_stg1_unb.mu,
-      zeta=model_params_stg1_unb.zeta,
+  model_params_global_unb_samples = ModelParamsGlobal(
+      gamma_inducing=model_params_stg1_unb_samples.gamma_inducing,
+      mixing_weights_list=model_params_stg1_unb_samples.mixing_weights_list,
+      mixing_offset_list=model_params_stg1_unb_samples.mixing_offset_list,
+      mu=model_params_stg1_unb_samples.mu,
+      zeta=model_params_stg1_unb_samples.zeta,
   )
-
-  # Transform unbounded parameters to model parameters
-  (model_params_global, model_params_locations_stg1,
-   _) = transform_model_params(
-       model_params_global_unb=model_params_global_unb,
-       model_params_locations_unb=ModelParamsLocations(
-           loc_floating=None,
-           loc_floating_aux=model_params_stg1_unb.loc_floating_aux,
-           loc_random_anchor=None,
-       ),
-   )
-
-  # # make arviz trace from states
-  # trace = arviz_trace_from_samples(
-  #     position=model_params_global,
-  #     info=infos,
-  #     burn_in=config.num_burnin_steps_stg1,
-  # )
-  # summ_df = az.summary(trace)
-  # summ_df
-
-  # az.plot_trace(trace)
-  # plt.tight_layout()
 
   ### Sample Second Stage ###
 
   if os.path.exists(samples_path_stg2):
     logging.info("\t Loading samples for stage 2...")
+    aux_ = np.load(str(samples_path_stg2), allow_pickle=True)['arr_0']
+    model_params_stg2_unb_samples = ModelParamsStg1(*aux_)
 
-    posterior_sample_dict = np.load(
-        str(samples_path_stg2), allow_pickle=True)['arr_0'].item()
   else:
 
-    if smi_eta is not None:
+    logging.info("\t Stage 2...")
 
-      logging.info("\t sampling stage 2...")
+    @jax.jit
+    def log_prob_fn_stg2(model_params, conditioning):
+      log_prob = log_prob_lalme(
+          batch=train_ds,
+          prng_key=prng_key_gamma,
+          model_params_global_unb=conditioning,
+          model_params_locations_unb=model_params,
+          prior_hparams=config.prior_hparams,
+          kernel_name=config.kernel_name,
+          kernel_kwargs=config.kernel_kwargs,
+          num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+          smi_eta_profiles=None,
+          gp_jitter=config.gp_jitter,
+      )
+      return log_prob
+
+    # Sanity check stg2
+    # Sample one sub-chain
+    sanity_check_stg2 = False
+    if sanity_check_stg2:
+      logging.info("\t sanity check stg 2...")
+
+      # Each subchain requires:
+      #   1) Conditioning fixed values of the global parameters, and
+      #   2) an initial state for the floating locations sampling
+      model_params_global_unb_cond_ = jax.tree_map(
+          lambda x: x[0, 0], model_params_global_unb_samples)
+      model_params_stg2_unb_init_ = ModelParamsLocations(
+          loc_floating=model_params_stg1_unb_samples.loc_floating_aux[0,
+                                                                      0, :, :],
+          loc_floating_aux=None,
+          loc_random_anchor=None,
+      )
+      initial_state_stg2_, hmc_params_stg2_ = call_warmup(
+          prng_key=next(prng_seq),
+          logprob_fn=lambda param_: log_prob_fn_stg2(
+              model_params=param_,
+              conditioning=model_params_global_unb_cond_,
+          ),
+          model_params=model_params_stg2_unb_init_,
+          num_steps=10,
+      )
+
+      # The target logprob fixes the global parameters
+      def one_step_(state, rng_key):
+        logprob_fn_cond = lambda param_: log_prob_fn_stg2(
+            model_params=param_,
+            conditioning=model_params_global_unb_cond_,
+        )
+        state_new, info_new = blackjax.nuts.kernel()(
+            rng_key=rng_key,
+            state=state,
+            logprob_fn=logprob_fn_cond,
+            step_size=hmc_params_stg2_['step_size'],
+            inverse_mass_matrix=hmc_params_stg2_['inverse_mass_matrix'],
+        )
+        return state_new, (state_new, info_new)
+
+      one_step_(initial_state_stg2_, next(prng_seq))
+
+      del (model_params_global_unb_cond_, model_params_stg2_unb_init_,
+           initial_state_stg2_, hmc_params_stg2_, one_step_)
+
+      logging.info("\t sanity check stg2 finished succesfully.")
+
+    # Tune HMC parameters automatically
+    logging.info('\t tuning HMC parameters stg2...')
+
+    # We tune the HMC for one sample in stage 1
+    # tune HMC parameters, vmap across chains
+    initial_states_stg2, hmc_params_stg2 = jax.vmap(
+        lambda key, param, cond: call_warmup(
+            prng_key=key,
+            logprob_fn=lambda param_: log_prob_fn_stg2(
+                conditioning=cond,
+                model_params=param_,
+            ),
+            model_params=param,
+            num_steps=config.num_steps_call_warmup,
+        ))(
+            jax.random.split(next(prng_seq), config.num_chains),
+            ModelParamsLocations(
+                loc_floating=model_params_stg1_unb_samples.loc_floating_aux[0],
+                loc_floating_aux=None,
+                loc_random_anchor=None,
+            ),
+            jax.tree_map(lambda x: x[0], model_params_global_unb_samples),
+        )
+    # Copy these tuned HMC parameters to use it in all other samples
+    initial_states_stg2_expanded = jax.tree_map(
+        lambda x: jnp.broadcast_to(x, (config.num_samples,) + x.shape),
+        initial_states_stg2)
+
+    # Sampling loop stage 2
+    logging.info('\t sampling stage 2...')
+    states_stg2, infos_stg2 = inference_loop_stg2(
+        prng_key=next(prng_seq),
+        initial_states=initial_states_stg2_expanded,
+        hmc_params=hmc_params_stg2,
+        logprob_fn=log_prob_fn_stg2,
+        model_params_global_unb_samples=model_params_global_unb_samples,
+        num_samples_stg1=config.num_samples,
+        num_samples_stg2=config.num_samples_stg2,
+        num_chains=config.num_chains,
+    )
+
+    model_params_stg2_unb_samples = states_stg2.position
+
+    # Save MCMC samples from stage 1
+    np.savez_compressed(samples_path_stg2, model_params_stg2_unb_samples)
+
+    logging.info(
+        "\t\t posterior means loc_floating %s",
+        str(model_params_stg2_unb_samples.loc_floating.mean(axis=[0, 1])))
+
+    times_data['end_mcmc_stg_2'] = time.perf_counter()
+
+  # Transform unbounded parameters to model parameters
+  (model_params_global, model_params_locations, _) = transform_model_params(
+      model_params_global_unb=model_params_global_unb_samples,
+      model_params_locations_unb=ModelParamsLocations(
+          loc_floating=model_params_stg2_unb_samples.loc_floating,
+          loc_floating_aux=model_params_stg1_unb_samples.loc_floating_aux,
+          loc_random_anchor=None,
+      ),
+  )
+
+  # make arviz trace from states
+  trace_global = arviz_trace_from_samples(
+      position=model_params_global,
+      info=infos_stg1,
+      burn_in=config.num_burnin_steps_stg1,
+  )
+  trace_locations = arviz_trace_from_samples(
+      position=model_params_locations,
+      info=infos_stg2,
+      burn_in=config.num_burnin_steps_stg1,
+  )
+
+  az.summary(trace_global)
+  az.summary(trace_locations)
+
+  az.plot_trace(trace_global)
+  plt.tight_layout()
+
+  az.plot_trace(trace_locations)
+  plt.tight_layout()
 
 
 # # For debugging
 # config = get_config()
-# config.num_samples = 20
+# config.num_samples = 21
 # config.num_burnin_steps_stg1 = 5
-# config.num_samples_subchain_stg2 = 5
+# config.num_samples_subchain_stg2 = 7
 # config.num_chunks_stg2 = 5
 # config.mcmc_step_size = 0.001
 # eta = 1.000
