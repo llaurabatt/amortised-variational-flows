@@ -142,10 +142,7 @@ def inference_loop_stg2(
 ):
 
   # We only need to keep the last sample of the subchains
-  # so instead of using jax.lax.scan, we use jax.lax.fori_loop
-  # This allow us to save memory
-  def one_step_fori(_, states_infos_key):
-    states, _, key_ = states_infos_key
+  def one_step(states, rng_key):
 
     kernel_fn_multichain = jax.vmap(
         lambda state, cond, key, hmc_param: blackjax.nuts.kernel()(
@@ -166,24 +163,19 @@ def inference_loop_stg2(
             hmc_params,
         ))
 
-    key_out, key_aux = jax.random.split(key_)
-    keys = jax.random.split(key_aux, num_samples_stg1 * num_chains).reshape(
+    keys = jax.random.split(rng_key, num_samples_stg1 * num_chains).reshape(
         (num_samples_stg1, num_chains, 2))
-    states_new, infos_new = kernel_fn_multicond_multichain(
+    states_new, _ = kernel_fn_multicond_multichain(
         states,
         model_params_global_unb_samples,
         keys,
     )
+    return states_new, None
 
-    return states_new, infos_new, key_out
+  prng_keys = jax.random.split(prng_key, num_samples_stg2)
+  last_state, _ = jax.lax.scan(one_step, initial_states, prng_keys)
 
-  initial_states_infos_key = one_step_fori(None,
-                                           (initial_states, None, prng_key))
-
-  states, infos, _ = jax.lax.fori_loop(0, num_samples_stg2, one_step_fori,
-                                       initial_states_infos_key)
-
-  return states, infos
+  return last_state
 
 
 def arviz_trace_from_samples(
@@ -671,7 +663,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     # Sampling loop stage 2
     logging.info('\t sampling stage 2...')
-    states_stg2, infos_stg2 = inference_loop_stg2(
+    states_stg2 = inference_loop_stg2(
         prng_key=next(prng_seq),
         initial_states=initial_states_stg2_expanded,
         hmc_params=hmc_params_stg2,
@@ -717,37 +709,41 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       ),
   )
 
-  posterior_sample_dict = model_params_global._asdict()
-  posterior_sample_dict.update(model_params_locations._asdict())
+  # save the k-th chain as posterior_sample_dict
+  k = 0
+  posterior_sample_dict = jax.tree_map(lambda x: x[:, k, ...],
+                                       model_params_global)._asdict()
+  posterior_sample_dict.update(
+      jax.tree_map(lambda x: x[:, k, ...], model_params_locations)._asdict())
 
   # Save final MCMC samples
   np.savez_compressed(samples_path, posterior_sample_dict)
 
   # logging.info("Plotting results...")
 
-  # ### Plot SMI samples ###
-  # plot.posterior_samples(
-  #     posterior_sample_dict=posterior_sample_dict,
-  #     batch=train_ds,
-  #     prng_key=next(prng_seq),
-  #     kernel_name=config.kernel_name,
-  #     kernel_kwargs=config.kernel_kwargs,
-  #     gp_jitter=config.gp_jitter,
-  #     step=0,
-  #     profiles_id=dataset['LP'],
-  #     items_id=dataset['items'],
-  #     forms_id=dataset['forms'],
-  #     show_basis_fields=False,
-  #     show_linguistic_fields=False,
-  #     num_loc_random_anchor_plot=None,
-  #     num_loc_floating_plot=dataset['num_profiles_floating'],
-  #     show_mixing_weights=False,
-  #     show_loc_given_y=False,
-  #     suffix=f"eta_floating_{float(config.eta_profiles_floating):.3f}",
-  #     summary_writer=summary_writer,
-  #     workdir_png=workdir,
-  #     use_gamma_anchor=False,
-  # )
+  ### Plot SMI samples ###
+  plot.posterior_samples(
+      posterior_sample_dict=posterior_sample_dict,
+      batch=train_ds,
+      prng_key=next(prng_seq),
+      kernel_name=config.kernel_name,
+      kernel_kwargs=config.kernel_kwargs,
+      gp_jitter=config.gp_jitter,
+      step=0,
+      profiles_id=dataset['LP'],
+      items_id=dataset['items'],
+      forms_id=dataset['forms'],
+      show_basis_fields=False,
+      show_linguistic_fields=False,
+      num_loc_random_anchor_plot=None,
+      num_loc_floating_plot=dataset['num_profiles_floating'],
+      show_mixing_weights=False,
+      show_loc_given_y=False,
+      suffix=f"eta_floating_{float(config.eta_profiles_floating):.3f}",
+      summary_writer=summary_writer,
+      workdir_png=workdir,
+      use_gamma_anchor=False,
+  )
 
   # # make arviz trace from states
   # trace_global = arviz_trace_from_samples(
@@ -773,11 +769,9 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
 # # For debugging
 # config = get_config()
-# config.num_samples = 21
+# config.num_samples = 100
 # config.num_burnin_steps_stg1 = 5
-# config.num_samples_subchain_stg2 = 7
-# config.num_chunks_stg2 = 5
-# config.mcmc_step_size = 0.001
+# config.num_samples_subchain_stg2 = 10
 # eta = 1.000
 # import pathlib
 # workdir = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/mcmc/eta_floating_{eta:.3f}')
