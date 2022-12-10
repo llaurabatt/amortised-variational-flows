@@ -47,7 +47,7 @@ def get_config():
 
   config.num_samples = 10_000
   config.num_burnin_steps_stg1 = 1_000
-  config.num_samples_subchain_stg2 = 50
+  config.num_samples_subchain_stg2 = 100
   config.num_chunks_stg2 = 10
   config.num_steps_call_warmup = 100
 

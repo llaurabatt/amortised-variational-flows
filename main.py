@@ -13,7 +13,7 @@ import tensorflow as tf
 
 import train_flow
 import train_vmp_flow
-import sample_mcmc
+import sample_mcmc_blackjax as sample_mcmc
 
 FLAGS = flags.FLAGS
 

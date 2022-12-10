@@ -568,6 +568,9 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     logging.info("\t Stage 2...")
 
+    # Define target log_prob as a function of the model parameters only
+    prng_key_gamma = next(prng_seq)
+
     @jax.jit
     def log_prob_fn_stg2(model_params, conditioning):
       log_prob = log_prob_lalme(
@@ -638,34 +641,52 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     # We tune the HMC for one sample in stage 1
     # tune HMC parameters, vmap across chains
-    initial_states_stg2, hmc_params_stg2 = jax.vmap(
-        lambda key, param, cond: call_warmup(
-            prng_key=key,
-            logprob_fn=lambda param_: log_prob_fn_stg2(
-                conditioning=cond,
-                model_params=param_,
-            ),
-            model_params=param,
-            num_steps=config.num_steps_call_warmup,
-        ))(
-            jax.random.split(next(prng_seq), config.num_chains),
-            ModelParamsLocations(
-                loc_floating=model_params_stg1_unb_samples.loc_floating_aux[0],
-                loc_floating_aux=None,
-                loc_random_anchor=None,
-            ),
-            jax.tree_map(lambda x: x[0], model_params_global_unb_samples),
-        )
-    # Copy these tuned HMC parameters to use it in all other samples
-    initial_states_stg2_expanded = jax.tree_map(
-        lambda x: jnp.broadcast_to(x, (config.num_samples,) + x.shape),
-        initial_states_stg2)
+    _, hmc_params_stg2 = jax.vmap(lambda key, param, cond: call_warmup(
+        prng_key=key,
+        logprob_fn=lambda param_: log_prob_fn_stg2(
+            conditioning=cond,
+            model_params=param_,
+        ),
+        model_params=param,
+        num_steps=config.num_steps_call_warmup,
+    ))(
+        jax.random.split(next(prng_seq), config.num_chains),
+        ModelParamsLocations(
+            loc_floating=model_params_stg1_unb_samples.loc_floating_aux[0],
+            loc_floating_aux=None,
+            loc_random_anchor=None,
+        ),
+        jax.tree_map(lambda x: x[0], model_params_global_unb_samples),
+    )
+
+    # Initialize stage 1 using loc_floating_aux
+    # we use the tunes HMC parameters from above
+    init_fn_multichain = jax.vmap(lambda param, cond, hmc_param: blackjax.nuts(
+        logprob_fn=lambda param_: log_prob_fn_stg2(
+            conditioning=cond,
+            model_params=param_,
+        ),
+        step_size=hmc_param['step_size'],
+        inverse_mass_matrix=hmc_param['inverse_mass_matrix'],
+    ).init(position=param))
+    init_fn_multicond_multichain = jax.vmap(
+        lambda param_, cond_: init_fn_multichain(
+            param=param_,
+            cond=cond_,
+            hmc_param=hmc_params_stg2,
+        ))
+    initial_states_stg2 = init_fn_multicond_multichain(
+        ModelParamsLocations(
+            loc_floating=model_params_stg1_unb_samples.loc_floating_aux,
+            loc_floating_aux=None,
+            loc_random_anchor=None,
+        ), model_params_global_unb_samples)
 
     # Sampling loop stage 2
     logging.info('\t sampling stage 2...')
     states_stg2 = inference_loop_stg2(
         prng_key=next(prng_seq),
-        initial_states=initial_states_stg2_expanded,
+        initial_states=initial_states_stg2,
         hmc_params=hmc_params_stg2,
         logprob_fn=log_prob_fn_stg2,
         model_params_global_unb_samples=model_params_global_unb_samples,
@@ -772,7 +793,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 # config.num_samples = 100
 # config.num_burnin_steps_stg1 = 5
 # config.num_samples_subchain_stg2 = 10
-# eta = 1.000
+# eta = 0.001
 # import pathlib
 # workdir = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/mcmc/eta_floating_{eta:.3f}')
 # config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/nsf/eta_floating_{eta:.3f}/posterior_sample_dict.npz')
