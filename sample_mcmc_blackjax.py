@@ -195,29 +195,30 @@ def arviz_trace_from_samples(
 
   samples = {}
   for key, param_ in position.items():
-    # k='mu'; v_ = position[k]
-    param_list_ = isinstance(param_, List)
-    for i in range(1 if not param_list_ else len(param_)):
-      if param_list_:
-        param = param_[i]
-      else:
-        param = param_
+    if param_ is not None:
+      # k='mu'; v_ = position[k]
+      param_list_ = isinstance(param_, List)
+      for i in range(1 if not param_list_ else len(param_)):
+        if param_list_:
+          param = param_[i]
+        else:
+          param = param_
 
-      ndims = len(param.shape)
-      if ndims >= 2:
-        samples[key + (f"_{str(i)}" if param_list_ else "")] = jnp.swapaxes(
-            param, 0, 1)[:, burn_in:]  # swap n_samples and n_chains
-        if info:
-          divergence = jnp.swapaxes(info.is_divergent[burn_in:], 0, 1)
+        ndims = len(param.shape)
+        if ndims >= 2:
+          samples[key + (f"_{str(i)}" if param_list_ else "")] = jnp.swapaxes(
+              param, 0, 1)[:, burn_in:]  # swap n_samples and n_chains
+          if info is not None:
+            divergence = jnp.swapaxes(info.is_divergent[burn_in:], 0, 1)
 
-      if ndims == 1:
-        samples[key] = param[burn_in:]
-        if info:
-          divergence = info.is_divergent[burn_in:]
+        if ndims == 1:
+          samples[key] = param[burn_in:]
+          if info is not None:
+            divergence = info.is_divergent[burn_in:]
 
   trace_posterior = az.convert_to_inference_data(samples)
 
-  if info:
+  if info is not None:
     trace_sample_stats = az.convert_to_inference_data({"diverging": divergence},
                                                       group="sample_stats")
     trace = az.concat(trace_posterior, trace_sample_stats)
@@ -394,8 +395,8 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   config.num_inducing_points = math.prod(
       config.model_hparams.inducing_grid_shape)
 
-  samples_path_stg1 = workdir + '/posterior_sample_dict_stg1.npz'
-  samples_path_stg2 = workdir + '/posterior_sample_dict_stg2.npz'
+  samples_path_stg1 = workdir + '/model_params_stg1_unb_samples.npz'
+  samples_path_stg2 = workdir + '/model_params_stg2_unb_samples.npz'
   samples_path = workdir + '/posterior_sample_dict.npz'
 
   # For training, we need a Dictionary compatible with jit
@@ -677,20 +678,34 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         logprob_fn=log_prob_fn_stg2,
         model_params_global_unb_samples=model_params_global_unb_samples,
         num_samples_stg1=config.num_samples,
-        num_samples_stg2=config.num_samples_stg2,
+        num_samples_stg2=config.num_samples_subchain_stg2,
         num_chains=config.num_chains,
     )
 
     model_params_stg2_unb_samples = states_stg2.position
-
-    # Save MCMC samples from stage 1
-    np.savez_compressed(samples_path_stg2, model_params_stg2_unb_samples)
 
     logging.info(
         "\t\t posterior means loc_floating %s",
         str(model_params_stg2_unb_samples.loc_floating.mean(axis=[0, 1])))
 
     times_data['end_mcmc_stg_2'] = time.perf_counter()
+
+    # Save MCMC samples from stage 1
+    np.savez_compressed(samples_path_stg2, model_params_stg2_unb_samples)
+
+  times_data['end_sampling'] = time.perf_counter()
+
+  logging.info("Sampling times:")
+  logging.info("\t Total: %s",
+               str(times_data['end_sampling'] - times_data['start_sampling']))
+  if ('start_mcmc_stg_1' in times_data) and ('end_mcmc_stg_1' in times_data):
+    logging.info(
+        "\t Stg 1: %s",
+        str(times_data['end_mcmc_stg_1'] - times_data['start_mcmc_stg_1']))
+  if ('start_mcmc_stg_2' in times_data) and ('end_mcmc_stg_2' in times_data):
+    logging.info(
+        "\t Stg 2: %s",
+        str(times_data['end_mcmc_stg_2'] - times_data['start_mcmc_stg_2']))
 
   # Transform unbounded parameters to model parameters
   (model_params_global, model_params_locations, _) = transform_model_params(
@@ -702,26 +717,58 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       ),
   )
 
-  # make arviz trace from states
-  trace_global = arviz_trace_from_samples(
-      position=model_params_global,
-      info=infos_stg1,
-      burn_in=config.num_burnin_steps_stg1,
-  )
-  trace_locations = arviz_trace_from_samples(
-      position=model_params_locations,
-      info=infos_stg2,
-      burn_in=config.num_burnin_steps_stg1,
-  )
+  posterior_sample_dict = model_params_global._asdict()
+  posterior_sample_dict.update(model_params_locations._asdict())
 
-  az.summary(trace_global)
-  az.summary(trace_locations)
+  # Save final MCMC samples
+  np.savez_compressed(samples_path, posterior_sample_dict)
 
-  az.plot_trace(trace_global)
-  plt.tight_layout()
+  # logging.info("Plotting results...")
 
-  az.plot_trace(trace_locations)
-  plt.tight_layout()
+  # ### Plot SMI samples ###
+  # plot.posterior_samples(
+  #     posterior_sample_dict=posterior_sample_dict,
+  #     batch=train_ds,
+  #     prng_key=next(prng_seq),
+  #     kernel_name=config.kernel_name,
+  #     kernel_kwargs=config.kernel_kwargs,
+  #     gp_jitter=config.gp_jitter,
+  #     step=0,
+  #     profiles_id=dataset['LP'],
+  #     items_id=dataset['items'],
+  #     forms_id=dataset['forms'],
+  #     show_basis_fields=False,
+  #     show_linguistic_fields=False,
+  #     num_loc_random_anchor_plot=None,
+  #     num_loc_floating_plot=dataset['num_profiles_floating'],
+  #     show_mixing_weights=False,
+  #     show_loc_given_y=False,
+  #     suffix=f"eta_floating_{float(config.eta_profiles_floating):.3f}",
+  #     summary_writer=summary_writer,
+  #     workdir_png=workdir,
+  #     use_gamma_anchor=False,
+  # )
+
+  # # make arviz trace from states
+  # trace_global = arviz_trace_from_samples(
+  #     position=model_params_global,
+  #     info=infos_stg1,
+  #     burn_in=config.num_burnin_steps_stg1,
+  # )
+  # trace_locations = arviz_trace_from_samples(
+  #     position=model_params_locations,
+  #     info=infos_stg2,
+  #     burn_in=config.num_burnin_steps_stg1,
+  # )
+
+  # az.summary(trace_global)
+  # az.summary(trace_locations)
+
+  # az.plot_trace(trace_global)
+  # plt.tight_layout()
+
+  # az.plot_trace(trace_locations)
+  # plt.tight_layout()
 
 
 # # For debugging
