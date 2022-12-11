@@ -11,8 +11,6 @@ from absl import logging
 
 import numpy as np
 
-from matplotlib import pyplot as plt
-
 import jax
 from jax import numpy as jnp
 
@@ -34,6 +32,7 @@ from train_flow import load_data, get_inducing_points
 from flows import get_global_params_shapes
 import log_prob_fun_2
 from log_prob_fun_2 import ModelParamsGlobal, ModelParamsLocations
+
 from modularbayes import flatten_dict
 from modularbayes._src.typing import (Any, Array, Batch, Callable, ConfigDict,
                                       Dict, List, Mapping, Optional, PRNGKey,
@@ -51,6 +50,7 @@ ModelParamsStg2 = namedtuple("modelparams_stg2", [
     'loc_floating',
 ])
 
+tfb = tfp.bijectors
 kernels = tfp.math.psd_kernels
 
 # Set high precision for matrix multiplication in jax
@@ -210,12 +210,12 @@ def arviz_trace_from_samples(
           if info is not None:
             divergence = info.is_divergent[burn_in:]
 
-  trace_posterior = az.convert_to_inference_data(samples)
+  trace = az.convert_to_inference_data(samples)
 
   if info is not None:
     trace_sample_stats = az.convert_to_inference_data({"diverging": divergence},
                                                       group="sample_stats")
-    trace = az.concat(trace_posterior, trace_sample_stats)
+    trace = az.concat(trace, trace_sample_stats)
 
   return trace
 
@@ -264,12 +264,13 @@ def transform_model_params(
   """Apply transformations to map into model parameters domain."""
 
   bijectors_ = {
-      'mu': distrax.Sigmoid(),
-      'zeta': distrax.Sigmoid(),
-      'loc_floating': distrax.Sigmoid(),
-      'loc_floating_aux': distrax.Sigmoid(),
-      'loc_random_anchor': distrax.Sigmoid(),
+      'mu': distrax.Block(tfb.Softplus(), 1),
+      'zeta': distrax.Block(distrax.Sigmoid(), 1),
+      'loc_floating': distrax.Block(distrax.Sigmoid(), 2),
+      'loc_floating_aux': distrax.Block(distrax.Sigmoid(), 2),
+      'loc_random_anchor': distrax.Block(distrax.Sigmoid(), 2),
   }
+
   model_params_global = ModelParamsGlobal(
       gamma_inducing=model_params_global_unb.gamma_inducing,
       mixing_weights_list=model_params_global_unb.mixing_weights_list,
@@ -295,21 +296,21 @@ def transform_model_params(
   # Adjust log probability for the transformations.
   log_det_jacob_transformed = 0
   log_det_jacob_transformed += bijectors_['mu'].forward_log_det_jacobian(
-      model_params_global_unb.mu).sum()
+      model_params_global_unb.mu)
   log_det_jacob_transformed += bijectors_['zeta'].forward_log_det_jacobian(
-      model_params_global_unb.zeta).sum()
+      model_params_global_unb.zeta)
   if model_params_locations_unb.loc_floating is not None:
     log_det_jacob_transformed += bijectors_[
         'loc_floating'].forward_log_det_jacobian(
-            model_params_locations_unb.loc_floating).sum()
+            model_params_locations_unb.loc_floating)
   if model_params_locations_unb.loc_floating_aux is not None:
     log_det_jacob_transformed += bijectors_[
         'loc_floating_aux'].forward_log_det_jacobian(
-            model_params_locations_unb.loc_floating_aux).sum()
+            model_params_locations_unb.loc_floating_aux)
   if model_params_locations_unb.loc_random_anchor is not None:
     log_det_jacob_transformed += bijectors_[
         'loc_random_anchor'].forward_log_det_jacobian(
-            model_params_locations_unb.loc_random_anchor).sum()
+            model_params_locations_unb.loc_random_anchor)
 
   return model_params_global, model_params_locations, log_det_jacob_transformed
 
@@ -342,7 +343,9 @@ def log_prob_lalme(
 
   (model_params_global, model_params_locations,
    log_det_jacob_transformed) = transform_model_params(
-       model_params_global_unb, model_params_locations_unb)
+       model_params_global_unb=model_params_global_unb,
+       model_params_locations_unb=model_params_locations_unb,
+   )
 
   # Sample the basis GPs on profiles locations conditional on GP values on the
   # inducing points.
@@ -793,20 +796,25 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   # # make arviz trace from states
   # trace_global = arviz_trace_from_samples(
   #     position=model_params_global,
-  #     info=infos_stg1,
+  #     info=None,
   #     burn_in=config.num_burnin_steps_stg1,
   # )
-  # trace_locations = arviz_trace_from_samples(
-  #     position=model_params_locations,
-  #     info=infos_stg2,
-  #     burn_in=config.num_burnin_steps_stg1,
-  # )
-
   # az.summary(trace_global)
-  # az.summary(trace_locations)
+
+  # az.plot_trace(
+  #     az.convert_to_inference_data(
+  #         {'mu': model_params_global.mu.swapaxes(0, 1)}))
 
   # az.plot_trace(trace_global)
   # plt.tight_layout()
+
+  # trace_locations = arviz_trace_from_samples(
+  #     position=model_params_locations,
+  #     info=None,
+  #     burn_in=config.num_burnin_steps_stg1,
+  # )
+
+  # az.summary(trace_locations)
 
   # az.plot_trace(trace_locations)
   # plt.tight_layout()
@@ -814,12 +822,12 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
 # # For debugging
 # config = get_config()
+# eta = 1.000
+# import pathlib
+# workdir = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/mcmc/eta_floating_{eta:.3f}')
+# config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/nsf/eta_floating_{eta:.3f}/posterior_sample_dict.npz')
 # config.num_samples = 100
 # config.num_burnin_steps_stg1 = 5
 # config.num_samples_subchain_stg2 = 10
 # config.num_samples_perchunk_stg2 = 10
-# eta = 0.001
-# import pathlib
-# workdir = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/mcmc/eta_floating_{eta:.3f}')
-# config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/nsf/eta_floating_{eta:.3f}/posterior_sample_dict.npz')
 # # sample_and_evaluate(config, workdir)
