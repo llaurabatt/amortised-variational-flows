@@ -662,8 +662,8 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
       # Sample loc_floating
       times_data['start_mcmc_stg_2'] = time.perf_counter()
-      loc_floating_sample = _sample_stage2_loop(chunk_size=config.num_samples //
-                                                config.num_chunks_stg2)
+      loc_floating_sample = _sample_stage2_loop(
+          chunk_size=config.num_samples_perchunk_stg2)
       posterior_sample_dict_stg2 = split_flow_locations(
           samples=loc_floating_sample,
           num_profiles=config.num_profiles_floating,

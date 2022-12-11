@@ -10,6 +10,10 @@ Build Docker image with CUDA support and upload it to AWS ECR
 ```bash
 bash sagemaker/push_ecr_image.sh
 ```
+You can run the docker container interactively to test the image
+```bash
+docker run --gpus all -u ubuntu -it jax-tf
+```
 
 ### Run all experiments
 Send Training Jobs using Sagemaker

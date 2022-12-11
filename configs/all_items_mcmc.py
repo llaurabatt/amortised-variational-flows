@@ -46,9 +46,9 @@ def get_config():
   config.num_samples_gamma_profiles = 10
 
   config.num_samples = 10_000
-  config.num_burnin_steps_stg1 = 1_000
   config.num_samples_subchain_stg2 = 100
-  config.num_chunks_stg2 = 10
+  config.num_samples_perchunk_stg2 = 1_000
+  config.num_burnin_steps_stg1 = 1_000
   config.num_steps_call_warmup_stg1 = 100
 
   config.mcmc_step_size = 0.001

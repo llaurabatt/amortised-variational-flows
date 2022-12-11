@@ -96,8 +96,8 @@ def inference_loop_one_chain(
     state_new, info_new = kernel_fn(state, rng_key, hmc_params)
     return state_new, (state_new, info_new)
 
-  prng_keys = jax.random.split(prng_key, num_samples)
-  _, (states, infos) = jax.lax.scan(one_step, initial_state, prng_keys)
+  keys = jax.random.split(prng_key, num_samples)
+  _, (states, infos) = jax.lax.scan(one_step, initial_state, keys)
 
   return states, infos
 
@@ -111,8 +111,7 @@ def inference_loop_multiple_chains(
     num_chains: int,
 ) -> Tuple[HMCState, NUTSInfo]:
 
-  def one_step(states, rng_key):
-    rng_keys = jax.random.split(rng_key, num_chains)
+  def one_step(states, rng_keys):
     kernel_fn_multichain = jax.vmap(
         lambda state_, key_, hmc_param_: blackjax.nuts.kernel()(
             rng_key=key_,
@@ -124,8 +123,9 @@ def inference_loop_multiple_chains(
     states_new, infos_new = kernel_fn_multichain(states, rng_keys, hmc_params)
     return states_new, (states_new, infos_new)
 
-  prng_keys = jax.random.split(prng_key, num_samples)
-  _, (states, infos) = jax.lax.scan(one_step, initial_states, prng_keys)
+  keys = jax.random.split(prng_key, num_samples * num_chains).reshape(
+      (num_samples, num_chains, 2))
+  _, (states, infos) = jax.lax.scan(one_step, initial_states, keys)
 
   return states, infos
 
@@ -142,7 +142,7 @@ def inference_loop_stg2(
 ):
 
   # We only need to keep the last sample of the subchains
-  def one_step(states, rng_key):
+  def one_step(states, rng_keys):
 
     kernel_fn_multichain = jax.vmap(
         lambda state, cond, key, hmc_param: blackjax.nuts.kernel()(
@@ -163,17 +163,19 @@ def inference_loop_stg2(
             hmc_params,
         ))
 
-    keys = jax.random.split(rng_key, num_samples_stg1 * num_chains).reshape(
-        (num_samples_stg1, num_chains, 2))
+    # keys = jax.random.split(rng_key, num_samples_stg1 * num_chains).reshape(
+    #     (num_samples_stg1, num_chains, 2))
     states_new, _ = kernel_fn_multicond_multichain(
         states,
         model_params_global_unb_samples,
-        keys,
+        rng_keys,
     )
     return states_new, None
 
-  prng_keys = jax.random.split(prng_key, num_samples_stg2)
-  last_state, _ = jax.lax.scan(one_step, initial_states, prng_keys)
+  keys = jax.random.split(
+      prng_key, num_samples_stg2 * num_samples_stg1 * num_chains).reshape(
+          (num_samples_stg2, num_samples_stg1, num_chains, 2))
+  last_state, _ = jax.lax.scan(one_step, initial_states, keys)
 
   return last_state
 
@@ -659,8 +661,13 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         jax.tree_map(lambda x: x[0], model_params_global_unb_samples),
     )
 
+    # When the number of samples is large,
+    # we split the sampling of stage 2 into chunks
+    assert config.num_samples % config.num_samples_perchunk_stg2 == 0
+    num_chunks_stg2 = config.num_samples // config.num_samples_perchunk_stg2
+
     # Initialize stage 1 using loc_floating_aux
-    # we use the tunes HMC parameters from above
+    # we use the tuned HMC parameters from above
     init_fn_multichain = jax.vmap(lambda param, cond, hmc_param: blackjax.nuts(
         logprob_fn=lambda param_: log_prob_fn_stg2(
             conditioning=cond,
@@ -675,27 +682,44 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
             cond=cond_,
             hmc_param=hmc_params_stg2,
         ))
-    initial_states_stg2 = init_fn_multicond_multichain(
-        ModelParamsLocations(
-            loc_floating=model_params_stg1_unb_samples.loc_floating_aux,
-            loc_floating_aux=None,
-            loc_random_anchor=None,
-        ), model_params_global_unb_samples)
 
-    # Sampling loop stage 2
-    logging.info('\t sampling stage 2...')
-    states_stg2 = inference_loop_stg2(
-        prng_key=next(prng_seq),
-        initial_states=initial_states_stg2,
-        hmc_params=hmc_params_stg2,
-        logprob_fn=log_prob_fn_stg2,
-        model_params_global_unb_samples=model_params_global_unb_samples,
-        num_samples_stg1=config.num_samples,
-        num_samples_stg2=config.num_samples_subchain_stg2,
-        num_chains=config.num_chains,
+    # The initial position for loc_floating in the first chunk is the location
+    # of loc_floating_aux from stage 1
+    initial_position_i = ModelParamsLocations(
+        loc_floating=model_params_stg1_unb_samples
+        .loc_floating_aux[:config.num_samples_perchunk_stg2, ...],
+        loc_floating_aux=None,
+        loc_random_anchor=None,
     )
 
-    model_params_stg2_unb_samples = states_stg2.position
+    logging.info('\t sampling stage 2...')
+    chunks_positions = []
+    for i in range(num_chunks_stg2):
+      cond_i = jax.tree_map(
+          lambda x: x[(i * config.num_samples_perchunk_stg2):
+                      ((i + 1) * config.num_samples_perchunk_stg2), ...],
+          model_params_global_unb_samples)
+
+      initial_state_i = init_fn_multicond_multichain(initial_position_i, cond_i)
+
+      # Sampling loop stage 2
+      states_stg2_i = inference_loop_stg2(
+          prng_key=next(prng_seq),
+          initial_states=initial_state_i,
+          hmc_params=hmc_params_stg2,
+          logprob_fn=log_prob_fn_stg2,
+          model_params_global_unb_samples=cond_i,
+          num_samples_stg1=config.num_samples_perchunk_stg2,
+          num_samples_stg2=config.num_samples_subchain_stg2,
+          num_chains=config.num_chains,
+      )
+      chunks_positions.append(states_stg2_i.position)
+
+      # Subsequent chunks initialise in last position of the previous chunk
+      initial_position_i = states_stg2_i.position
+
+    model_params_stg2_unb_samples = jax.tree_map(  # pylint: disable=no-value-for-parameter
+        lambda *x: jnp.concatenate(x, axis=0), *chunks_positions)
 
     logging.info(
         "\t\t posterior means loc_floating %s",
@@ -793,6 +817,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 # config.num_samples = 100
 # config.num_burnin_steps_stg1 = 5
 # config.num_samples_subchain_stg2 = 10
+# config.num_samples_perchunk_stg2 = 10
 # eta = 0.001
 # import pathlib
 # workdir = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/mcmc/eta_floating_{eta:.3f}')

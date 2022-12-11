@@ -38,7 +38,6 @@ ModelParamsGammaProfiles = namedtuple("modelparams_gamma_profiles", [
 ])
 
 
-## Observational model ##
 def log_prob_y_equal_1(
     gamma_profiles: Array,
     mixing_weights_list: List[Array],
