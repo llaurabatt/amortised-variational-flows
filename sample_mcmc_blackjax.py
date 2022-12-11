@@ -134,8 +134,8 @@ def inference_loop_stg2(
     prng_key: PRNGKey,
     initial_states: HMCState,
     hmc_params: Dict[str, Array],
-    logprob_fn: Callable,
-    model_params_global_unb_samples: ModelParamsGlobal,
+    logprob_fn_conditional: Callable,
+    conditioner_logprob: ModelParamsGlobal,
     num_samples_stg1: int,
     num_samples_stg2: int,
     num_chains: int,
@@ -148,9 +148,9 @@ def inference_loop_stg2(
         lambda state, cond, key, hmc_param: blackjax.nuts.kernel()(
             rng_key=key,
             state=state,
-            logprob_fn=lambda param_: logprob_fn(
-                conditioning=cond,
+            logprob_fn=lambda param_: logprob_fn_conditional(
                 model_params=param_,
+                conditioner=cond,
             ),
             step_size=hmc_param['step_size'],
             inverse_mass_matrix=hmc_param['inverse_mass_matrix'],
@@ -167,7 +167,7 @@ def inference_loop_stg2(
     #     (num_samples_stg1, num_chains, 2))
     states_new, _ = kernel_fn_multicond_multichain(
         states,
-        model_params_global_unb_samples,
+        conditioner_logprob,
         rng_keys,
     )
     return states_new, None
@@ -574,11 +574,11 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     prng_key_gamma = next(prng_seq)
 
     @jax.jit
-    def log_prob_fn_stg2(model_params, conditioning):
+    def log_prob_fn_stg2(model_params, conditioner):
       log_prob = log_prob_lalme(
           batch=train_ds,
           prng_key=prng_key_gamma,
-          model_params_global_unb=conditioning,
+          model_params_global_unb=conditioner,
           model_params_locations_unb=model_params,
           prior_hparams=config.prior_hparams,
           kernel_name=config.kernel_name,
@@ -610,7 +610,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
           prng_key=next(prng_seq),
           logprob_fn=lambda param_: log_prob_fn_stg2(
               model_params=param_,
-              conditioning=model_params_global_unb_cond_,
+              conditioner=model_params_global_unb_cond_,
           ),
           model_params=model_params_stg2_unb_init_,
           num_steps=10,
@@ -620,7 +620,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       def one_step_(state, rng_key):
         logprob_fn_cond = lambda param_: log_prob_fn_stg2(
             model_params=param_,
-            conditioning=model_params_global_unb_cond_,
+            conditioner=model_params_global_unb_cond_,
         )
         state_new, info_new = blackjax.nuts.kernel()(
             rng_key=rng_key,
@@ -646,7 +646,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     _, hmc_params_stg2 = jax.vmap(lambda key, param, cond: call_warmup(
         prng_key=key,
         logprob_fn=lambda param_: log_prob_fn_stg2(
-            conditioning=cond,
+            conditioner=cond,
             model_params=param_,
         ),
         model_params=param,
@@ -670,7 +670,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     # we use the tuned HMC parameters from above
     init_fn_multichain = jax.vmap(lambda param, cond, hmc_param: blackjax.nuts(
         logprob_fn=lambda param_: log_prob_fn_stg2(
-            conditioning=cond,
+            conditioner=cond,
             model_params=param_,
         ),
         step_size=hmc_param['step_size'],
@@ -707,8 +707,8 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
           prng_key=next(prng_seq),
           initial_states=initial_state_i,
           hmc_params=hmc_params_stg2,
-          logprob_fn=log_prob_fn_stg2,
-          model_params_global_unb_samples=cond_i,
+          logprob_fn_conditional=log_prob_fn_stg2,
+          conditioner_logprob=cond_i,
           num_samples_stg1=config.num_samples_perchunk_stg2,
           num_samples_stg2=config.num_samples_subchain_stg2,
           num_chains=config.num_chains,
