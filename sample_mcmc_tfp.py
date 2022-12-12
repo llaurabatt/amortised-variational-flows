@@ -24,7 +24,7 @@ from train_flow import load_data, get_inducing_points
 from flows import (split_flow_global_params, split_flow_locations,
                    concat_samples_global_params, concat_samples_locations,
                    get_global_params_dim)
-
+from misc import lalme_az_from_dict
 from modularbayes import flatten_dict
 from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
                                       Mapping, Optional, OrderedDict, PRNGKey,
@@ -723,6 +723,11 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       use_gamma_anchor=False,
   )
 
+  lalme_az = lalme_az_from_dict(
+      samples_dict=jax.tree_map(lambda x: x[None, ...], posterior_sample_dict),
+      lalme_dataset=dataset,
+  )
+
   # Load samples to compare MCMC vs Variational posteriors
   if (config.path_variational_samples != '') and (os.path.exists(
       config.path_variational_samples)):
@@ -753,16 +758,16 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
 # # For debugging
 # config = get_config()
-# config.num_samples = 20
-# config.num_burnin_steps_stg1 = 5
-# config.num_samples_subchain_stg2 = 5
-# config.num_chunks_stg2 = 5
-# config.mcmc_step_size = 0.001
 # eta = 1.000
-# config.num_items_keep = 20
-# config.num_profiles_floating_keep = 20
-# config.eta_profiles_floating = eta
 # import pathlib
-# workdir = str(pathlib.Path.home() / f'spatial-smi-output-exp/all_items/mcmc/eta_floating_{eta:.3f}')
-# config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output-exp/all_items/nsf/eta_floating_{eta:.3f}/posterior_sample_dict.npz')
-# sample_and_evaluate(config, workdir)
+# workdir = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/mcmc/eta_floating_{eta:.3f}')
+# config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/nsf/eta_floating_{eta:.3f}/posterior_sample_dict.npz')
+# # config.num_samples = 100
+# # config.num_burnin_steps_stg1 = 5
+# # config.num_samples_subchain_stg2 = 5
+# # config.num_samples_perchunk_stg2 = 10
+# # config.mcmc_step_size = 0.001
+# # config.num_items_keep = 20
+# # config.num_profiles_floating_keep = 20
+# # config.eta_profiles_floating = eta
+# # sample_and_evaluate(config, workdir)

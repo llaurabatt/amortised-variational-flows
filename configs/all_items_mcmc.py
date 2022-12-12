@@ -62,4 +62,7 @@ def get_config():
   # Samples from variational posterior to compare locations
   config.path_variational_samples = ''
 
+  # Plotting
+  config.lp_floating_10 = [29, 30, 3, 16, 45, 52, 54, 2, 46, 51]
+
   return config

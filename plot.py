@@ -10,6 +10,9 @@ from matplotlib import pyplot as plt
 from matplotlib import colors
 import seaborn as sns
 
+import arviz as az
+from arviz import InferenceData
+
 import jax
 from jax import numpy as jnp
 
@@ -300,6 +303,57 @@ def plot_profile_location(
   ax.set_title(loc_type + ' profile ' + str(profiles_id[data_loc_idx]))
 
   return fig, ax
+
+
+def profile_locations_grid(
+    posterior_sample_az: InferenceData,
+    lalme_dataset: Dict[str, Any],
+    lp_floating: List[int],
+    suptitle: Optional[str] = None,
+    nrows: Optional[int] = None,
+):
+
+  # Subplots layout
+  if nrows is None:
+    nrows = int(np.sqrt(len(lp_floating)))
+  ncols = len(lp_floating) // nrows
+  ncols += 1 if len(lp_floating) % nrows else 0
+
+  fig, axs = plt.subplots(
+      nrows,
+      ncols,
+      figsize=(ncols * 3 + 1, nrows * 3),
+      squeeze=False,
+      sharex=True,
+      sharey=True,
+  )
+  for i, lp_ in enumerate(lp_floating):
+    p_ = np.where(lalme_dataset['LP'] == lp_)[0][0]
+    az.plot_pair(
+        posterior_sample_az,
+        var_names=["loc_floating"],
+        coords={"loc_floating_profiles": lp_},
+        kind='scatter',
+        scatter_kwargs={'alpha': 0.07},
+        ax=axs[i // ncols, i % ncols],
+    )
+    axs[i // ncols, i % ncols].scatter(
+        x=lalme_dataset['loc'][[p_], 0],
+        y=lalme_dataset['loc'][[p_], 1],
+        marker="X",
+        s=200,
+        color="red",
+    )
+    axs[i // ncols, i % ncols].set_xlim([0, 1])
+    axs[i // ncols, i % ncols].set_ylim([0, 1])
+    axs[i // ncols, i % ncols].set_xlabel("")
+    axs[i // ncols, i % ncols].set_ylabel("")
+    axs[i // ncols, i % ncols].set_title(f"Profile: {lp_}")
+  if suptitle:
+    fig.suptitle(suptitle)
+  fig.tight_layout()
+
+  return fig, axs
 
 
 def plot_mixing_weights(
@@ -650,6 +704,82 @@ def posterior_samples(
       fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
     if summary_writer:
       summary_writer.image(plot_name, plot_to_image(fig), step=step)
+
+
+def plot_lalme_arviz(
+    posterior_sample_az: InferenceData,
+    lalme_dataset: Dict[str, Any],
+    workdir_png: Optional[str] = None,
+    summary_writer: Optional[SummaryWriter] = None,
+    suffix: Optional[str] = None,
+    step: Optional[int] = 0,
+    lp_floating_10: Optional[List[int]] = None,
+):
+
+  images = []
+  lp_floating = lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:]
+  for lp_ in lp_floating:
+    # p = lalme_dataset['num_profiles_anchor']
+    p_ = np.where(lalme_dataset['LP'] == lp_)[0][0]
+    axs = az.plot_pair(
+        posterior_sample_az,
+        var_names=["loc_floating"],
+        coords={"loc_floating_profiles": lp_},
+        kind='scatter',
+        scatter_kwargs={'alpha': 0.07},
+        marginals=True,
+    )
+    axs[1, 0].scatter(
+        x=lalme_dataset['loc'][[p_], 0],
+        y=lalme_dataset['loc'][[p_], 1],
+        marker="X",
+        s=200,
+        color="red",
+    )
+    axs[0, 0].set_xlim([0, 1])
+    axs[1, 0].set_xlim([0, 1])
+    axs[1, 1].set_ylim([0, 1])
+    plt.suptitle(f"Profile: {lp_}")
+
+    if workdir_png:
+      plot_name = f"floating_profile_{lp_:03d}_loc"
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      # summary_writer.image(plot_name, plot_to_image(fig), step=step)
+    images.append(plot_to_image(None))
+
+  if summary_writer:
+    plot_name = "lalme_loc_floating"
+    if suffix is not None:
+      plot_name += f"_{suffix}"
+    summary_writer.image(
+        tag=plot_name,
+        image=normalize_images(images),
+        step=step,
+        max_outputs=len(images),
+    )
+    del images
+
+  if lp_floating_10 is not None:
+    fig, axs = profile_locations_grid(
+        posterior_sample_az=posterior_sample_az,
+        lalme_dataset=lalme_dataset,
+        lp_floating=lp_floating_10,
+        nrows=2,
+    )
+    if workdir_png:
+      plot_name = "lalme_floating_profiles_grid"
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_floating_profiles_grid"
+      if suffix is not None:
+        plot_name += f"_{suffix}"
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
 
 
 def posterior_samples_compare(

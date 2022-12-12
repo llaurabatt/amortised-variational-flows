@@ -567,7 +567,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   if os.path.exists(samples_path_stg2):
     logging.info("\t Loading samples for stage 2...")
     aux_ = np.load(str(samples_path_stg2), allow_pickle=True)['arr_0']
-    model_params_stg2_unb_samples = ModelParamsStg1(*aux_)
+    model_params_stg2_unb_samples = ModelParamsLocations(*aux_)
 
   else:
 
