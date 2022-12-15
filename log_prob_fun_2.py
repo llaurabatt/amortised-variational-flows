@@ -74,7 +74,7 @@ def log_prob_y_equal_1(
   return log_prob_y_equal_1_list
 
 
-def log_prob_y_integrated_over_gamma_profiles(
+def log_prob_y_given_model_params(
     batch: Batch,
     model_params_global: ModelParamsGlobal,
     model_params_gamma_profiles: ModelParamsGammaProfiles,
@@ -92,29 +92,24 @@ def log_prob_y_integrated_over_gamma_profiles(
   ],
                                    axis=-1)
 
-  # num_samples_gamma_profiles = model_params_gamma_profiles.gamma_anchor.shape[0]
-
-  # Computes log_prob_y_equal_1 over the sampled values gamma_profiles
-  log_prob_y_equal_1_pointwise_list = jax.vmap(
-      lambda gamma_p: log_prob_y_equal_1(
-          gamma_profiles=gamma_p,
-          mixing_weights_list=model_params_global.mixing_weights_list,
-          mixing_offset_list=model_params_global.mixing_offset_list,
-          mu=model_params_global.mu,
-          zeta=model_params_global.zeta,
-      ))(
-          gamma_profiles)
-  # assert all(x.shape == (num_samples_gamma_profiles,
-  #                        batch['num_forms_tuple'][i], batch['num_profiles'])
+  # Computes log_prob_y_equal_1
+  log_prob_y_equal_1_pointwise_list = log_prob_y_equal_1(
+      gamma_profiles=gamma_profiles,
+      mixing_weights_list=model_params_global.mixing_weights_list,
+      mixing_offset_list=model_params_global.mixing_offset_list,
+      mu=model_params_global.mu,
+      zeta=model_params_global.zeta,
+  )
+  # assert all(x.shape == (batch['num_forms_tuple'][i], batch['num_profiles'])
   #            for i, x in enumerate(log_prob_y_equal_1_pointwise_list))
 
-  # Average log_prob_y_equal_1 over samples of gamma_profiles and add over forms
+  # Sum log_prob_y_equal_1 over forms
   log_prob_y_item_profile_ = []
   for y_i, log_prob_y_eq_1_i in zip(batch['y'],
                                     log_prob_y_equal_1_pointwise_list):
     log_prob_y_item_profile_.append(
         jnp.where(y_i, log_prob_y_eq_1_i,
-                  log1mexpm(-log_prob_y_eq_1_i)).mean(axis=0).sum(axis=0))
+                  log1mexpm(-log_prob_y_eq_1_i)).sum(axis=0))
   log_prob_y_item_profile = jnp.stack(log_prob_y_item_profile_, axis=0)
 
   # assert log_prob_y_item_profile.shape == (batch['num_items'],
@@ -139,10 +134,9 @@ def sample_gamma_profiles_given_gamma_inducing(
     kernel_name: str,
     kernel_kwargs: Dict[str, Any],
     gp_jitter: float,
-    num_samples_gamma_profiles: int,
     is_smi: bool,
     include_random_anchor: bool,
-) -> ModelParamsGammaProfiles:
+) -> Tuple[ModelParamsGammaProfiles, Dict[str, Array]]:
   """Sample from the conditional distribution p(gamma_p|gamma_u).
 
   Integrate over multiple samples of gamma_profiles.
@@ -171,6 +165,7 @@ def sample_gamma_profiles_given_gamma_inducing(
 
   ### Sample gamma_profiles ###
   gamma_sample_dict = {}
+  gamma_logprob_dict = {}
   prng_seq = hk.PRNGSequence(prng_key)
 
   ### Sample Gamma on Anchor profiles
@@ -196,8 +191,9 @@ def sample_gamma_profiles_given_gamma_inducing(
       ),
       reinterpreted_batch_ndims=1)
 
-  gamma_sample_dict['gamma_anchor'] = p_anchor_given_inducing.sample(
-      seed=next(prng_seq), sample_shape=(num_samples_gamma_profiles,))
+  gamma_sample_dict['gamma_anchor'], gamma_logprob_dict[
+      'gamma_anchor'] = p_anchor_given_inducing.sample_and_log_prob(
+          seed=next(prng_seq))
   # assert gamma_sample_dict['gamma_anchor'].shape == (
   #     num_samples_gamma_profiles, num_basis_gps,
   #     batch['num_profiles_anchor'])
@@ -238,8 +234,9 @@ def sample_gamma_profiles_given_gamma_inducing(
       ),
       reinterpreted_batch_ndims=1)
 
-  gamma_sample_dict['gamma_floating'] = p_floating_given_inducing.sample(
-      seed=next(prng_seq), sample_shape=(num_samples_gamma_profiles,))
+  gamma_sample_dict['gamma_floating'], gamma_logprob_dict[
+      'gamma_floating'] = p_floating_given_inducing.sample_and_log_prob(
+          seed=next(prng_seq))
   # assert gamma_sample_dict['gamma_floating'].shape == (
   #     num_samples_gamma_profiles, num_basis_gps,
   #     batch['num_profiles_floating'])
@@ -277,9 +274,9 @@ def sample_gamma_profiles_given_gamma_inducing(
         ),
         reinterpreted_batch_ndims=1)
 
-    gamma_sample_dict['gamma_floating_aux'] = (
-        p_floating_aux_given_inducing.sample(
-            seed=next(prng_seq), sample_shape=(num_samples_gamma_profiles,)))
+    gamma_sample_dict['gamma_floating_aux'], gamma_logprob_dict[
+        'gamma_floating_aux'] = p_floating_aux_given_inducing.sample_and_log_prob(
+            seed=next(prng_seq))
     # assert gamma_sample_dict['gamma_floating_aux'].shape == (
     #     num_samples_gamma_profiles, num_basis_gps,
     #     batch['num_profiles_floating'])
@@ -320,15 +317,15 @@ def sample_gamma_profiles_given_gamma_inducing(
         ),
         reinterpreted_batch_ndims=1)
 
-    gamma_sample_dict[
-        'gamma_random_anchor'] = p_random_anchor_given_inducing.sample(
-            seed=next(prng_seq), sample_shape=(num_samples_gamma_profiles,))
+    gamma_sample_dict['gamma_random_anchor'], gamma_logprob_dict[
+        'gamma_random_anchor'] = p_random_anchor_given_inducing.sample_and_log_prob(
+            seed=next(prng_seq))
   else:
     gamma_sample_dict['gamma_random_anchor'] = None
 
   model_params_gamma = ModelParamsGammaProfiles(**gamma_sample_dict)
 
-  return model_params_gamma
+  return model_params_gamma, gamma_logprob_dict
 
 
 def log_prob_joint(
@@ -336,6 +333,7 @@ def log_prob_joint(
     model_params_global: ModelParamsGlobal,
     model_params_locations: ModelParamsLocations,
     model_params_gamma_profiles: ModelParamsGammaProfiles,
+    gamma_profiles_logprob: Dict[str, Array],
     smi_eta: Optional[SmiEta] = None,
     w_prior_scale: float = 1.,
     a_prior_scale: float = 10.,
@@ -393,15 +391,10 @@ def log_prob_joint(
       [x.shape[-1] for x in model_params_global.mixing_weights_list])
   num_items = len(num_forms_tuple)
 
-  ## Observational model ##
-  # We integrate the likelihood over samples of gamma_profiles
-  # Such samples are not part of the posterior approximation q(Theta), but we
-  # assume they come in the dictionary 'posterior_sample_dict' for convenience.
-
   ## Priors ##
 
   # P(Gamma_Z) : Prior on the GPs on inducing points
-  log_prob_gamma = distrax.Independent(
+  log_prob_gamma_inducing = distrax.Independent(
       distrax.MultivariateNormalTri(
           loc=jnp.zeros((1, num_inducing_points)),
           scale_tri=batch['cov_inducing_chol']),
@@ -458,19 +451,23 @@ def log_prob_joint(
       reinterpreted_batch_ndims=1).log_prob
 
   log_prob = (
-      # P(Y | Phi_X, mu, zeta, Gamma_U, W, a)
-      log_prob_y_integrated_over_gamma_profiles(
+      # P(Y | mu, zeta, a, W, Gamma_anchor, Gamma_floating)
+      log_prob_y_given_model_params(
           batch=batch,
           model_params_global=model_params_global,
           model_params_gamma_profiles=model_params_gamma_profiles,
           smi_eta=smi_eta,
       ) +
+      # P(Gamma_anchor | Gamma_U)
+      gamma_profiles_logprob['gamma_anchor'] +
+      # P(Gamma_floating | Gamma_U)
+      gamma_profiles_logprob['gamma_floating'] +
+      # P(Gamma_U)
+      log_prob_gamma_inducing(model_params_global.gamma_inducing) +
       # P(mu)
       log_prob_mu(model_params_global.mu) +
       # P(zeta)
       log_prob_zeta(model_params_global.zeta) +
-      # P(Gamma_U)
-      log_prob_gamma(model_params_global.gamma_inducing) +
       # P(W)
       log_prob_weights(model_params_global.mixing_weights_list) +
       # P(a)

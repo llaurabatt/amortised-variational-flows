@@ -1,12 +1,7 @@
 """Miscelaneous auxiliary functions."""
 
-from typing import Any, Dict
-
 import jax
 import jax.numpy as jnp
-
-import arviz as az
-from arviz import InferenceData
 
 from modularbayes._src.typing import Array
 
@@ -46,73 +41,3 @@ def log1mexpm(x):
   """
 
   return jnp.log(-jnp.expm1(-x))
-
-
-def lalme_az_from_dict(
-    samples_dict: Dict[str, Any],
-    lalme_dataset: Dict[str, Any],
-) -> InferenceData:
-  """Converts a posterior dictionary to an ArviZ InferenceData object.
-
-  Args:
-    posterior_dict: Dictionary of posterior samples.
-
-  Returns:
-    ArviZ InferenceData object.
-  """
-
-  samples_dict.update(
-      {f"W_{i}": x for i, x in enumerate(samples_dict['mixing_weights_list'])})
-  del samples_dict['mixing_weights_list']
-  samples_dict.update(
-      {f"a_{i}": x for i, x in enumerate(samples_dict['mixing_offset_list'])})
-  del samples_dict['mixing_offset_list']
-
-  num_basis_gps, num_inducing_points = samples_dict['gamma_inducing'].shape[-2:]
-
-  coords_lalme = {
-      "mu_items":
-          lalme_dataset['items'],
-      "zeta_items":
-          lalme_dataset['items'],
-      "gamma_basis":
-          range(num_basis_gps),
-      "gamma_loc_inducing":
-          range(num_inducing_points),
-      "loc_floating_profiles":
-          lalme_dataset['LP'][-lalme_dataset['num_profiles_floating']:],
-      "loc_floating_coords": ["x", "y"],
-  }
-  dims_lalme = {
-      "mu": ["mu_items"],
-      "zeta": ["zeta_items"],
-      "gamma_inducing": ["gamma_basis", "gamma_loc_inducing"],
-      "loc_floating": ["loc_floating_profiles", "loc_floating_coords"],
-  }
-
-  if "loc_floating_aux" in samples_dict:
-    coords_lalme.update({
-        "loc_floating_aux_profiles":
-            lalme_dataset['LP'][-lalme_dataset['num_profiles_floating']:],
-        "loc_floating_aux_coords": ["x", "y"],
-    })
-    dims_lalme.update({
-        "loc_floating_aux": [
-            "loc_floating_aux_profiles", "loc_floating_aux_coords"
-        ]
-    })
-
-  for i, forms_i in enumerate(lalme_dataset['forms']):
-    coords_lalme.update({f"W_{i}_basis": range(num_basis_gps)})
-    coords_lalme.update({f"W_{i}_forms": forms_i})
-    coords_lalme.update({f"a_{i}_forms": forms_i})
-    dims_lalme.update({f"W_{i}": [f"W_{i}_basis", f"W_{i}_forms"]})
-    dims_lalme.update({f"a_{i}": [f"a_{i}_forms"]})
-
-  lalme_az = az.convert_to_inference_data(
-      samples_dict,
-      coords=coords_lalme,
-      dims=dims_lalme,
-  )
-
-  return lalme_az
