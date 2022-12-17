@@ -25,17 +25,25 @@ ModelParamsGlobal = namedtuple("modelparams_global", [
     'mu',
     'zeta',
 ])
-ModelParamsLocations = namedtuple("modelparams_locations", [
-    'loc_floating',
-    'loc_floating_aux',
-    'loc_random_anchor',
-])
-ModelParamsGammaProfiles = namedtuple("modelparams_gamma_profiles", [
-    'gamma_anchor',
-    'gamma_floating',
-    'gamma_floating_aux',
-    'gamma_random_anchor',
-])
+ModelParamsLocations = namedtuple(
+    "modelparams_locations",
+    [
+        'loc_floating',
+        'loc_floating_aux',
+        'loc_random_anchor',
+    ],
+    defaults=[None] * 3,
+)
+ModelParamsGammaProfiles = namedtuple(
+    "modelparams_gamma_profiles",
+    [
+        'gamma_anchor',
+        'gamma_floating',
+        'gamma_floating_aux',
+        'gamma_random_anchor',
+    ],
+    defaults=[None] * 4,
+)
 
 
 def log_prob_y_equal_1(
@@ -79,6 +87,7 @@ def log_prob_y_given_model_params(
     model_params_global: ModelParamsGlobal,
     model_params_gamma_profiles: ModelParamsGammaProfiles,
     smi_eta: Optional[SmiEta] = None,
+    random_anchor: bool = False,
 ) -> Array:
   """Log-probability of data given global parameters and loc_floating
 
@@ -86,11 +95,11 @@ def log_prob_y_given_model_params(
   """
 
   # Concatenate samples of gamma for all profiles, anchor and floating
-  gamma_profiles = jnp.concatenate([
-      model_params_gamma_profiles.gamma_anchor,
-      model_params_gamma_profiles.gamma_floating
-  ],
-                                   axis=-1)
+  gamma_profiles = jnp.concatenate(
+      [(model_params_gamma_profiles.gamma_anchor
+        if not random_anchor else model_params_gamma_profiles.gamma_anchor),
+       model_params_gamma_profiles.gamma_floating],
+      axis=-1)
 
   # Computes log_prob_y_equal_1
   log_prob_y_equal_1_pointwise_list = log_prob_y_equal_1(
@@ -134,7 +143,6 @@ def sample_gamma_profiles_given_gamma_inducing(
     kernel_name: str,
     kernel_kwargs: Dict[str, Any],
     gp_jitter: float,
-    is_smi: bool,
     include_random_anchor: bool,
 ) -> Tuple[ModelParamsGammaProfiles, Dict[str, Array]]:
   """Sample from the conditional distribution p(gamma_p|gamma_u).
@@ -241,48 +249,6 @@ def sample_gamma_profiles_given_gamma_inducing(
   #     num_samples_gamma_profiles, num_basis_gps,
   #     batch['num_profiles_floating'])
 
-  ### Sample Gamma on Floating (aux) profiles
-  if is_smi:
-    # Compute covariance (kernel) on auxiliary floating locations.
-    cov_floating_aux = kernel(**kernel_kwargs).matrix(
-        model_params_locations.loc_floating_aux,
-        model_params_locations.loc_floating_aux,
-    )
-    cov_floating_aux_inducing = kernel(**kernel_kwargs).matrix(
-        model_params_locations.loc_floating_aux,
-        batch['loc_inducing'],
-    )
-
-    # Conditional mean and covariance GP on floating_aux locations, given GP on inducing values
-    # (vmap over basis fields)
-    gamma_floating_aux_mean, gamma_floating_aux_cov = jax.vmap(
-        lambda gamma_inducing: conditional_gaussian_x_given_y(
-            y=gamma_inducing,
-            cov_x=cov_floating_aux,
-            cov_xy=cov_floating_aux_inducing,
-            cov_y_inv=batch['cov_inducing_inv'],
-        ))(
-            model_params_global.gamma_inducing)
-
-    gamma_floating_aux_cov += gp_jitter * jnp.broadcast_to(
-        jnp.eye(gamma_floating_aux_cov.shape[-1]), gamma_floating_aux_cov.shape)
-
-    p_floating_aux_given_inducing = distrax.Independent(
-        distrax.MultivariateNormalTri(
-            loc=gamma_floating_aux_mean,
-            scale_tri=jax.vmap(jnp.linalg.cholesky)(gamma_floating_aux_cov),
-        ),
-        reinterpreted_batch_ndims=1)
-
-    gamma_sample_dict['gamma_floating_aux'], gamma_logprob_dict[
-        'gamma_floating_aux'] = p_floating_aux_given_inducing.sample_and_log_prob(
-            seed=next(prng_seq))
-    # assert gamma_sample_dict['gamma_floating_aux'].shape == (
-    #     num_samples_gamma_profiles, num_basis_gps,
-    #     batch['num_profiles_floating'])
-  else:
-    gamma_sample_dict['gamma_floating_aux'] = None
-
   ### Sample Gamma on (random) Anchor locations
   if include_random_anchor:
     # Compute covariance (kernel) on random anchor locations.
@@ -328,7 +294,7 @@ def sample_gamma_profiles_given_gamma_inducing(
   return model_params_gamma, gamma_logprob_dict
 
 
-def log_prob_joint(
+def logprob_joint(
     batch: Batch,
     model_params_global: ModelParamsGlobal,
     model_params_locations: ModelParamsLocations,
@@ -341,6 +307,7 @@ def log_prob_joint(
     mu_prior_rate: float = 10.,
     zeta_prior_a: float = 1.,
     zeta_prior_b: float = 1.,
+    random_anchor: bool = False,
 ) -> Array:
   """Log-density for the LALME model.
 
@@ -402,7 +369,7 @@ def log_prob_joint(
 
   # P(loc_floating) : Prior on the floating locations
   # TODO: more likely where there are more items already
-  def log_prob_loc_floating(_):
+  def log_prob_locations(_):
     return 0.
 
   # P(W) : prior on the mixing weights
@@ -457,6 +424,7 @@ def log_prob_joint(
           model_params_global=model_params_global,
           model_params_gamma_profiles=model_params_gamma_profiles,
           smi_eta=smi_eta,
+          random_anchor=random_anchor,
       ) +
       # P(Gamma_anchor | Gamma_U)
       gamma_profiles_logprob['gamma_anchor'] +
@@ -473,8 +441,10 @@ def log_prob_joint(
       # P(a)
       log_prob_offset(model_params_global.mixing_offset_list) +
       # P(loc_floating)
-      log_prob_loc_floating(model_params_locations.loc_floating))
-
+      log_prob_locations(model_params_locations.loc_floating) +
+      # P(loc_random_anchor)
+      (log_prob_locations(model_params_locations.loc_random_anchor)
+       if random_anchor else 0))
   return log_prob
 
 

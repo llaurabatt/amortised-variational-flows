@@ -88,8 +88,8 @@ def get_config():
   # Number of posteriors samples used in the plots.
   config.num_samples_plot = 10_000
 
-  # Number of profiles locations to plot
-  config.num_profiles_plot = 20
+  # Floating profiles to plot in grid
+  config.lp_floating_10 = [29, 30, 3, 16, 45, 52, 54, 2, 46, 51]
 
   # Use random location for anchor profiles for evaluation
   config.include_random_anchor = True

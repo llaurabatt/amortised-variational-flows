@@ -3,12 +3,14 @@
 import math
 
 from jax import numpy as jnp
-import haiku as hk
+
 import distrax
 from tensorflow_probability.substrates import jax as tfp
 
 import modularbayes
 from modularbayes._src.typing import Any, Array, Dict, Sequence, Tuple
+
+from log_prob_fun_2 import ModelParamsGlobal, ModelParamsLocations
 
 tfb = tfp.bijectors
 tfd = tfp.distributions
@@ -617,7 +619,7 @@ def split_flow_global_params(
     num_basis_gps: int,
     num_inducing_points: int,
     **_,
-) -> Dict[str, Any]:
+) -> ModelParamsGlobal:
   """Dictionary with posterior samples.
 
   Split an array with samples of the model into a dictionary with the
@@ -717,16 +719,17 @@ def split_flow_global_params(
   samples_dict['mu'] = mu
   samples_dict['zeta'] = zeta
 
-  return samples_dict
+  model_params_global_sample = ModelParamsGlobal(**samples_dict)
+
+  return model_params_global_sample
 
 
 def split_flow_locations(
     samples: Array,
     num_profiles: int,
-    is_aux: bool,
     name='loc_floating',
     **_,
-) -> Dict[str, Any]:
+) -> ModelParamsLocations:
   """Dictionary with posterior samples.
 
   Split an array with samples of the model into a dictionary with the
@@ -767,9 +770,10 @@ def split_flow_locations(
   # 2) Assume that coordinates in the flow come (x1,y1,...,xn,yn)
   locations = samples.reshape((num_samples, num_profiles, 2))
 
-  samples_dict[name + ('_aux' if is_aux else '')] = locations
+  samples_dict[name] = locations
+  model_params_locations_sample = ModelParamsLocations(**samples_dict)
 
-  return samples_dict
+  return model_params_locations_sample
 
 
 def concat_samples_global_params(samples_dict: Dict[str, Any]) -> Array:

@@ -288,7 +288,7 @@ def transform_model_params(
   return model_params_global, model_params_locations, log_det_jacob_transformed
 
 
-def log_prob_lalme(
+def logprob_lalme(
     batch: Batch,
     prng_key: PRNGKey,
     model_params_global_unb: ModelParamsGlobal,
@@ -331,20 +331,20 @@ def log_prob_lalme(
           kernel_name=kernel_name,
           kernel_kwargs=kernel_kwargs,
           gp_jitter=gp_jitter,
-          is_smi=False,  # Do not sample the auxiliary gamma
           include_random_anchor=False,  # Do not sample gamma for random anchor locations
       ))(
           jax.random.split(prng_key, num_samples_gamma_profiles))
 
   # Average joint logprob across samples of gamma_profiles
   log_prob = jax.vmap(lambda gamma_profiles_, gamma_profiles_logprob_:
-                      log_prob_fun_2.log_prob_joint(
+                      log_prob_fun_2.logprob_joint(
                           batch=batch,
                           model_params_global=model_params_global,
                           model_params_locations=model_params_locations,
                           model_params_gamma_profiles=gamma_profiles_,
                           gamma_profiles_logprob=gamma_profiles_logprob_,
                           smi_eta=smi_eta,
+                          random_anchor=False,
                           **prior_hparams,
                       ))(model_params_gamma_profiles_sample,
                          gamma_profiles_logprob_sample)
@@ -445,7 +445,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
           loc_random_anchor=None,
       )
 
-      log_prob = log_prob_lalme(
+      log_prob = logprob_lalme(
           batch=train_ds,
           prng_key=prng_key_gamma,
           model_params_global_unb=model_params_global_unb,
@@ -454,7 +454,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
           kernel_name=config.kernel_name,
           kernel_kwargs=config.kernel_kwargs,
           num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-          smi_eta_profiles=smi_eta['profiles'] if smi_eta is not None else None,
+          smi_eta_profiles=smi_eta['profiles'],
           gp_jitter=config.gp_jitter,
       )
       return log_prob
@@ -531,7 +531,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     @jax.jit
     def logprob_fn_stg2(model_params, conditioner, prng_key_gamma):
-      log_prob = log_prob_lalme(
+      log_prob = logprob_lalme(
           batch=train_ds,
           prng_key=prng_key_gamma,
           model_params_global_unb=conditioner,
@@ -687,7 +687,6 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
               kernel_name=config.kernel_name,
               kernel_kwargs=config.kernel_kwargs,
               gp_jitter=config.gp_jitter,
-              is_smi=False,  # Do not sample on loc_floating_aux
               include_random_anchor=False,  # Do not sample gamma for random anchor locations
           )))(
               jax.random.split(
