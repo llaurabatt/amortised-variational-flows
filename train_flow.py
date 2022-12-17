@@ -642,6 +642,8 @@ def log_images(
     lp_floating: Optional[List[int]] = None,
     lp_floating_traces: Optional[List[int]] = None,
     lp_floating_grid10: Optional[List[int]] = None,
+    lp_random_anchor: Optional[List[int]] = None,
+    lp_random_anchor_grid10: Optional[List[int]] = None,
     suffix: Optional[str] = None,
     summary_writer: Optional[SummaryWriter] = None,
     workdir_png: Optional[str] = None,
@@ -672,7 +674,7 @@ def log_images(
           kernel_name=config.kernel_name,
           kernel_kwargs=config.kernel_kwargs,
           gp_jitter=config.gp_jitter,
-          include_random_anchor=False,  # Do not sample gamma for random anchor locations
+          include_random_anchor=config.include_random_anchor,
       ))(
           jax.random.split(next(prng_seq), config.num_samples_plot),
           q_distr_out['global_sample'],
@@ -703,6 +705,8 @@ def log_images(
       lp_floating=lp_floating,
       lp_floating_traces=lp_floating_traces,
       lp_floating_grid10=lp_floating_grid10,
+      lp_random_anchor=lp_random_anchor,
+      lp_random_anchor_grid10=lp_random_anchor_grid10,
       loc_inducing=batch['loc_inducing'],
       workdir_png=workdir_png,
       summary_writer=summary_writer,
@@ -1026,6 +1030,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             config=config,
             lalme_dataset=dataset,
             lp_floating_grid10=config.lp_floating_10,
+            lp_random_anchor_grid10=config.lp_random_anchor_10,
             suffix=f"_eta_floating_{config.eta_profiles_floating:.3f}",
             summary_writer=summary_writer,
         )
@@ -1142,6 +1147,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         lp_floating=dataset['LP'][dataset['num_profiles_anchor']:],
         lp_floating_traces=config.lp_floating_10,
         lp_floating_grid10=config.lp_floating_10,
+        lp_random_anchor=dataset['LP'][:dataset['num_profiles_anchor']],
+        lp_random_anchor_grid10=config.lp_random_anchor_10,
         suffix=f"_eta_floating_{config.eta_profiles_floating:.3f}",
         summary_writer=summary_writer,
         workdir_png=workdir,
@@ -1151,6 +1158,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
 # # For debugging
 # config = get_config()
-# config.eta_profiles_floating = 0.001
-# workdir = pathlib.Path.home() / 'spatial-smi-output-exp/8_items/mf/eta_floating_0.001'
+# config.eta_profiles_floating = 1.000
+# workdir = pathlib.Path.home() / 'spatial-smi-output-exp/8_items/nsf/eta_floating_1.000'
 # # train_and_evaluate(config, workdir)

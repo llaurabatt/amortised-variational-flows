@@ -375,9 +375,11 @@ def plot_profile_location(
 
 
 def profile_locations_grid(
-    posterior_sample_az: InferenceData,
+    lalme_az: InferenceData,
     lalme_dataset: Dict[str, Any],
-    lp_floating: List[int],
+    profiles_id: List[int],
+    var_name: str = 'loc_floating',
+    coord: str = "LP_floating",
     suptitle: Optional[str] = None,
     nrows: Optional[int] = None,
     scatter_kwargs: Optional[Dict[str, Any]] = None,
@@ -385,9 +387,9 @@ def profile_locations_grid(
 
   # Subplots layout
   if nrows is None:
-    nrows = int(np.sqrt(len(lp_floating)))
-  ncols = len(lp_floating) // nrows
-  ncols += 1 if len(lp_floating) % nrows else 0
+    nrows = int(np.sqrt(len(profiles_id)))
+  ncols = len(profiles_id) // nrows
+  ncols += 1 if len(profiles_id) % nrows else 0
 
   fig, axs = plt.subplots(
       nrows,
@@ -397,12 +399,12 @@ def profile_locations_grid(
       sharex=True,
       sharey=True,
   )
-  for i, lp_ in enumerate(lp_floating):
+  for i, lp_ in enumerate(profiles_id):
     p_ = np.where(lalme_dataset['LP'] == lp_)[0][0]
     az.plot_pair(
-        posterior_sample_az,
-        var_names=["loc_floating"],
-        coords={"LP_floating": lp_},
+        lalme_az,
+        var_names=[var_name],
+        coords={coord: lp_},
         kind='scatter',
         scatter_kwargs=scatter_kwargs,
         ax=axs[i // ncols, i % ncols],
@@ -788,6 +790,8 @@ def lalme_plots_arviz(
     lp_floating: Optional[List[int]] = None,
     lp_floating_traces: Optional[List[int]] = None,
     lp_floating_grid10: Optional[List[int]] = None,
+    lp_random_anchor: Optional[List[int]] = None,
+    lp_random_anchor_grid10: Optional[List[int]] = None,
     loc_inducing: Optional[Array] = None,
     workdir_png: Optional[str] = None,
     summary_writer: Optional[SummaryWriter] = None,
@@ -840,6 +844,66 @@ def lalme_plots_arviz(
           tag=plot_name,
           image=image,
           step=step,
+      )
+
+  if show_basis_fields:
+    assert loc_inducing is not None, "loc_inducing must be provided to plot basis fields"
+    fig, _ = plot_basis_fields_az(
+        lalme_az=lalme_az,
+        lalme_dataset=lalme_dataset,
+        loc_inducing=loc_inducing,
+    )
+    plot_name = "lalme_basis_fields"
+    plot_name += suffix
+    if workdir_png:
+      fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    if summary_writer:
+      summary_writer.image(plot_name, plot_to_image(fig), step=step)
+
+  if show_W_items is not None:
+    idx_ = np.intersect1d(
+        show_W_items, lalme_dataset['items'], return_indices=True)[2]
+    images = []
+    for i in idx_:
+      axs = az.plot_forest(lalme_az, var_names=[f"W_{i}"], ess=True)
+      plt.suptitle(f"LMC weights {lalme_dataset['items'][i]}")
+      plt.tight_layout()
+      if workdir_png:
+        plot_name = f"lalme_W_{i}"
+        plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      images.append(plot_to_image(None))
+
+    if summary_writer:
+      plot_name = "lalme_W"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=normalize_images(images),
+          step=step,
+          max_outputs=len(images),
+      )
+
+  if show_a_items is not None:
+    idx_ = np.intersect1d(
+        show_a_items, lalme_dataset['items'], return_indices=True)[2]
+    images = []
+    for i in idx_:
+      axs = az.plot_forest(lalme_az, var_names=[f"a_{i}"], ess=True)
+      plt.suptitle(f"LMC offsets {lalme_dataset['items'][i]}")
+      plt.tight_layout()
+      if workdir_png:
+        plot_name = f"lalme_a_{i}"
+        plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      images.append(plot_to_image(None))
+
+    if summary_writer:
+      plot_name = "lalme_a"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=normalize_images(images),
+          step=step,
+          max_outputs=len(images),
       )
 
   if lp_floating is not None:
@@ -941,9 +1005,11 @@ def lalme_plots_arviz(
 
   if lp_floating_grid10 is not None:
     fig, axs = profile_locations_grid(
-        posterior_sample_az=lalme_az,
+        lalme_az=lalme_az,
         lalme_dataset=lalme_dataset,
-        lp_floating=lp_floating_grid10,
+        profiles_id=lp_floating_grid10,
+        var_name='loc_floating',
+        coord="LP_floating",
         nrows=2,
         scatter_kwargs=scatter_kwargs,
     )
@@ -961,35 +1027,39 @@ def lalme_plots_arviz(
           step=step,
       )
 
-  if show_basis_fields:
-    assert loc_inducing is not None, "loc_inducing must be provided to plot basis fields"
-    fig, _ = plot_basis_fields_az(
-        lalme_az=lalme_az,
-        lalme_dataset=lalme_dataset,
-        loc_inducing=loc_inducing,
-    )
-    plot_name = "lalme_basis_fields"
-    plot_name += suffix
-    if workdir_png:
-      fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-    if summary_writer:
-      summary_writer.image(plot_name, plot_to_image(fig), step=step)
-
-  if show_W_items is not None:
-    idx_ = np.intersect1d(
-        show_W_items, lalme_dataset['items'], return_indices=True)[2]
+  if lp_random_anchor is not None:
     images = []
-    for i in idx_:
-      axs = az.plot_forest(lalme_az, var_names=[f"W_{i}"], ess=True)
-      plt.suptitle(f"LMC weights {lalme_dataset['items'][i]}")
-      plt.tight_layout()
+    for lp_ in lp_random_anchor:
+      # p = lalme_dataset['num_profiles_anchor']
+      p_ = np.where(lalme_dataset['LP'] == lp_)[0][0]
+      axs = az.plot_pair(
+          lalme_az,
+          var_names=["loc_random_anchor"],
+          coords={"LP_anchor": lp_},
+          kind='scatter',
+          scatter_kwargs=scatter_kwargs,
+          marginals=True,
+      )
+      axs[1, 0].scatter(
+          x=lalme_dataset['loc'][[p_], 0],
+          y=lalme_dataset['loc'][[p_], 1],
+          marker="X",
+          s=200,
+          color="red",
+      )
+      axs[0, 0].set_xlim([0, 1])
+      axs[1, 0].set_xlim([0, 1])
+      axs[1, 1].set_ylim([0, 1])
+      plt.suptitle(f"Profile: {lp_}")
+
       if workdir_png:
-        plot_name = f"lalme_W_{i}"
+        plot_name = f"anchor_profile_{lp_:03d}_loc"
         plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+        # summary_writer.image(plot_name, plot_to_image(fig), step=step)
       images.append(plot_to_image(None))
 
     if summary_writer:
-      plot_name = "lalme_W"
+      plot_name = "lalme_loc_random_anchor"
       plot_name += suffix
       summary_writer.image(
           tag=plot_name,
@@ -997,28 +1067,30 @@ def lalme_plots_arviz(
           step=step,
           max_outputs=len(images),
       )
+      del images
 
-  if show_a_items is not None:
-    idx_ = np.intersect1d(
-        show_a_items, lalme_dataset['items'], return_indices=True)[2]
-    images = []
-    for i in idx_:
-      axs = az.plot_forest(lalme_az, var_names=[f"a_{i}"], ess=True)
-      plt.suptitle(f"LMC offsets {lalme_dataset['items'][i]}")
-      plt.tight_layout()
-      if workdir_png:
-        plot_name = f"lalme_a_{i}"
-        plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-      images.append(plot_to_image(None))
+  if lp_random_anchor_grid10 is not None:
+    fig, axs = profile_locations_grid(
+        lalme_az=lalme_az,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_random_anchor_grid10,
+        var_name='loc_random_anchor',
+        coord="LP_anchor",
+        nrows=2,
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_random_anchor_profiles_grid"
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
 
     if summary_writer:
-      plot_name = "lalme_a"
+      plot_name = "lalme_random_anchor_profiles_grid"
       plot_name += suffix
       summary_writer.image(
           tag=plot_name,
-          image=normalize_images(images),
+          image=image,
           step=step,
-          max_outputs=len(images),
       )
 
 
@@ -1145,6 +1217,8 @@ def lalme_az_from_samples(
       dims_lalme.update({"loc_floating": ["LP_floating", "coords"]})
     if model_params_locations.loc_floating_aux is not None:
       dims_lalme.update({"loc_floating_aux": ["LP_floating", "coords"]})
+    if model_params_locations.loc_random_anchor is not None:
+      dims_lalme.update({"loc_random_anchor": ["LP_anchor", "coords"]})
 
   ### Gamma fields on profiles locations
   if model_params_gamma is not None:
@@ -1161,6 +1235,8 @@ def lalme_az_from_samples(
       dims_lalme.update({"gamma_floating": ["gp_basis", "LP_floating"]})
     if model_params_gamma.gamma_floating_aux is not None:
       dims_lalme.update({"gamma_floating_aux": ["gp_basis", "LP_floating"]})
+    if model_params_gamma.gamma_random_anchor is not None:
+      dims_lalme.update({"gamma_random_anchor": ["gp_basis", "LP_anchor"]})
 
   # Remove empty entries in samples_dict
   for k, v in samples_dict.copy().items():

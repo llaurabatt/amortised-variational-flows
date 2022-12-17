@@ -96,8 +96,8 @@ def log_prob_y_given_model_params(
 
   # Concatenate samples of gamma for all profiles, anchor and floating
   gamma_profiles = jnp.concatenate(
-      [(model_params_gamma_profiles.gamma_anchor
-        if not random_anchor else model_params_gamma_profiles.gamma_anchor),
+      [(model_params_gamma_profiles.gamma_anchor if not random_anchor else
+        model_params_gamma_profiles.gamma_random_anchor),
        model_params_gamma_profiles.gamma_floating],
       axis=-1)
 
