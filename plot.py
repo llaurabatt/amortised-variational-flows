@@ -825,9 +825,8 @@ def lalme_plots_arviz(
         var_names=["zeta"],
         compact=False,
     )
-    max_ = float(lalme_az.posterior.zeta.max())
     for axs_i in axs:
-      axs_i[0].set_xlim([0, max_])
+      axs_i[0].set_xlim([0, 1])
     plt.tight_layout()
     if workdir_png:
       plot_name = "lalme_zeta_trace"
