@@ -44,7 +44,7 @@ def get_config():
   config.prior_hparams.mu_prior_rate = 0.5
   config.prior_hparams.zeta_prior_a = 1.
   config.prior_hparams.zeta_prior_b = 1.
-  config.prior_hparams.w_prior_scale = 1.
+  config.prior_hparams.w_prior_scale = 5.
   config.prior_hparams.a_prior_scale = 10.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
