@@ -35,7 +35,7 @@ def get_config():
   config.prior_hparams.mu_prior_rate = 0.5
   config.prior_hparams.zeta_prior_a = 1.
   config.prior_hparams.zeta_prior_b = 1.
-  config.prior_hparams.w_prior_scale = 1.
+  config.prior_hparams.w_prior_scale = 5.
   config.prior_hparams.a_prior_scale = 10.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
@@ -43,13 +43,13 @@ def get_config():
   config.kernel_kwargs.length_scale = 0.2
   config.gp_jitter = 1e-3
 
-  config.num_samples_gamma_profiles = 10
+  config.num_samples_gamma_profiles = 100
 
-  config.num_samples = 10_000
+  config.num_samples = 5_000
   config.num_samples_subchain_stg2 = 100
-  config.num_samples_perchunk_stg2 = 1_000
+  config.num_samples_perchunk_stg2 = 250
   config.num_burnin_steps_stg1 = 1_000
-  config.num_steps_call_warmup = 100
+  config.num_steps_call_warmup = 200
 
   config.mcmc_step_size = 0.01
   config.num_chains = 4
@@ -64,5 +64,5 @@ def get_config():
 
   # Plotting
   config.lp_floating_10 = [29, 30, 3, 16, 45, 52, 54, 2, 46, 51]
-  
+
   return config

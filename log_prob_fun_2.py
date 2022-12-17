@@ -335,7 +335,7 @@ def log_prob_joint(
     model_params_gamma_profiles: ModelParamsGammaProfiles,
     gamma_profiles_logprob: Dict[str, Array],
     smi_eta: Optional[SmiEta] = None,
-    w_prior_scale: float = 1.,
+    w_prior_scale: float = 5.,
     a_prior_scale: float = 10.,
     mu_prior_concentration: float = 1.,
     mu_prior_rate: float = 10.,
