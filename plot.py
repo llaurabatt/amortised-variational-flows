@@ -27,7 +27,7 @@ from modularbayes._src.typing import (Any, Array, Batch, Dict, Kernel, List,
                                       Mapping, Optional, PRNGKey, SummaryWriter,
                                       Tuple)
 
-from misc import log1mexpm
+from misc import log1mexpm, clean_filename
 
 kernels = tfp.math.psd_kernels
 
@@ -1164,6 +1164,8 @@ def lalme_az_from_samples(
     ArviZ InferenceData object.
   """
 
+  items_ = [clean_filename(i) for i in lalme_dataset['items']]
+
   ### Global parameters
   assert model_params_global.mu.ndim == 3 and (
       model_params_global.mu.shape[0] < model_params_global.mu.shape[1]), (
@@ -1182,7 +1184,7 @@ def lalme_az_from_samples(
   num_basis_gps, num_inducing_points = samples_dict['gamma_inducing'].shape[-2:]
 
   coords_lalme = {
-      "items": lalme_dataset['items'],
+      "items": items_,
       "gp_basis": range(num_basis_gps),
       "loc_inducing": range(num_inducing_points),
   }
@@ -1191,8 +1193,8 @@ def lalme_az_from_samples(
       "zeta": ["items"],
       "gamma_inducing": ["gp_basis", "loc_inducing"],
   }
-  for i, forms_i in enumerate(lalme_dataset['forms']):
-    item_i = lalme_dataset['items'][i]
+  for i, item_i in enumerate(items_):
+    forms_i = [clean_filename(f_i) for f_i in lalme_dataset['forms'][i]]
     coords_lalme.update({f"forms_{item_i}": forms_i})
     dims_lalme.update({f"W_{i}": ["gp_basis", f"forms_{item_i}"]})
     dims_lalme.update({f"a_{i}": [f"forms_{item_i}"]})

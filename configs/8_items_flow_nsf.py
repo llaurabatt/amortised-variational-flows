@@ -88,7 +88,7 @@ def get_config():
   config.show_basis_fields_during_training = False
   config.show_linguistic_fields_during_training = False
 
-  # Number of posteriors samples used in the plots.
+  # Number of samples used in the plots.
   config.num_samples_plot = 10_000
 
   # Floating profiles to plot in grid

@@ -11,6 +11,8 @@ from absl import logging
 
 import numpy as np
 
+import arviz as az
+
 import jax
 from jax import numpy as jnp
 
@@ -376,7 +378,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
   samples_path_stg1 = workdir + '/model_params_stg1_unb_samples.npz'
   samples_path_stg2 = workdir + '/model_params_stg2_unb_samples.npz'
-  samples_path = workdir + '/posterior_sample_dict.npz'
+  samples_path = workdir + '/lalme_az.nc'
 
   # For training, we need a Dictionary compatible with jit
   # we remove string vectors
@@ -674,40 +676,46 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
        ),
    )
 
-  # Get a sample of the basis GPs on profiles locations
-  # conditional on values at the inducing locations.
-  model_params_gamma_samples, _ = jax.vmap(
-      jax.vmap(
-          lambda key_, global_, locations_: log_prob_fun_2.
-          sample_gamma_profiles_given_gamma_inducing(
-              batch=train_ds,
-              model_params_global=global_,
-              model_params_locations=locations_,
-              prng_key=key_,
-              kernel_name=config.kernel_name,
-              kernel_kwargs=config.kernel_kwargs,
-              gp_jitter=config.gp_jitter,
-              include_random_anchor=False,  # Do not sample gamma for random anchor locations
-          )))(
-              jax.random.split(
-                  next(prng_seq),
-                  config.num_chains * config.num_samples).reshape(
-                      (config.num_chains, config.num_samples, 2)),
-              model_params_global_samples,
-              model_params_locations_samples,
-          )
+  if os.path.exists(samples_path):
+    logging.info("\t Loading final samples")
+    lalme_az = az.from_netcdf(samples_path)
+  else:
+    # Get a sample of the basis GPs on profiles locations
+    # conditional on values at the inducing locations.
+    model_params_gamma_samples, _ = jax.vmap(
+        jax.vmap(
+            lambda key_, global_, locations_: log_prob_fun_2.
+            sample_gamma_profiles_given_gamma_inducing(
+                batch=train_ds,
+                model_params_global=global_,
+                model_params_locations=locations_,
+                prng_key=key_,
+                kernel_name=config.kernel_name,
+                kernel_kwargs=config.kernel_kwargs,
+                gp_jitter=config.gp_jitter,
+                include_random_anchor=False,  # Do not sample gamma for random anchor locations
+            )))(
+                jax.random.split(
+                    next(prng_seq),
+                    config.num_chains * config.num_samples).reshape(
+                        (config.num_chains, config.num_samples, 2)),
+                model_params_global_samples,
+                model_params_locations_samples,
+            )
 
-  ### Posterior visualisation with Arviz
+    ### Posterior visualisation with Arviz
 
-  logging.info("Plotting results...")
+    logging.info("Plotting results...")
 
-  # Create InferenceData object
-  lalme_az = plot.lalme_az_from_samples(
-      model_params_global=model_params_global_samples,
-      model_params_locations=model_params_locations_samples,
-      model_params_gamma=model_params_gamma_samples,
-      lalme_dataset=dataset,
-  )
+    # Create InferenceData object
+    lalme_az = plot.lalme_az_from_samples(
+        model_params_global=model_params_global_samples,
+        model_params_locations=model_params_locations_samples,
+        model_params_gamma=model_params_gamma_samples,
+        lalme_dataset=dataset,
+    )
+    # Save InferenceData object
+    lalme_az.to_netcdf(samples_path)
 
   plot.lalme_plots_arviz(
       lalme_az=lalme_az,

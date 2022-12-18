@@ -1,4 +1,6 @@
 """Miscelaneous auxiliary functions."""
+import unicodedata
+import string
 
 import jax
 import jax.numpy as jnp
@@ -41,3 +43,30 @@ def log1mexpm(x):
   """
 
   return jnp.log(-jnp.expm1(-x))
+
+
+def clean_filename(filename,
+                   whitelist="-_.() %s%s" %
+                   (string.ascii_letters, string.digits),
+                   replace=' ',
+                   char_limit=255):
+  """Clean a string so it can be used for a filename.
+  Source:
+    https://gist.github.com/wassname/1393c4a57cfcbf03641dbc31886123b8
+  """
+  # replace spaces
+  for r in replace:
+    filename = filename.replace(r, '_')
+
+  # keep only valid ascii chars
+  cleaned_filename = unicodedata.normalize('NFKD',
+                                           filename).encode('ASCII',
+                                                            'ignore').decode()
+
+  # keep only whitelisted chars
+  cleaned_filename = ''.join(c for c in cleaned_filename if c in whitelist)
+  if len(cleaned_filename) > char_limit:
+    print(
+        "Warning, filename truncated because it was over {}. Filenames may no longer be unique"
+        .format(char_limit))
+  return cleaned_filename[:char_limit]

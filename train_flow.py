@@ -1,14 +1,16 @@
 """Flow model for the LALME model."""
-
+import os
 import math
 import pathlib
 
 from absl import logging
+import syne_tune
 
 import numpy as np
+import arviz as az
+from arviz import InferenceData
 
 from flax.metrics import tensorboard
-import syne_tune
 
 import jax
 from jax import numpy as jnp
@@ -23,8 +25,7 @@ from modularbayes import (flatten_dict, initial_state_ckpt, update_states,
                           save_checkpoint)
 from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
                                       IntLike, List, Optional, PRNGKey,
-                                      Sequence, SmiEta, SummaryWriter, Tuple,
-                                      Union)
+                                      Sequence, SmiEta, Tuple, Union)
 
 import data
 import flows
@@ -419,7 +420,6 @@ def logprob_lalme(
     random_anchor: bool = False,
 ):
   """Joint log probability of the LALME model.
-  
   Using unbounded input parameters.
   """
 
@@ -628,91 +628,81 @@ def loss(params_tuple: Tuple[hk.Params], *args, **kwargs) -> Array:
   return loss_avg
 
 
-def log_images(
+def sample_lalme_az(
     state_list: List[TrainState],
     batch: Batch,
     prng_key: PRNGKey,
     config: ConfigDict,
     lalme_dataset: Dict[str, Any],
-    show_mu: bool = False,
-    show_zeta: bool = False,
-    show_basis_fields: bool = False,
-    show_W_items: Optional[List[str]] = None,
-    show_a_items: Optional[List[str]] = None,
-    lp_floating: Optional[List[int]] = None,
-    lp_floating_traces: Optional[List[int]] = None,
-    lp_floating_grid10: Optional[List[int]] = None,
-    lp_random_anchor: Optional[List[int]] = None,
-    lp_random_anchor_grid10: Optional[List[int]] = None,
-    suffix: Optional[str] = None,
-    summary_writer: Optional[SummaryWriter] = None,
-    workdir_png: Optional[str] = None,
-) -> None:
+) -> InferenceData:
   """Plots to monitor during training."""
 
   prng_seq = hk.PRNGSequence(prng_key)
 
-  # Sample from variational posterior
-  q_distr_out = sample_all_flows(
-      params_tuple=[state.params for state in state_list],
-      prng_key=next(prng_seq),
-      flow_name=config.flow_name,
-      flow_kwargs=config.flow_kwargs,
-      sample_shape=(config.num_samples_plot,),
-      include_random_anchor=config.include_random_anchor,
-  )
+  global_sample = []
+  locations_sample = []
+  gamma_sample = []
 
-  # Get a sample of the basis GPs on profiles locations
-  # conditional on values at the inducing locations.
-  gamma_sample, _ = jax.vmap(
-      lambda key_, global_, locations_: log_prob_fun_2.
-      sample_gamma_profiles_given_gamma_inducing(
-          batch=batch,
-          model_params_global=global_,
-          model_params_locations=locations_,
-          prng_key=key_,
-          kernel_name=config.kernel_name,
-          kernel_kwargs=config.kernel_kwargs,
-          gp_jitter=config.gp_jitter,
-          include_random_anchor=config.include_random_anchor,
-      ))(
-          jax.random.split(next(prng_seq), config.num_samples_plot),
-          q_distr_out['global_sample'],
-          q_distr_out['locations_sample'],
-      )
+  num_samples_chunk = 1_000
+
+  for _ in range(config.num_samples_plot // num_samples_chunk):
+    # Sample from variational posterior
+    q_distr_out = sample_all_flows(
+        params_tuple=[state.params for state in state_list],
+        prng_key=next(prng_seq),
+        flow_name=config.flow_name,
+        flow_kwargs=config.flow_kwargs,
+        sample_shape=(num_samples_chunk,),
+        include_random_anchor=config.include_random_anchor,
+    )
+
+    global_sample_ = q_distr_out['global_sample']
+    locations_sample_ = q_distr_out['locations_sample']
+
+    # Get a sample of the basis GPs on profiles locations
+    # conditional on values at the inducing locations.
+    gamma_sample_, _ = jax.vmap(
+        lambda key_, global_, locations_: log_prob_fun_2.
+        sample_gamma_profiles_given_gamma_inducing(
+            batch=batch,
+            model_params_global=global_,
+            model_params_locations=locations_,
+            prng_key=key_,
+            kernel_name=config.kernel_name,
+            kernel_kwargs=config.kernel_kwargs,
+            gp_jitter=config.gp_jitter,
+            include_random_anchor=config.include_random_anchor,
+        ))(
+            jax.random.split(next(prng_seq), num_samples_chunk),
+            q_distr_out['global_sample'],
+            q_distr_out['locations_sample'],
+        )
+
+    global_sample.append(global_sample_)
+    locations_sample.append(locations_sample_)
+    gamma_sample.append(gamma_sample_)
+
+  global_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+      lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
+      *global_sample)
+  locations_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+      lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
+      *locations_sample)
+  gamma_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+      lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
+      *gamma_sample)
 
   ### Posterior visualisation with Arviz
 
   # Create InferenceData object
   lalme_az = plot.lalme_az_from_samples(
-      model_params_global=jax.tree_map(lambda x: x[None, ...],
-                                       q_distr_out['global_sample']),
-      model_params_locations=jax.tree_map(lambda x: x[None, ...],
-                                          q_distr_out['locations_sample']),
-      model_params_gamma=jax.tree_map(lambda x: x[None, ...], gamma_sample),
+      model_params_global=global_sample,
+      model_params_locations=locations_sample,
+      model_params_gamma=gamma_sample,
       lalme_dataset=lalme_dataset,
   )
 
-  plot.lalme_plots_arviz(
-      lalme_az=lalme_az,
-      lalme_dataset=lalme_dataset,
-      step=state_list[0].step,
-      show_mu=show_mu,
-      show_zeta=show_zeta,
-      show_basis_fields=show_basis_fields,
-      show_W_items=show_W_items,
-      show_a_items=show_a_items,
-      lp_floating=lp_floating,
-      lp_floating_traces=lp_floating_traces,
-      lp_floating_grid10=lp_floating_grid10,
-      lp_random_anchor=lp_random_anchor,
-      lp_random_anchor_grid10=lp_random_anchor_grid10,
-      loc_inducing=batch['loc_inducing'],
-      workdir_png=workdir_png,
-      summary_writer=summary_writer,
-      suffix=suffix,
-      scatter_kwargs={"alpha": 0.05},
-  )
+  return lalme_az
 
 
 def error_locations_estimate(
@@ -766,6 +756,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   config.num_profiles_floating = dataset['num_profiles_floating']
   config.num_forms_tuple = dataset['num_forms_tuple']
   config.num_inducing_points = math.prod(config.flow_kwargs.inducing_grid_shape)
+
+  samples_path = workdir + '/lalme_az.nc'
 
   # For training, we need a Dictionary compatible with jit
   # we remove string vector
@@ -1011,10 +1003,12 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         gp_jitter=config.gp_jitter,
     )
 
+  save_last_checkpoint = False
   if state_list[0].step < config.training_steps:
     logging.info('Training variational posterior...')
     # Reset random keys
     prng_seq = hk.PRNGSequence(config.seed)
+    save_last_checkpoint = True
 
   while state_list[0].step < config.training_steps:
 
@@ -1022,17 +1016,25 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     if config.log_img_steps > 0:
       if (state_list[0].step == 0) or (state_list[0].step % config.log_img_steps
                                        == 0):
-        logging.info("Logging posterior...")
-        log_images(
+        logging.info("Logging plots...")
+        # Sample from posterior with final state
+        lalme_az = sample_lalme_az(
             state_list=state_list,
             batch=train_ds,
             prng_key=next(prng_seq),
             config=config,
             lalme_dataset=dataset,
+        )
+        plot.lalme_plots_arviz(
+            lalme_az=lalme_az,
+            lalme_dataset=dataset,
+            step=state_list[0].step,
             lp_floating_grid10=config.lp_floating_10,
             lp_random_anchor_grid10=config.lp_random_anchor_10,
-            suffix=f"_eta_floating_{config.eta_profiles_floating:.3f}",
+            workdir_png=workdir,
             summary_writer=summary_writer,
+            suffix=f"_eta_floating_{config.eta_profiles_floating:.3f}",
+            scatter_kwargs={"alpha": 0.05},
         )
         logging.info("...done.")
 
@@ -1121,24 +1123,39 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   logging.info('Final training step: %i', state_list[0].step)
 
   # Saving checkpoint at the end of the training process
-  # (in case training_steps is not multiple of checkpoint_steps)
-  for state, state_name in zip(state_list, state_name_list):
-    save_checkpoint(
-        state=state,
-        checkpoint_dir=f'{checkpoint_dir}/{state_name}',
-        keep=config.checkpoints_keep,
-    )
-  del state
+  if save_last_checkpoint:
+    logging.info("\t Saving final checkpoint")
+    for state, state_name in zip(state_list, state_name_list):
+      save_checkpoint(
+          state=state,
+          checkpoint_dir=f'{checkpoint_dir}/{state_name}',
+          keep=config.checkpoints_keep,
+      )
+    del state
 
-  # Last plot of posteriors
-  if config.log_img_at_end:
-    logging.info("Plotting results...")
-    log_images(
+  if os.path.exists(samples_path):
+    logging.info("\t Loading final samples")
+    lalme_az = az.from_netcdf(samples_path)
+  else:
+    logging.info("\t Saving final samples")
+    # Sample from posterior with final state
+    lalme_az = sample_lalme_az(
         state_list=state_list,
         batch=train_ds,
         prng_key=next(prng_seq),
         config=config,
         lalme_dataset=dataset,
+    )
+    # Save InferenceData object with final state
+    lalme_az.to_netcdf(samples_path)
+
+  # Plot of final posterior
+  if config.log_img_at_end:
+    logging.info("Plotting results...")
+    plot.lalme_plots_arviz(
+        lalme_az=lalme_az,
+        lalme_dataset=dataset,
+        step=state_list[0].step,
         show_mu=True,
         show_zeta=True,
         show_basis_fields=True,
@@ -1149,9 +1166,11 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         lp_floating_grid10=config.lp_floating_10,
         lp_random_anchor=dataset['LP'][:dataset['num_profiles_anchor']],
         lp_random_anchor_grid10=config.lp_random_anchor_10,
-        suffix=f"_eta_floating_{config.eta_profiles_floating:.3f}",
-        summary_writer=summary_writer,
+        loc_inducing=train_ds['loc_inducing'],
         workdir_png=workdir,
+        summary_writer=summary_writer,
+        suffix=f"_eta_floating_{config.eta_profiles_floating:.3f}",
+        scatter_kwargs={"alpha": 0.05},
     )
     logging.info("...done!")
 
@@ -1159,5 +1178,5 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 # # For debugging
 # config = get_config()
 # config.eta_profiles_floating = 1.000
-# workdir = pathlib.Path.home() / 'spatial-smi-output-exp/8_items/nsf/eta_floating_1.000'
+# workdir = str(pathlib.Path.home() / 'spatial-smi-output-exp/8_items/nsf/eta_floating_1.000')
 # # train_and_evaluate(config, workdir)

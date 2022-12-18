@@ -85,7 +85,7 @@ def get_config():
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
 
-  # Number of posteriors samples used in the plots.
+  # Number of samples used in the plots.
   config.num_samples_plot = 10_000
 
   # Floating profiles to plot in grid
