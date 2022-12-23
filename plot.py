@@ -383,6 +383,7 @@ def profile_locations_grid(
     suptitle: Optional[str] = None,
     nrows: Optional[int] = None,
     scatter_kwargs: Optional[Dict[str, Any]] = None,
+    lalme_az_2: Optional[InferenceData] = None,
 ):
 
   # Subplots layout
@@ -409,6 +410,18 @@ def profile_locations_grid(
         scatter_kwargs=scatter_kwargs,
         ax=axs[i // ncols, i % ncols],
     )
+    if lalme_az_2 is not None:
+      az.plot_pair(
+          lalme_az_2,
+          var_names=[var_name],
+          coords={coord: lp_},
+          kind=["kde"],
+          kde_kwargs={
+              "fill_last": False,
+              "hdi_probs": [0.05, 0.5, 0.95]
+          },
+          ax=axs[i // ncols, i % ncols],
+      )
     axs[i // ncols, i % ncols].scatter(
         x=lalme_dataset['loc'][[p_], 0],
         y=lalme_dataset['loc'][[p_], 1],
@@ -1095,16 +1108,16 @@ def lalme_plots_arviz(
 
 
 def posterior_samples_compare(
-    batch: Batch,
     # prng_key: PRNGKey,
-    posterior_sample_dict_1: Mapping[str, Any],
-    posterior_sample_dict_2: Mapping[str, Any],
+    lalme_az_1: Mapping[str, Any],
+    lalme_az_2: Mapping[str, Any],
+    lalme_dataset: Dict[str, Any],
     step: int,
-    profiles_id: List[str],
-    num_loc_floating_plot: Optional[int],
-    suffix: Optional[str] = None,
+    lp_floating_grid10: Optional[List[int]] = None,
     summary_writer: Optional[SummaryWriter] = None,
     workdir_png: Optional[str] = None,
+    suffix: str = '',
+    scatter_kwargs={'alpha': 0.07},
 ):
   """Plot comparison two sets of posterior samples.
 
@@ -1113,40 +1126,30 @@ def posterior_samples_compare(
   overplaced as level curves.
   """
 
-  # Plot floating profiles locations
-  if num_loc_floating_plot is not None:
-    profiles_plot = range(
-        min(num_loc_floating_plot, batch['num_profiles_floating']))
+  if lp_floating_grid10 is not None:
+    fig, _ = profile_locations_grid(
+        lalme_az=lalme_az_1,
+        lalme_az_2=lalme_az_2,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_floating_grid10,
+        var_name='loc_floating',
+        coord="LP_floating",
+        nrows=2,
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_floating_profiles_grid_compare"
+      fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
 
-    images = []
-    for p in profiles_plot:
-      plot_name = f"floating_profile_{profiles_id[batch['num_profiles_anchor']+p]:03d}_loc_2_samples"
-      if suffix is not None:
-        plot_name += ("_" + suffix)
-      fig, _ = plot_profile_location(
-          posterior_sample_dict=posterior_sample_dict_1,
-          data=batch,
-          profiles_id=profiles_id,
-          profile=p,
-          loc_type='floating',
-          posterior_sample_dict_2=posterior_sample_dict_2,
-          kde_x_range=(0., 1.),
-          kde_y_range=(0., 0.8939394),
-      )
-      if workdir_png:
-        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-      images.append(plot_to_image(fig))
     if summary_writer:
-      plot_name = "floating_profiles_locations_2_samples"
-      if suffix is not None:
-        plot_name += ("_" + suffix)
+      plot_name = "lalme_floating_profiles_grid_compare"
+      plot_name += suffix
       summary_writer.image(
           tag=plot_name,
-          image=normalize_images(images),
+          image=image,
           step=step,
-          max_outputs=len(images),
       )
-      del images
 
 
 def lalme_az_from_samples(

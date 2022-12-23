@@ -1029,7 +1029,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             lalme_az=lalme_az,
             lalme_dataset=dataset,
             step=state_list[0].step,
-            lp_floating_grid10=config.lp_floating_10,
+            lp_floating_grid10=config.lp_floating_grid10,
             lp_random_anchor_grid10=config.lp_random_anchor_10,
             workdir_png=workdir,
             summary_writer=summary_writer,
@@ -1162,15 +1162,15 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         show_W_items=dataset['items'],
         show_a_items=dataset['items'],
         lp_floating=dataset['LP'][dataset['num_profiles_anchor']:],
-        lp_floating_traces=config.lp_floating_10,
-        lp_floating_grid10=config.lp_floating_10,
+        lp_floating_traces=config.lp_floating_grid10,
+        lp_floating_grid10=config.lp_floating_grid10,
         lp_random_anchor=dataset['LP'][:dataset['num_profiles_anchor']],
         lp_random_anchor_grid10=config.lp_random_anchor_10,
         loc_inducing=train_ds['loc_inducing'],
         workdir_png=workdir,
         summary_writer=summary_writer,
         suffix=f"_eta_floating_{config.eta_profiles_floating:.3f}",
-        scatter_kwargs={"alpha": 0.05},
+        scatter_kwargs={"alpha": 0.10},
     )
     logging.info("...done!")
 

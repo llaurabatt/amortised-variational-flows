@@ -89,7 +89,7 @@ def get_config():
   config.num_samples_plot = 10_000
 
   # Floating profiles to plot in grid
-  config.lp_floating_10 = [29, 30, 3, 16, 45, 52, 54, 2, 46, 51]
+  config.lp_floating_grid10 = [5, 29, 30, 16, 45, 52, 46, 38, 51, 49]
   config.lp_random_anchor_10 = [85, 133, 363, 544, 1135, 91, 90, 1287, 612, 731]
 
   # Use random location for anchor profiles for evaluation

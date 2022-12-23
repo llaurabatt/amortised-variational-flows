@@ -510,14 +510,6 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     times_data['end_mcmc_stg_1'] = time.perf_counter()
 
-  model_params_global_unb_samples = ModelParamsGlobal(
-      gamma_inducing=model_params_stg1_unb_samples.gamma_inducing,
-      mixing_weights_list=model_params_stg1_unb_samples.mixing_weights_list,
-      mixing_offset_list=model_params_stg1_unb_samples.mixing_offset_list,
-      mu=model_params_stg1_unb_samples.mu,
-      zeta=model_params_stg1_unb_samples.zeta,
-  )
-
   ### Sample Second Stage ###
 
   if os.path.exists(samples_path_stg2):
@@ -526,11 +518,18 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     model_params_stg2_unb_samples = ModelParamsLocations(*aux_)
 
   else:
-
     logging.info("\t Stage 2...")
 
-    # Define target logprob function
+    # Extract global parameters from stage 1 samples
+    model_params_global_unb_samples = ModelParamsGlobal(
+        gamma_inducing=model_params_stg1_unb_samples.gamma_inducing,
+        mixing_weights_list=model_params_stg1_unb_samples.mixing_weights_list,
+        mixing_offset_list=model_params_stg1_unb_samples.mixing_offset_list,
+        mu=model_params_stg1_unb_samples.mu,
+        zeta=model_params_stg1_unb_samples.zeta,
+    )
 
+    # Define target logprob function
     @jax.jit
     def logprob_fn_stg2(model_params, conditioner, prng_key_gamma):
       log_prob = logprob_lalme(
@@ -665,21 +664,21 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         "\t Stg 2: %s",
         str(times_data['end_mcmc_stg_2'] - times_data['start_mcmc_stg_2']))
 
-  # Transform unbounded parameters to model parameters
-  (model_params_global_samples, model_params_locations_samples,
-   _) = transform_model_params(
-       model_params_global_unb=model_params_global_unb_samples,
-       model_params_locations_unb=ModelParamsLocations(
-           loc_floating=model_params_stg2_unb_samples.loc_floating,
-           loc_floating_aux=model_params_stg1_unb_samples.loc_floating_aux,
-           loc_random_anchor=None,
-       ),
-   )
-
   if os.path.exists(samples_path):
     logging.info("\t Loading final samples")
     lalme_az = az.from_netcdf(samples_path)
   else:
+    # Transform unbounded parameters to model parameters
+    (model_params_global_samples, model_params_locations_samples,
+     _) = transform_model_params(
+         model_params_global_unb=model_params_global_unb_samples,
+         model_params_locations_unb=ModelParamsLocations(
+             loc_floating=model_params_stg2_unb_samples.loc_floating,
+             loc_floating_aux=model_params_stg1_unb_samples.loc_floating_aux,
+             loc_random_anchor=None,
+         ),
+     )
+
     # Get a sample of the basis GPs on profiles locations
     # conditional on values at the inducing locations.
     model_params_gamma_samples, _ = jax.vmap(
@@ -717,6 +716,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     # Save InferenceData object
     lalme_az.to_netcdf(samples_path)
 
+  logging.info("Plotting results...")
   plot.lalme_plots_arviz(
       lalme_az=lalme_az,
       lalme_dataset=dataset,
@@ -727,22 +727,42 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       show_W_items=dataset['items'],
       show_a_items=dataset['items'],
       lp_floating=dataset['LP'][dataset['num_profiles_anchor']:],
-      lp_floating_traces=config.lp_floating_10,
-      lp_floating_grid10=config.lp_floating_10,
+      lp_floating_traces=config.lp_floating_grid10,
+      lp_floating_grid10=config.lp_floating_grid10,
       loc_inducing=train_ds['loc_inducing'],
       workdir_png=workdir,
       summary_writer=summary_writer,
       suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
       scatter_kwargs={"alpha": 0.05},
   )
+  logging.info("...done!")
+
+  # Load samples to compare MCMC vs Variational posteriors
+  if (config.path_variational_samples != '') and (os.path.exists(
+      config.path_variational_samples)):
+    logging.info("Plotting comparison MCMC and Variational...")
+    lalme_az_variational = az.from_netcdf(config.path_variational_samples)
+
+    plot.posterior_samples_compare(
+        lalme_az_1=lalme_az,
+        lalme_az_2=lalme_az_variational,
+        lalme_dataset=dataset,
+        step=0,
+        lp_floating_grid10=config.lp_floating_grid10,
+        summary_writer=summary_writer,
+        workdir_png=workdir,
+        suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
+        scatter_kwargs={"alpha": 0.03},
+    )
+    logging.info("...done!")
 
 
 # # For debugging
 # config = get_config()
-# eta = 1.000
+# eta = 0.001
 # import pathlib
-# workdir = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/mcmc/eta_floating_{eta:.3f}')
-# config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/nsf/eta_floating_{eta:.3f}/posterior_sample_dict.npz')
+# workdir = str(pathlib.Path.home() / f'spatial-smi-output/8_items/mcmc/eta_floating_{eta:.3f}')
+# config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output/8_items/nsf/eta_floating_{eta:.3f}/lalme_az.nc')
 # # config.num_samples = 100
 # # config.num_samples_subchain_stg2 = 10
 # # config.num_samples_perchunk_stg2 = 50

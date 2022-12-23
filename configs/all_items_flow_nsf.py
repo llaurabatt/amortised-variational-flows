@@ -30,9 +30,9 @@ def get_config():
   # Hidden sizes of the MLP conditioner.
   config.flow_kwargs.hidden_sizes = [30] * 5
   # Number of bins to use in the rational-quadratic spline.
-  config.flow_kwargs.num_bins = 10
+  config.flow_kwargs.num_bins = 15
   # the bounds of the quadratic spline transformer
-  config.flow_kwargs.spline_range = (-10., 10)
+  config.flow_kwargs.spline_range = (-50., 50)
   # Ranges of posterior locations
   # (NOTE: these will be modified in the training script)
   config.flow_kwargs.loc_x_range = (0., 1.)
@@ -98,7 +98,7 @@ def get_config():
   config.num_samples_plot = 10_000
 
   # Floating profiles to plot in grid
-  config.lp_floating_10 = [29, 30, 3, 16, 45, 52, 54, 2, 46, 51]
+  config.lp_floating_grid10 = [5, 29, 30, 16, 45, 52, 46, 38, 51, 49]
   config.lp_random_anchor_10 = [85, 133, 363, 544, 1135, 91, 90, 1287, 612, 731]
 
   # Use random location for anchor profiles for evaluation
