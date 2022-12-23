@@ -24,9 +24,9 @@ def get_config():
   # Hidden sizes of the MLP conditioner.
   config.flow_kwargs.hidden_sizes = [30] * 5
   # Number of bins to use in the rational-quadratic spline.
-  config.flow_kwargs.num_bins = 15
+  config.flow_kwargs.num_bins = 10
   # the bounds of the quadratic spline transformer
-  config.flow_kwargs.spline_range = (-50., 50)
+  config.flow_kwargs.spline_range = (-10., 10.)
   # Ranges of posterior locations
   # (NOTE: these will be modified in the training script)
   config.flow_kwargs.loc_x_range = (0., 1.)
@@ -50,7 +50,7 @@ def get_config():
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 50_000
+  config.training_steps = 200_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -61,7 +61,7 @@ def get_config():
       'init_value': 0.,
       'peak_value': 5e-3,
       'warmup_steps': 3_000,
-      'transition_steps': 10_000,
+      'transition_steps': 40_000,
       'decay_rate': 0.5,
       'transition_begin': 0,
       'staircase': False,
@@ -78,7 +78,7 @@ def get_config():
   config.num_samples_gamma_profiles = 10
 
   # How often to evaluate the model.
-  config.eval_steps = config.training_steps // 5
+  config.eval_steps = config.training_steps // 20
 
   config.num_samples_eval = 100
 

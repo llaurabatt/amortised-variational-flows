@@ -1014,8 +1014,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
     # Plots to monitor training
     if config.log_img_steps > 0:
-      if (state_list[0].step == 0) or (state_list[0].step % config.log_img_steps
-                                       == 0):
+      if (state_list[0].step % config.log_img_steps == 0):
         logging.info("Logging plots...")
         # Sample from posterior with final state
         lalme_az = sample_lalme_az(
@@ -1029,6 +1028,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             lalme_az=lalme_az,
             lalme_dataset=dataset,
             step=state_list[0].step,
+            show_mu=True,
+            show_zeta=True,
             lp_floating_grid10=config.lp_floating_grid10,
             lp_random_anchor_grid10=config.lp_random_anchor_10,
             workdir_png=workdir,

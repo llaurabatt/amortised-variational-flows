@@ -204,6 +204,7 @@ def nsf_global_params(
   # - `num_bins + 1` knot slopes
   # for a total of `3 * num_bins + 1` parameters.
 
+  # NSF layers
   for _ in range(num_layers):
     layer = distrax.MaskedCoupling(
         mask=mask,
@@ -212,12 +213,19 @@ def nsf_global_params(
             output_dim=math.prod(event_shape),
             hidden_sizes=hidden_sizes,
             num_bijector_params=num_bijector_params,
-            name='conditioner_global_params',
+            name='nsf_global_params',
         ),
     )
     flow_layers.append(layer)
     # Flip the mask after each layer.
     mask = jnp.logical_not(mask)
+
+  # Affine transformation layer
+  conditioner = modularbayes.MeanFieldConditioner(
+      flow_dim=flow_dim, name='affine_global_params')
+  loc, log_scale = conditioner()
+  flow_layers.append(
+      distrax.Block(distrax.ScalarAffine(shift=loc, log_scale=log_scale), 1))
 
   # Last layer: Map values to parameter domain
   # Layer 2: Map values to parameter domain
@@ -410,6 +418,7 @@ def meta_nsf_global_params(
   # - `num_bins + 1` knot slopes
   # for a total of `3 * num_bins + 1` parameters.
 
+  # NSF layers
   for _ in range(num_layers):
     layer = modularbayes.EtaConditionalMaskedCoupling(
         mask=mask,
