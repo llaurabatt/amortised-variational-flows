@@ -376,8 +376,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   config.num_inducing_points = math.prod(
       config.model_hparams.inducing_grid_shape)
 
-  samples_path_stg1 = workdir + '/model_params_stg1_unb_samples.npz'
-  samples_path_stg2 = workdir + '/model_params_stg2_unb_samples.npz'
+  samples_path_stg1 = workdir + '/lalme_stg1_unb_az.nc'
   samples_path = workdir + '/lalme_az.nc'
 
   # For training, we need a Dictionary compatible with jit
@@ -424,10 +423,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   ### Sample First Stage ###
   if os.path.exists(samples_path_stg1):
     logging.info("\t Loading samples for stage 1...")
-    aux_ = np.load(str(samples_path_stg1), allow_pickle=True)['arr_0']
-    model_params_stg1_unb_samples = ModelParamsStg1(*aux_)
-    # model_params_stg1_unb_samples = jax.tree_map(lambda x: x.swapaxes(0, 1),
-    #                                              model_params_stg1_unb_samples)
+    lalme_stg1_unb_az = az.from_netcdf(samples_path_stg1)
   else:
     logging.info("\t Stage 1...")
 
@@ -502,31 +498,54 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     model_params_stg1_unb_samples = jax.tree_map(lambda x: x.swapaxes(0, 1),
                                                  states_stg1.position)
 
-    # Save MCMC samples from stage 1
-    np.savez_compressed(samples_path_stg1, model_params_stg1_unb_samples)
+    # Create InferenceData object
+    lalme_stg1_unb_az = plot.lalme_az_from_samples(
+        lalme_dataset=dataset,
+        model_params_global=ModelParamsGlobal(
+            gamma_inducing=model_params_stg1_unb_samples.gamma_inducing,
+            mixing_weights_list=model_params_stg1_unb_samples
+            .mixing_weights_list,
+            mixing_offset_list=model_params_stg1_unb_samples.mixing_offset_list,
+            mu=model_params_stg1_unb_samples.mu,
+            zeta=model_params_stg1_unb_samples.zeta,
+        ),
+        model_params_locations=ModelParamsLocations(
+            loc_floating=None,
+            loc_floating_aux=model_params_stg1_unb_samples.loc_floating_aux,
+            loc_random_anchor=None,
+        ),
+        model_params_gamma=None,
+    )
+    # Save InferenceData object from stage 1
+    lalme_stg1_unb_az.to_netcdf(samples_path_stg1)
 
-    logging.info("\t\t posterior means mu (before transform) %s",
-                 str(model_params_stg1_unb_samples.mu.mean(axis=[0, 1])))
+    logging.info(
+        "\t\t posterior means mu (before transform):  %s",
+        str(jnp.array(lalme_stg1_unb_az.posterior.mu).mean(axis=[0, 1])))
 
     times_data['end_mcmc_stg_1'] = time.perf_counter()
 
   ### Sample Second Stage ###
 
-  if os.path.exists(samples_path_stg2):
-    logging.info("\t Loading samples for stage 2...")
-    aux_ = np.load(str(samples_path_stg2), allow_pickle=True)['arr_0']
-    model_params_stg2_unb_samples = ModelParamsLocations(*aux_)
-
+  if os.path.exists(samples_path):
+    logging.info("\t Loading final samples")
+    lalme_az = az.from_netcdf(samples_path)
   else:
     logging.info("\t Stage 2...")
 
     # Extract global parameters from stage 1 samples
     model_params_global_unb_samples = ModelParamsGlobal(
-        gamma_inducing=model_params_stg1_unb_samples.gamma_inducing,
-        mixing_weights_list=model_params_stg1_unb_samples.mixing_weights_list,
-        mixing_offset_list=model_params_stg1_unb_samples.mixing_offset_list,
-        mu=model_params_stg1_unb_samples.mu,
-        zeta=model_params_stg1_unb_samples.zeta,
+        gamma_inducing=jnp.array(lalme_stg1_unb_az.posterior.gamma_inducing),
+        mixing_weights_list=[
+            jnp.array(lalme_stg1_unb_az.posterior[f'W_{i}'])
+            for i in range(len(config.num_forms_tuple))
+        ],
+        mixing_offset_list=[
+            jnp.array(lalme_stg1_unb_az.posterior[f'a_{i}'])
+            for i in range(len(config.num_forms_tuple))
+        ],
+        mu=jnp.array(lalme_stg1_unb_az.posterior.mu),
+        zeta=jnp.array(lalme_stg1_unb_az.posterior.zeta),
     )
 
     # Define target logprob function
@@ -564,23 +583,23 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     ))(
         jax.random.split(next(prng_seq), config.num_chains),
         ModelParamsLocations(
-            loc_floating=model_params_stg1_unb_samples.loc_floating_aux[:, 0,
-                                                                        ...],
+            loc_floating=jnp.array(
+                lalme_stg1_unb_az.posterior.loc_floating_aux)[:, 0, ...],
             loc_floating_aux=None,
             loc_random_anchor=None,
         ),
         jax.tree_map(lambda x: x[:, 0, ...], model_params_global_unb_samples),
     )
 
-    # When the number of samples is large,
+    # The number of samples is large and often it does not fit into GPU memory
     # we split the sampling of stage 2 into chunks
     assert config.num_samples % config.num_samples_perchunk_stg2 == 0
     num_chunks_stg2 = config.num_samples // config.num_samples_perchunk_stg2
 
     # Initialize stage 1 using loc_floating_aux
     # we use the tuned HMC parameters from above
-    # Note: vmap is first applied to the chains, then to samples from conditioner
-    #    this requires swap axes 0 and 1 in a few places
+    # Note: vmap is first applied to the chains, then to samples from
+    #   conditioner this requires swap axes 0 and 1 in a few places
     init_fn_multichain = jax.vmap(lambda param, cond, hmc_param: blackjax.nuts(
         logdensity_fn=lambda param_: logdensity_fn_stg2(
             conditioner=cond,
@@ -600,9 +619,10 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     # The initial position for loc_floating in the first chunk is the location
     # of loc_floating_aux from stage 1
     initial_position_i = ModelParamsLocations(
-        loc_floating=model_params_stg1_unb_samples
-        .loc_floating_aux[:, :config.num_samples_perchunk_stg2, ...].swapaxes(
-            0, 1),  # swap axes to have (num_samples, num_chains, ...)
+        loc_floating=jnp.array(lalme_stg1_unb_az.posterior.loc_floating_aux)
+        [:, :config.num_samples_perchunk_stg2,
+         ...].swapaxes(0,
+                       1),  # swap axes to have (num_samples, num_chains, ...)
         loc_floating_aux=None,
         loc_random_anchor=None,
     )
@@ -641,14 +661,33 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     model_params_stg2_unb_samples = jax.tree_map(lambda x: x.swapaxes(0, 1),
                                                  model_params_stg2_unb_samples)
 
+    # Transform unbounded parameters to model parameters
+    (model_params_global_samples, model_params_locations_samples,
+     _) = transform_model_params(
+         model_params_global_unb=model_params_global_unb_samples,
+         model_params_locations_unb=ModelParamsLocations(
+             loc_floating=model_params_stg2_unb_samples.loc_floating,
+             loc_floating_aux=jnp.array(
+                 lalme_stg1_unb_az.posterior.loc_floating_aux),
+             loc_random_anchor=None,
+         ),
+     )
+
+    # Create InferenceData object
+    lalme_az = plot.lalme_az_from_samples(
+        lalme_dataset=dataset,
+        model_params_global=model_params_global_samples,
+        model_params_locations=model_params_locations_samples,
+        model_params_gamma=None,
+    )
+    # Save InferenceData object
+    lalme_az.to_netcdf(samples_path)
+
     logging.info(
-        "\t\t posterior means loc_floating (before transform) %s",
-        str(model_params_stg2_unb_samples.loc_floating.mean(axis=[0, 1])))
+        "\t\t posterior means loc_floating (before transform): %s",
+        str(jnp.array(lalme_az.posterior.loc_floating).mean(axis=[0, 1])))
 
     times_data['end_mcmc_stg_2'] = time.perf_counter()
-
-    # Save MCMC samples from stage 1
-    np.savez_compressed(samples_path_stg2, model_params_stg2_unb_samples)
 
   times_data['end_sampling'] = time.perf_counter()
 
@@ -664,61 +703,58 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         "\t Stg 2: %s",
         str(times_data['end_mcmc_stg_2'] - times_data['start_mcmc_stg_2']))
 
-  if os.path.exists(samples_path):
-    logging.info("\t Loading final samples")
-    lalme_az = az.from_netcdf(samples_path)
-  else:
-    # Transform unbounded parameters to model parameters
-    (model_params_global_samples, model_params_locations_samples,
-     _) = transform_model_params(
-         model_params_global_unb=model_params_global_unb_samples,
-         model_params_locations_unb=ModelParamsLocations(
-             loc_floating=model_params_stg2_unb_samples.loc_floating,
-             loc_floating_aux=model_params_stg1_unb_samples.loc_floating_aux,
-             loc_random_anchor=None,
-         ),
-     )
+  # Get a sample of the basis GPs on profiles locations
+  # conditional on values at the inducing locations.
+  model_params_global_samples_ = ModelParamsGlobal(
+      gamma_inducing=jnp.array(lalme_az.posterior.gamma_inducing),
+      mixing_weights_list=[
+          jnp.array(lalme_az.posterior[f'W_{i}'])
+          for i in range(len(config.num_forms_tuple))
+      ],
+      mixing_offset_list=[
+          jnp.array(lalme_az.posterior[f'a_{i}'])
+          for i in range(len(config.num_forms_tuple))
+      ],
+      mu=jnp.array(lalme_az.posterior.mu),
+      zeta=jnp.array(lalme_az.posterior.zeta),
+  )
+  model_params_locations_samples_ = ModelParamsLocations(
+      loc_floating=jnp.array(lalme_az.posterior.loc_floating),
+      loc_floating_aux=jnp.array(lalme_az.posterior.loc_floating_aux),
+      loc_random_anchor=None,
+  )
+  model_params_gamma_samples_, _ = jax.vmap(
+      jax.vmap(lambda key_, global_, locations_: log_prob_fun_2.
+               sample_gamma_profiles_given_gamma_inducing(
+                   batch=train_ds,
+                   model_params_global=global_,
+                   model_params_locations=locations_,
+                   prng_key=key_,
+                   kernel_name=config.kernel_name,
+                   kernel_kwargs=config.kernel_kwargs,
+                   gp_jitter=config.gp_jitter,
+                   include_random_anchor=False,
+               )))(
+                   jax.random.split(
+                       next(prng_seq),
+                       config.num_chains * config.num_samples).reshape(
+                           (config.num_chains, config.num_samples, 2)),
+                   model_params_global_samples_,
+                   model_params_locations_samples_,
+               )
+  lalme_az_with_gamma = plot.lalme_az_from_samples(
+      lalme_dataset=dataset,
+      model_params_global=model_params_global_samples_,
+      model_params_locations=model_params_locations_samples_,
+      model_params_gamma=model_params_gamma_samples_,
+  )
 
-    # Get a sample of the basis GPs on profiles locations
-    # conditional on values at the inducing locations.
-    model_params_gamma_samples, _ = jax.vmap(
-        jax.vmap(
-            lambda key_, global_, locations_: log_prob_fun_2.
-            sample_gamma_profiles_given_gamma_inducing(
-                batch=train_ds,
-                model_params_global=global_,
-                model_params_locations=locations_,
-                prng_key=key_,
-                kernel_name=config.kernel_name,
-                kernel_kwargs=config.kernel_kwargs,
-                gp_jitter=config.gp_jitter,
-                include_random_anchor=False,  # Do not sample gamma for random anchor locations
-            )))(
-                jax.random.split(
-                    next(prng_seq),
-                    config.num_chains * config.num_samples).reshape(
-                        (config.num_chains, config.num_samples, 2)),
-                model_params_global_samples,
-                model_params_locations_samples,
-            )
-
-    ### Posterior visualisation with Arviz
-
-    logging.info("Plotting results...")
-
-    # Create InferenceData object
-    lalme_az = plot.lalme_az_from_samples(
-        lalme_dataset=dataset,
-        model_params_global=model_params_global_samples,
-        model_params_locations=model_params_locations_samples,
-        model_params_gamma=model_params_gamma_samples,
-    )
-    # Save InferenceData object
-    lalme_az.to_netcdf(samples_path)
+  ### Posterior visualisation with Arviz
 
   logging.info("Plotting results...")
+
   plot.lalme_plots_arviz(
-      lalme_az=lalme_az,
+      lalme_az=lalme_az_with_gamma,
       lalme_dataset=dataset,
       step=0,
       show_mu=True,
@@ -761,8 +797,8 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 # config = get_config()
 # eta = 1.000
 # import pathlib
-# workdir = str(pathlib.Path.home() / f'spatial-smi-output/8_items/mcmc/eta_floating_{eta:.3f}')
-# config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output/8_items/nsf/eta_floating_{eta:.3f}/lalme_az.nc')
+# workdir = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/mcmc/eta_floating_{eta:.3f}')
+# config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/nsf/eta_floating_{eta:.3f}/lalme_az.nc')
 # # config.num_samples = 100
 # # config.num_samples_subchain_stg2 = 10
 # # config.num_samples_perchunk_stg2 = 50

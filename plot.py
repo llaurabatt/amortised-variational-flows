@@ -1204,12 +1204,6 @@ def lalme_az_from_samples(
 
   ### Linguistic Profiles Locations
   if model_params_locations is not None:
-    assert model_params_locations.loc_floating.ndim == 4 and (
-        model_params_locations.loc_floating.shape[0] <
-        model_params_locations.loc_floating.shape[1]), (
-            "Arrays in model_params_locations" +
-            "are expected to have shapes:" + "(num_chains, num_samples, ...)")
-
     coords_lalme.update({
         "LP_anchor":
             lalme_dataset['LP'][:lalme_dataset['num_profiles_anchor']],
@@ -1219,10 +1213,25 @@ def lalme_az_from_samples(
     })
     samples_dict.update(model_params_locations._asdict())
     if model_params_locations.loc_floating is not None:
+      assert model_params_locations.loc_floating.ndim == 4 and (
+          model_params_locations.loc_floating.shape[0] <
+          model_params_locations.loc_floating.shape[1]), (
+              "Arrays in model_params_locations" +
+              "are expected to have shapes:" + "(num_chains, num_samples, ...)")
       dims_lalme.update({"loc_floating": ["LP_floating", "coords"]})
     if model_params_locations.loc_floating_aux is not None:
+      assert model_params_locations.loc_floating_aux.ndim == 4 and (
+          model_params_locations.loc_floating_aux.shape[0] <
+          model_params_locations.loc_floating_aux.shape[1]), (
+              "Arrays in model_params_locations" +
+              "are expected to have shapes:" + "(num_chains, num_samples, ...)")
       dims_lalme.update({"loc_floating_aux": ["LP_floating", "coords"]})
     if model_params_locations.loc_random_anchor is not None:
+      assert model_params_locations.loc_random_anchor.ndim == 4 and (
+          model_params_locations.loc_random_anchor.shape[0] <
+          model_params_locations.loc_random_anchor.shape[1]), (
+              "Arrays in model_params_locations" +
+              "are expected to have shapes:" + "(num_chains, num_samples, ...)")
       dims_lalme.update({"loc_random_anchor": ["LP_anchor", "coords"]})
 
   ### Gamma fields on profiles locations
