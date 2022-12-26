@@ -1153,10 +1153,10 @@ def posterior_samples_compare(
 
 
 def lalme_az_from_samples(
-    model_params_global: ModelParamsGlobal,
-    model_params_locations: Optional[ModelParamsLocations],
-    model_params_gamma: Optional[ModelParamsGammaProfiles],
     lalme_dataset: Dict[str, Any],
+    model_params_global: ModelParamsGlobal,
+    model_params_locations: Optional[ModelParamsLocations] = None,
+    model_params_gamma: Optional[ModelParamsGammaProfiles] = None,
 ) -> InferenceData:
   """Converts a posterior dictionary to an ArviZ InferenceData object.
 

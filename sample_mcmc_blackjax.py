@@ -61,13 +61,13 @@ np.set_printoptions(suppress=True, precision=4)
 
 def call_warmup(
     prng_key: PRNGKey,
-    logprob_fn: Callable,
+    logdensity_fn: Callable,
     model_params: PyTree,
     num_steps: int,
 ) -> Tuple:
   warmup = blackjax.window_adaptation(
       algorithm=blackjax.nuts,
-      logprob_fn=logprob_fn,
+      logdensity_fn=logdensity_fn,
   )
   initial_states, _, hmc_params = warmup.run(
       rng_key=prng_key,
@@ -81,7 +81,7 @@ def inference_loop_one_chain(
     prng_key: PRNGKey,
     initial_state: HMCState,
     hmc_params: Dict[str, Array],
-    logprob_fn: Callable,
+    logdensity_fn: Callable,
     num_samples: int,
 ) -> Tuple[HMCState, NUTSInfo]:
 
@@ -89,7 +89,7 @@ def inference_loop_one_chain(
     kernel_fn = lambda state_, key_, hmc_param_: blackjax.nuts.kernel()(
         rng_key=key_,
         state=state_,
-        logprob_fn=logprob_fn,
+        logdensity_fn=logdensity_fn,
         step_size=hmc_param_['step_size'],
         inverse_mass_matrix=hmc_param_['inverse_mass_matrix'],
     )
@@ -106,7 +106,7 @@ def inference_loop_stg1(
     prng_key: PRNGKey,
     initial_states: HMCState,
     hmc_params: Dict[str, Array],
-    logprob_fn: Callable,
+    logdensity_fn: Callable,
     num_samples: int,
     num_chains: int,
 ) -> Tuple[HMCState, NUTSInfo]:
@@ -117,7 +117,7 @@ def inference_loop_stg1(
         )(
             rng_key=key_nuts_,
             state=state_,
-            logprob_fn=lambda x: logprob_fn(x, key_gamma_),
+            logdensity_fn=lambda x: logdensity_fn(x, key_gamma_),
             step_size=hmc_param_['step_size'],
             inverse_mass_matrix=hmc_param_['inverse_mass_matrix'],
         ))
@@ -144,7 +144,7 @@ def inference_loop_stg2(
     prng_key: PRNGKey,
     initial_states: HMCState,
     hmc_params: Dict[str, Array],
-    logprob_fn_conditional: Callable,
+    logdensity_fn_conditional: Callable,
     conditioner_logprob: ModelParamsGlobal,
     num_samples_stg1: int,
     num_samples_stg2: int,
@@ -158,7 +158,7 @@ def inference_loop_stg2(
         kernel()(
             rng_key=key_nuts_,
             state=state,
-            logprob_fn=lambda param_: logprob_fn_conditional(
+            logdensity_fn=lambda param_: logdensity_fn_conditional(
                 model_params=param_,
                 conditioner=cond,
                 prng_key_gamma=key_gamma_,
@@ -433,7 +433,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     # Define target logprob function
     @jax.jit
-    def logprob_fn_stg1(model_params, prng_key_gamma):
+    def logdensity_fn_stg1(model_params, prng_key_gamma):
       model_params_global_unb = ModelParamsGlobal(
           gamma_inducing=model_params.gamma_inducing,
           mixing_weights_list=model_params.mixing_weights_list,
@@ -478,7 +478,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     initial_states_stg1, hmc_params_stg1 = jax.vmap(
         lambda prng_key, model_params: call_warmup(
             prng_key=prng_key,
-            logprob_fn=lambda x: logprob_fn_stg1(x, key_gamma_),
+            logdensity_fn=lambda x: logdensity_fn_stg1(x, key_gamma_),
             model_params=model_params,
             num_steps=config.num_steps_call_warmup,
         ))(
@@ -492,7 +492,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         prng_key=next(prng_seq),
         initial_states=initial_states_stg1,
         hmc_params=hmc_params_stg1,
-        logprob_fn=logprob_fn_stg1,
+        logdensity_fn=logdensity_fn_stg1,
         num_samples=config.num_samples,
         num_chains=config.num_chains,
     )
@@ -531,7 +531,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     # Define target logprob function
     @jax.jit
-    def logprob_fn_stg2(model_params, conditioner, prng_key_gamma):
+    def logdensity_fn_stg2(model_params, conditioner, prng_key_gamma):
       log_prob = logprob_lalme(
           batch=train_ds,
           prng_key=prng_key_gamma,
@@ -554,7 +554,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     key_gamma_ = next(prng_seq)
     _, hmc_params_stg2 = jax.vmap(lambda key, param, cond: call_warmup(
         prng_key=key,
-        logprob_fn=lambda param_: logprob_fn_stg2(
+        logdensity_fn=lambda param_: logdensity_fn_stg2(
             conditioner=cond,
             model_params=param_,
             prng_key_gamma=key_gamma_,
@@ -582,7 +582,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     # Note: vmap is first applied to the chains, then to samples from conditioner
     #    this requires swap axes 0 and 1 in a few places
     init_fn_multichain = jax.vmap(lambda param, cond, hmc_param: blackjax.nuts(
-        logprob_fn=lambda param_: logprob_fn_stg2(
+        logdensity_fn=lambda param_: logdensity_fn_stg2(
             conditioner=cond,
             model_params=param_,
             prng_key_gamma=key_gamma_,
@@ -622,7 +622,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
           prng_key=next(prng_seq),
           initial_states=initial_state_i,
           hmc_params=hmc_params_stg2,
-          logprob_fn_conditional=logprob_fn_stg2,
+          logdensity_fn_conditional=logdensity_fn_stg2,
           conditioner_logprob=cond_i,
           num_samples_stg1=config.num_samples_perchunk_stg2,
           num_samples_stg2=config.num_samples_subchain_stg2,
@@ -708,10 +708,10 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     # Create InferenceData object
     lalme_az = plot.lalme_az_from_samples(
+        lalme_dataset=dataset,
         model_params_global=model_params_global_samples,
         model_params_locations=model_params_locations_samples,
         model_params_gamma=model_params_gamma_samples,
-        lalme_dataset=dataset,
     )
     # Save InferenceData object
     lalme_az.to_netcdf(samples_path)
@@ -759,7 +759,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
 # # For debugging
 # config = get_config()
-# eta = 0.001
+# eta = 1.000
 # import pathlib
 # workdir = str(pathlib.Path.home() / f'spatial-smi-output/8_items/mcmc/eta_floating_{eta:.3f}')
 # config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output/8_items/nsf/eta_floating_{eta:.3f}/lalme_az.nc')
