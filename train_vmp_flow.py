@@ -7,6 +7,8 @@ from absl import logging
 
 import numpy as np
 from matplotlib import pyplot as plt
+import arviz as az
+from arviz import InferenceData
 
 from flax.metrics import tensorboard
 import syne_tune
@@ -19,11 +21,12 @@ import optax
 
 from tensorflow_probability.substrates import jax as tfp
 
+import log_prob_fun_2
+from log_prob_fun_2 import ModelParamsGlobal, ModelParamsLocations
 import flows
-import log_prob_fun
 import plot
 from train_flow import (load_data, make_optimizer, get_inducing_points,
-                        error_locations_estimate)
+                        error_locations_estimate, logprob_lalme)
 
 from modularbayes._src.utils.training import TrainState
 from modularbayes import (flatten_dict, initial_state_ckpt, update_states,
@@ -80,25 +83,25 @@ def q_distr_global(
   num_samples = eta.shape[0]
 
   # Sample from flow
-  (global_params_sample, global_params_log_prob,
-   global_params_base_sample) = q_distr.sample_and_log_prob_with_base(
+  (sample_flow_concat, sample_logprob,
+   sample_base) = q_distr.sample_and_log_prob_with_base(
        seed=hk.next_rng_key(),
        sample_shape=(num_samples,),
        context=[eta, None],
    )
 
   # Split flow into model parameters
-  q_distr_out['posterior_sample'] = flows.split_flow_global_params(
-      samples=global_params_sample,
+  q_distr_out['sample'] = flows.split_flow_global_params(
+      samples=sample_flow_concat,
       **flow_kwargs,
   )
 
   # Log_probabilities of the sample
-  q_distr_out['global_params_log_prob'] = global_params_log_prob
+  q_distr_out['sample_logprob'] = sample_logprob
 
   # Sample from base distribution are preserved
   # These are used for the posterior of profiles locations
-  q_distr_out['global_params_base_sample'] = global_params_base_sample
+  q_distr_out['sample_base'] = sample_base
 
   return q_distr_out
 
@@ -108,7 +111,7 @@ def q_distr_loc_floating(
     flow_kwargs: Dict[str, Any],
     global_params_base_sample: Array,
     eta: Array,
-    is_aux: bool,
+    name: str = 'loc_floating',
 ) -> Dict[str, Any]:
   """Sample from the posterior of floating locations
 
@@ -147,7 +150,7 @@ def q_distr_loc_floating(
 
   # Sample from flow
   num_samples = global_params_base_sample.shape[0]
-  (locations_sample, locations_log_prob) = q_distr.sample_and_log_prob(
+  sample_flow_concat, sample_logprob = q_distr.sample_and_log_prob(
       seed=hk.next_rng_key(),
       sample_shape=(num_samples,),
       context=[eta, global_params_base_sample],
@@ -155,18 +158,13 @@ def q_distr_loc_floating(
 
   # Split flow into model parameters
   # (and add to existing posterior_sample_dict)
-  q_distr_out['posterior_sample'] = {}
-  q_distr_out['posterior_sample'].update(
-      flows.split_flow_locations(
-          samples=locations_sample,
-          num_profiles=flow_kwargs['num_profiles_floating'],
-          is_aux=is_aux,
-          name='loc_floating',
-      ))
+  q_distr_out['sample'] = flows.split_flow_locations(
+      samples=sample_flow_concat,
+      num_profiles=flow_kwargs['num_profiles_floating'],
+      name=name,
+  )
 
-  # log P(beta,tau|sigma)
-  q_distr_out['loc_floating_' + ('aux_' if is_aux else '') +
-              'log_prob'] = locations_log_prob
+  q_distr_out['sample_logprob'] = sample_logprob
 
   return q_distr_out
 
@@ -209,7 +207,7 @@ def q_distr_loc_random_anchor(
 
   # Sample from flow
   num_samples = global_params_base_sample.shape[0]
-  (locations_sample, locations_log_prob) = q_distr.sample_and_log_prob(
+  (sample_flow_concat, sample_logprob) = q_distr.sample_and_log_prob(
       seed=hk.next_rng_key(),
       sample_shape=(num_samples,),
       context=[eta, global_params_base_sample],
@@ -217,72 +215,71 @@ def q_distr_loc_random_anchor(
 
   # Split flow into model parameters
   # (and add to existing posterior_sample_dict)
-  q_distr_out['posterior_sample'] = flows.split_flow_locations(
-      samples=locations_sample,
+  q_distr_out['sample'] = flows.split_flow_locations(
+      samples=sample_flow_concat,
       num_profiles=flow_kwargs['num_profiles_anchor'],
-      is_aux=False,
       name='loc_random_anchor',
   )
 
   # Log_probabilities of the sample
-  q_distr_out['loc_random_anchor_log_prob'] = locations_log_prob
+  q_distr_out['sample_logprob'] = sample_logprob
 
   return q_distr_out
 
 
 def sample_all_flows(
     params_tuple: Tuple[hk.Params],
-    batch: Optional[Batch],
     prng_key: PRNGKey,
     flow_name: str,
     flow_kwargs: Dict[str, Any],
     smi_eta: SmiEta,
     include_random_anchor: bool,
-    kernel_name: Optional[str],
-    kernel_kwargs: Optional[Dict[str, Any]],
-    num_samples_gamma_profiles: int = 0,
-    gp_jitter: Optional[float] = None,
 ) -> Dict[str, Any]:
+  """Generate a sample from the entire flow posterior."""
 
   prng_seq = hk.PRNGSequence(prng_key)
 
+  q_distr_out = {}
+
   # Global parameters
-  q_distr_out = hk.transform(q_distr_global).apply(
+  q_distr_out_global = hk.transform(q_distr_global).apply(
       params_tuple[0],
       next(prng_seq),
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
       eta=smi_eta['profiles'],
   )
+  q_distr_out.update({f"global_{k}": v for k, v in q_distr_out_global.items()})
+
   # Floating profiles locations
   q_distr_out_loc_floating = hk.transform(q_distr_loc_floating).apply(
       params_tuple[1],
       next(prng_seq),
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
-      global_params_base_sample=q_distr_out['global_params_base_sample'],
+      global_params_base_sample=q_distr_out_global['sample_base'],
       eta=smi_eta['profiles'],
-      is_aux=False,
+      name='loc_floating',
   )
-  q_distr_out['posterior_sample'].update(
-      q_distr_out_loc_floating['posterior_sample'])
-  q_distr_out['loc_floating_log_prob'] = q_distr_out_loc_floating[
-      'loc_floating_log_prob']
+  q_distr_out['loc_floating_logprob'] = q_distr_out_loc_floating[
+      'sample_logprob']
 
-  # Floating profiles locations
-  q_distr_out_loc_floating = hk.transform(q_distr_loc_floating).apply(
+  # Auxiliary Floating profiles locations
+  q_distr_out_loc_floating_aux = hk.transform(q_distr_loc_floating).apply(
       params_tuple[2],
       next(prng_seq),
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
-      global_params_base_sample=q_distr_out['global_params_base_sample'],
+      global_params_base_sample=q_distr_out_global['sample_base'],
       eta=smi_eta['profiles'],
-      is_aux=True,
+      name='loc_floating_aux',
   )
-  q_distr_out['posterior_sample'].update(
-      q_distr_out_loc_floating['posterior_sample'])
-  q_distr_out['loc_floating_aux_log_prob'] = q_distr_out_loc_floating[
-      'loc_floating_aux_log_prob']
+  q_distr_out['locations_sample'] = ModelParamsLocations(
+      loc_floating=q_distr_out_loc_floating['sample'].loc_floating,
+      loc_floating_aux=q_distr_out_loc_floating_aux['sample'].loc_floating_aux,
+  )
+  q_distr_out['loc_floating_aux_logprob'] = q_distr_out_loc_floating_aux[
+      'sample_logprob']
 
   # Anchor profiles locations
   if include_random_anchor:
@@ -292,32 +289,113 @@ def sample_all_flows(
             next(prng_seq),
             flow_name=flow_name,
             flow_kwargs=flow_kwargs,
-            global_params_base_sample=q_distr_out['global_params_base_sample'],
+            global_params_base_sample=q_distr_out_global['sample_base'],
             eta=smi_eta['profiles'],
         )
-    q_distr_out['posterior_sample'].update(
-        q_distr_out_loc_random_anchor['posterior_sample'])
-    q_distr_out['loc_random_anchor_log_prob'] = q_distr_out_loc_random_anchor[
-        'loc_random_anchor_log_prob']
-
-  if num_samples_gamma_profiles > 0:
-    # Sample gamma_profiles
-    # Such samples are not part of the posterior approximation q(Theta),
-    # but we add them to the dictionary 'posterior_sample_dict' for convenience.
-    gamma_sample_dict = log_prob_fun.sample_gamma_profiles_given_gamma_inducing(
-        batch=batch,
-        posterior_sample_dict=q_distr_out['posterior_sample'],
-        prng_key=next(prng_seq),
-        kernel_name=kernel_name,
-        kernel_kwargs=kernel_kwargs,
-        gp_jitter=gp_jitter,
-        num_samples_gamma_profiles=num_samples_gamma_profiles,
-        is_smi=True,
-        include_random_anchor=include_random_anchor,
+    q_distr_out['locations_sample'] = ModelParamsLocations(
+        loc_floating=q_distr_out_loc_floating['sample'].loc_floating,
+        loc_floating_aux=q_distr_out_loc_floating_aux['sample']
+        .loc_floating_aux,
+        loc_random_anchor=q_distr_out_loc_random_anchor['sample']
+        .loc_random_anchor,
     )
-    q_distr_out['posterior_sample'].update(gamma_sample_dict)
+    q_distr_out['loc_random_anchor_logprob'] = q_distr_out_loc_random_anchor[
+        'sample_logprob']
 
   return q_distr_out
+
+
+def sample_lalme_az(
+    state_list: List[TrainState],
+    batch: Batch,
+    smi_eta: SmiEta,
+    prng_key: PRNGKey,
+    config: ConfigDict,
+    lalme_dataset: Dict[str, Any],
+    include_gamma: bool = False,
+    num_samples_chunk: int = 1_000,
+) -> InferenceData:
+  """Plots to monitor during training."""
+
+  prng_seq = hk.PRNGSequence(prng_key)
+
+  global_sample = []
+  locations_sample = []
+  gamma_sample = []
+
+  assert all(x.ndim == 2 for x in smi_eta.values())
+
+  # Sampling divided into chunks, to avoid OOM on GPU
+  # Split etas into chunks
+  split_idx_ = np.arange(num_samples_chunk, smi_eta['profiles'].shape[0],
+                         num_samples_chunk).tolist()
+  smi_eta_chunked_ = jax.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
+                                  smi_eta)
+  # dict of lists -> list of dicts
+  smi_eta_chunked_ = [
+      dict(zip(smi_eta_chunked_, t)) for t in zip(*smi_eta_chunked_.values())
+  ]
+
+  for smi_eta_ in smi_eta_chunked_:
+    # Sample from variational posterior
+    q_distr_out = sample_all_flows(
+        params_tuple=[state.params for state in state_list],
+        prng_key=next(prng_seq),
+        flow_name=config.flow_name,
+        flow_kwargs=config.flow_kwargs,
+        smi_eta=smi_eta_,
+        include_random_anchor=config.include_random_anchor,
+    )
+
+    global_sample.append(q_distr_out['global_sample'])
+    locations_sample.append(q_distr_out['locations_sample'])
+
+    if include_gamma:
+      # Get a sample of the basis GPs on profiles locations
+      # conditional on values at the inducing locations.
+      gamma_sample_, _ = jax.vmap(
+          lambda key_, global_, locations_: log_prob_fun_2.
+          sample_gamma_profiles_given_gamma_inducing(
+              batch=batch,
+              model_params_global=global_,
+              model_params_locations=locations_,
+              prng_key=key_,
+              kernel_name=config.kernel_name,
+              kernel_kwargs=config.kernel_kwargs,
+              gp_jitter=config.gp_jitter,
+              include_random_anchor=config.include_random_anchor,
+          ))(
+              jax.random.split(next(prng_seq), smi_eta_['profiles'].shape[0]),
+              q_distr_out['global_sample'],
+              q_distr_out['locations_sample'],
+          )
+
+      gamma_sample.append(gamma_sample_)
+
+  global_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+      lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
+      *global_sample)
+  locations_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+      lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
+      *locations_sample)
+  if include_gamma:
+    gamma_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+        lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
+        *gamma_sample)
+  else:
+    gamma_sample = None
+
+  ### Posterior visualisation with Arviz
+
+  # Create InferenceData object
+  lalme_az = plot.lalme_az_from_samples(
+      lalme_dataset=lalme_dataset,
+      model_params_global=global_sample,
+      model_params_locations=locations_sample,
+      model_params_gamma=gamma_sample,
+  )
+
+  return lalme_az
 
 
 def elbo_estimate_along_eta(
@@ -351,10 +429,10 @@ def elbo_estimate_along_eta(
 
   smi_eta_elbo = {
       'profiles':
-          jax.vmap(lambda eta_profiles_floating: jnp.where(
+          jax.vmap(lambda eta_: jnp.where(
               profile_is_anchor,
               1.,
-              eta_profiles_floating,
+              eta_,
           ))(etas_profiles_floating),
       'items':
           jnp.ones((num_samples, len(batch['num_forms_tuple']))),
@@ -363,119 +441,109 @@ def elbo_estimate_along_eta(
   # Sample from flow
   q_distr_out = sample_all_flows(
       params_tuple=params_tuple,
-      batch=batch,
       prng_key=next(prng_seq),
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
       smi_eta=smi_eta_elbo,
       include_random_anchor=include_random_anchor,
-      kernel_name=kernel_name,
-      kernel_kwargs=kernel_kwargs,
-      num_samples_gamma_profiles=num_samples_gamma_profiles,
-      gp_jitter=gp_jitter,
   )
 
-  shared_params_names = [
-      'gamma_inducing',
-      'gamma_anchor',
-      'mixing_weights_list',
-      'mixing_offset_list',
-      'mu',
-      'zeta',
-  ]
-  refit_params_names = [
-      'gamma_floating',
-      'loc_floating',
-  ]
-
   # ELBO stage 1: Power posterior
-  posterior_sample_dict_stg1 = {}
-  for key in shared_params_names:
-    posterior_sample_dict_stg1[key] = q_distr_out['posterior_sample'][key]
-  for key in refit_params_names:
-    posterior_sample_dict_stg1[key] = q_distr_out['posterior_sample'][key +
-                                                                      '_aux']
-
+  locations_stg1_ = ModelParamsLocations(
+      loc_floating=q_distr_out['locations_sample'].loc_floating_aux,
+      loc_floating_aux=None,
+      loc_random_anchor=None,
+  )
   log_prob_joint_stg1 = jax.vmap(
-      lambda posterior_sample_i, smi_eta_i: log_prob_fun.log_prob_joint(
+      lambda key_, global_, locations_, smi_eta_: logprob_lalme(
           batch=batch,
-          posterior_sample_dict=posterior_sample_i,
-          smi_eta=smi_eta_i,
-          **prior_hparams,
+          prng_key=key_,
+          model_params_global=global_,
+          model_params_locations=locations_,
+          prior_hparams=prior_hparams,
+          kernel_name=kernel_name,
+          kernel_kwargs=kernel_kwargs,
+          num_samples_gamma_profiles=num_samples_gamma_profiles,
+          smi_eta_profiles=smi_eta_,
+          gp_jitter=gp_jitter,
+          random_anchor=False,
       ))(
-          jax.tree_map(lambda x: jnp.expand_dims(x, 1),
-                       posterior_sample_dict_stg1),
-          smi_eta_elbo,
+          jax.random.split(next(prng_seq), num_samples),
+          q_distr_out['global_sample'],
+          locations_stg1_,
+          smi_eta_elbo['profiles'],
       )
-  log_q_stg1 = (
-      q_distr_out['global_params_log_prob'] +
-      q_distr_out['loc_floating_aux_log_prob'])
 
-  elbo_stg1 = log_prob_joint_stg1.reshape(-1) - log_q_stg1
+  log_q_stg1 = (
+      q_distr_out['global_sample_logprob'] +
+      q_distr_out['loc_floating_aux_logprob'])
+
+  elbo_stg1 = log_prob_joint_stg1 - log_q_stg1
 
   # ELBO stage 2: Refit locations floating profiles
-  posterior_sample_dict_stg2 = {}
-  for key in shared_params_names:
-    posterior_sample_dict_stg2[key] = jax.lax.stop_gradient(
-        q_distr_out['posterior_sample'][key])
-  for key in refit_params_names:
-    posterior_sample_dict_stg2[key] = q_distr_out['posterior_sample'][key]
-
+  locations_stg2_ = ModelParamsLocations(
+      loc_floating=q_distr_out['locations_sample'].loc_floating,
+      loc_floating_aux=None,
+      loc_random_anchor=None,
+  )
   log_prob_joint_stg2 = jax.vmap(
-      lambda posterior_sample_i: log_prob_fun.log_prob_joint(
+      lambda key_, global_, locations_: logprob_lalme(
           batch=batch,
-          posterior_sample_dict=posterior_sample_i,
-          smi_eta=None,
-          **prior_hparams,
+          prng_key=key_,
+          model_params_global=global_,
+          model_params_locations=locations_,
+          prior_hparams=prior_hparams,
+          kernel_name=kernel_name,
+          kernel_kwargs=kernel_kwargs,
+          num_samples_gamma_profiles=num_samples_gamma_profiles,
+          smi_eta_profiles=None,
+          gp_jitter=gp_jitter,
+          random_anchor=False,
       ))(
-          jax.tree_map(lambda x: jnp.expand_dims(x, 1),
-                       posterior_sample_dict_stg2))
-
+          jax.random.split(next(prng_seq), num_samples),
+          jax.lax.stop_gradient(q_distr_out['global_sample']),
+          locations_stg2_,
+      )
   log_q_stg2 = (
-      jax.lax.stop_gradient(q_distr_out['global_params_log_prob']) +
-      q_distr_out['loc_floating_log_prob'])
+      jax.lax.stop_gradient(q_distr_out['global_sample_logprob']) +
+      q_distr_out['loc_floating_logprob'])
 
-  elbo_stg2 = log_prob_joint_stg2.reshape(-1) - log_q_stg2
+  elbo_stg2 = log_prob_joint_stg2 - log_q_stg2
 
-  # For model evaluation,
+  # ELBO stage 3: fit posteriors for locations of anchor profiles
+  # mainly for model evaluation (choosing eta)
   if include_random_anchor:
-    # ELBO stage 3: fit posteriors for locations of anchor profiles
-    stop_grad_params_names = [
-        'gamma_inducing',
-        'mixing_weights_list',
-        'mixing_offset_list',
-        'mu',
-        'zeta',
-        'gamma_floating',
-        'loc_floating',
-    ]
-    grad_params_names = [
-        'gamma_random_anchor',
-        'loc_random_anchor',
-    ]
-    posterior_sample_dict_stg3 = {}
-    for key in stop_grad_params_names:
-      posterior_sample_dict_stg3[key] = jax.lax.stop_gradient(
-          q_distr_out['posterior_sample'][key])
-    for key in grad_params_names:
-      posterior_sample_dict_stg3[key] = q_distr_out['posterior_sample'][key]
-
+    locations_stg3_ = ModelParamsLocations(
+        loc_floating=jax.lax.stop_gradient(
+            q_distr_out['locations_sample'].loc_floating),
+        loc_floating_aux=None,
+        loc_random_anchor=q_distr_out['locations_sample'].loc_random_anchor,
+    )
     log_prob_joint_stg3 = jax.vmap(
-        lambda posterior_sample_i: log_prob_fun.log_prob_joint(
+        lambda key_, global_, locations_: logprob_lalme(
             batch=batch,
-            posterior_sample_dict=posterior_sample_i,
-            smi_eta=None,
+            prng_key=key_,
+            model_params_global=global_,
+            model_params_locations=locations_,
+            prior_hparams=prior_hparams,
+            kernel_name=kernel_name,
+            kernel_kwargs=kernel_kwargs,
+            num_samples_gamma_profiles=num_samples_gamma_profiles,
+            smi_eta_profiles=None,
+            gp_jitter=gp_jitter,
             random_anchor=True,
-            **prior_hparams,
         ))(
-            jax.tree_map(lambda x: jnp.expand_dims(x, 1),
-                         posterior_sample_dict_stg3))
+            jax.random.split(next(prng_seq), num_samples),
+            jax.lax.stop_gradient(q_distr_out['global_sample']),
+            locations_stg3_,
+        )
 
     log_q_stg3 = (
-        jax.lax.stop_gradient(q_distr_out['global_params_log_prob']) +
-        q_distr_out['loc_random_anchor_log_prob'])
+        jax.lax.stop_gradient(q_distr_out['global_sample_logprob']) +
+        jax.lax.stop_gradient(q_distr_out['loc_floating_logprob']) +
+        q_distr_out['loc_random_anchor_logprob'])
 
-    elbo_stg3 = log_prob_joint_stg3.reshape(-1) - log_q_stg3
+    elbo_stg3 = log_prob_joint_stg3 - log_q_stg3
   else:
     elbo_stg3 = 0.
 
@@ -531,21 +599,16 @@ def error_locations_vector_estimate(
   # Sample from flow
   posterior_sample_eta_grid = jax.vmap(lambda smi_eta_i: sample_all_flows(
       params_tuple=[state.params for state in state_list],
-      batch=batch,
       prng_key=prng_key,
       flow_name=config.flow_name,
       flow_kwargs=config.flow_kwargs,
       smi_eta=smi_eta_i,
       include_random_anchor=config.include_random_anchor,
-      kernel_name=config.kernel_name,
-      kernel_kwargs=config.kernel_kwargs,
-      num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-      gp_jitter=config.gp_jitter,
   ))(smi_eta_grid_expanded)['posterior_sample']
 
   error_loc_dict = jax.vmap(
       lambda posterior_sample_dict_i: error_locations_estimate(
-          posterior_sample_dict=posterior_sample_dict_i,
+          locations_sample=posterior_sample_dict_i,
           batch=batch,
       ))(
           posterior_sample_eta_grid)
@@ -555,95 +618,79 @@ def error_locations_vector_estimate(
 
 def log_images(
     state_list: List[TrainState],
-    batch: Batch,
     prng_key: PRNGKey,
     config: ConfigDict,
-    profiles_id: List[str],
-    items_id: List[str],
-    forms_id: List[str],
-    profile_is_anchor: Array,
-    show_basis_fields: bool,
-    show_linguistic_fields: bool,
-    num_loc_random_anchor_plot: Optional[int],
-    num_loc_floating_plot: Optional[int],
-    show_eval_metric: bool,
-    eta_eval_grid: Array,
-    show_mixing_weights: bool,
-    show_loc_given_y: bool,
-    use_gamma_anchor: bool = False,
+    lalme_dataset: Dict[str, Any],
+    batch: Batch,
+    show_mu: bool = False,
+    show_zeta: bool = False,
+    show_basis_fields: bool = False,
+    show_W_items: Optional[List[str]] = None,
+    show_a_items: Optional[List[str]] = None,
+    lp_floating: Optional[List[int]] = None,
+    lp_floating_traces: Optional[List[int]] = None,
+    lp_floating_grid10: Optional[List[int]] = None,
+    lp_random_anchor: Optional[List[int]] = None,
+    lp_random_anchor_grid10: Optional[List[int]] = None,
+    loc_inducing: Optional[Array] = None,
+    show_eval_metric: bool = False,
+    eta_eval_grid: Optional[Array] = None,
     summary_writer: Optional[SummaryWriter] = None,
     workdir_png: Optional[str] = None,
-    samples_path: Optional[str] = None,
 ) -> None:
   """Plots to monitor during training."""
 
   prng_seq = hk.PRNGSequence(prng_key)
 
-  eta_plot = jnp.array(config.eta_plot)
-
-  assert eta_plot.ndim == 2
+  profile_is_anchor = jnp.arange(
+      config.num_profiles) < config.num_profiles_anchor
 
   # Plot posterior samples
-  key_flow = next(prng_seq)
-  for i, eta_i in enumerate(eta_plot):
+  for eta_i in config.eta_plot:
+    # i = 0; eta_i = eta_plot[i]
+    eta_i_profiles = eta_i * jnp.ones(
+        (config.num_samples_plot, config.num_profiles))
 
-    eta_i_profiles_floating = jnp.broadcast_to(
-        eta_i, (config.num_samples_plot,) + eta_i.shape)
-
-    smi_eta_i_plot = {
+    smi_eta_ = {
         'profiles':
-            jax.vmap(lambda eta_profiles_floating: jnp.where(
+            jax.vmap(lambda eta_: jnp.where(
                 profile_is_anchor,
                 1.,
-                eta_profiles_floating,
-            ))(eta_i_profiles_floating),
+                eta_,
+            ))(eta_i_profiles),
         'items':
-            jnp.ones((config.num_samples_plot, len(batch['num_forms_tuple']))),
+            jnp.ones((config.num_samples_plot, len(config.num_forms_tuple))),
     }
 
-    q_distr_out = sample_all_flows(
-        params_tuple=[state.params for state in state_list],
+    lalme_az_ = sample_lalme_az(
+        state_list=state_list,
         batch=batch,
-        prng_key=key_flow,
-        flow_name=config.flow_name,
-        flow_kwargs=config.flow_kwargs,
-        smi_eta=smi_eta_i_plot,
-        include_random_anchor=config.include_random_anchor,
-        kernel_name=config.kernel_name,
-        kernel_kwargs=config.kernel_kwargs,
-        num_samples_gamma_profiles=(config.num_samples_gamma_profiles
-                                    if use_gamma_anchor else 0),
-        gp_jitter=config.gp_jitter,
+        smi_eta=smi_eta_,
+        prng_key=next(prng_seq),
+        config=config,
+        lalme_dataset=lalme_dataset,
+        include_gamma=show_basis_fields,
     )
 
-    # Save samples to a file
-    if samples_path is not None:
-      np.savez_compressed(
-          workdir_png + f'/eta{float(eta_i):.3f}_' + samples_path,
-          q_distr_out['posterior_sample'])
-
-    plot.posterior_samples(
-        posterior_sample_dict=q_distr_out['posterior_sample'],
-        batch=batch,
-        prng_key=next(prng_seq),
-        kernel_name=config.kernel_name,
-        kernel_kwargs=config.kernel_kwargs,
-        gp_jitter=config.gp_jitter,
+    plot.lalme_plots_arviz(
+        lalme_az=lalme_az_,
+        lalme_dataset=lalme_dataset,
         step=state_list[0].step,
-        profiles_id=profiles_id,
-        items_id=items_id,
-        forms_id=forms_id,
+        show_mu=show_mu,
+        show_zeta=show_zeta,
         show_basis_fields=show_basis_fields,
-        show_linguistic_fields=show_linguistic_fields,
-        num_loc_random_anchor_plot=(num_loc_random_anchor_plot
-                                    if config.include_random_anchor else None),
-        num_loc_floating_plot=num_loc_floating_plot,
-        show_mixing_weights=show_mixing_weights,
-        show_loc_given_y=show_loc_given_y,
-        suffix=f"eta_floating_{float(eta_plot[i, :]):.3f}",
-        summary_writer=summary_writer,
+        show_W_items=show_W_items,
+        show_a_items=show_a_items,
+        lp_floating=lp_floating,
+        lp_floating_traces=lp_floating_traces,
+        lp_floating_grid10=lp_floating_grid10,
+        lp_random_anchor=lp_random_anchor,
+        lp_random_anchor_grid10=lp_random_anchor_grid10,
+        loc_inducing=loc_inducing,
         workdir_png=workdir_png,
-        use_gamma_anchor=use_gamma_anchor,
+        summary_writer=summary_writer,
+        suffix=f"_eta_floating_{float(eta_i):.3f}",
+        scatter_kwargs={"alpha": 0.10},
     )
 
   ### Evaluation metrics ###
@@ -792,13 +839,13 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
   # Get an initial sample of global parameters
   # (used below to initialize floating locations)
-  global_params_base_sample_init = hk.transform(q_distr_global).apply(
+  global_sample_base_ = hk.transform(q_distr_global).apply(
       state_list[0].params,
       next(prng_seq),
       flow_name=config.flow_name,
       flow_kwargs=config.flow_kwargs,
       eta=smi_eta_init['profiles'],
-  )['global_params_base_sample']
+  )['sample_base']
 
   state_list.append(
       initial_state_ckpt(
@@ -807,9 +854,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           forward_fn_kwargs={
               'flow_name': config.flow_name,
               'flow_kwargs': config.flow_kwargs,
-              'global_params_base_sample': global_params_base_sample_init,
+              'global_params_base_sample': global_sample_base_,
               'eta': smi_eta_init['profiles'],
-              'is_aux': False,
+              'name': 'loc_floating',
           },
           prng_key=next(prng_seq),
           optimizer=make_optimizer(**config.optim_kwargs),
@@ -822,9 +869,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           forward_fn_kwargs={
               'flow_name': config.flow_name,
               'flow_kwargs': config.flow_kwargs,
-              'global_params_base_sample': global_params_base_sample_init,
+              'global_params_base_sample': global_sample_base_,
               'eta': smi_eta_init['profiles'],
-              'is_aux': True,
+              'name': 'loc_floating_aux',
           },
           prng_key=next(prng_seq),
           optimizer=make_optimizer(**config.optim_kwargs),
@@ -871,9 +918,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           prng_key,
           flow_name=config.flow_name,
           flow_kwargs=config.flow_kwargs,
-          global_params_base_sample=global_params_base_sample_init,
+          global_params_base_sample=global_sample_base_,
           eta=smi_eta_init['profiles'],
-          is_aux=False,
+          name='loc_floating',
       ),
       columns=(
           "module",
@@ -895,7 +942,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             forward_fn_kwargs={
                 'flow_name': config.flow_name,
                 'flow_kwargs': config.flow_kwargs,
-                'global_params_base_sample': global_params_base_sample_init,
+                'global_params_base_sample': global_sample_base_,
                 'eta': smi_eta_init['profiles'],
             },
             prng_key=next(prng_seq),
@@ -909,7 +956,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             prng_key,
             flow_name=config.flow_name,
             flow_kwargs=config.flow_kwargs,
-            global_params_base_sample=global_params_base_sample_init,
+            global_params_base_sample=global_sample_base_,
             eta=smi_eta_init['profiles'],
         ),
         columns=(
@@ -989,38 +1036,32 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   # # TODO: This doesn't work after jitting.
   # # error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
 
+  save_last_checkpoint = False
   if state_list[0].step < config.training_steps:
     logging.info('Training variational posterior...')
     # Reset random keys
     prng_seq = hk.PRNGSequence(config.seed)
+    save_last_checkpoint = True
 
   while state_list[0].step < config.training_steps:
     # step = 0
 
     # Plots to monitor training
     if config.log_img_steps > 0:
-      if (state_list[0].step == 0) or (state_list[0].step % config.log_img_steps
-                                       == 0):
+      if (state_list[0].step % config.log_img_steps) == 0:
         # print("Logging images...\n")
         log_images(
             state_list=state_list,
-            batch=train_ds,
             prng_key=next(prng_seq),
             config=config,
-            profiles_id=dataset['LP'],
-            items_id=dataset['items'],
-            forms_id=dataset['forms'],
-            profile_is_anchor=profile_is_anchor,
-            show_basis_fields=config.show_basis_fields_during_training,
-            show_linguistic_fields=config
-            .show_linguistic_fields_during_training,
-            num_loc_random_anchor_plot=5,
-            num_loc_floating_plot=5,
+            lalme_dataset=dataset,
+            batch=train_ds,
+            show_mu=True,
+            show_zeta=True,
+            lp_floating_grid10=config.lp_floating_grid10,
+            lp_random_anchor_grid10=config.lp_random_anchor_10,
             show_eval_metric=True,
             eta_eval_grid=jnp.linspace(0, 1, 10),
-            show_mixing_weights=False,
-            show_loc_given_y=False,
-            use_gamma_anchor=False,
             summary_writer=summary_writer,
             workdir_png=workdir,
         )
@@ -1113,42 +1154,42 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   logging.info('Final training step: %i', state_list[0].step)
 
   # Saving checkpoint at the end of the training process
-  # (in case training_steps is not multiple of checkpoint_steps)
-  for state, state_name in zip(state_list, state_name_list):
-    save_checkpoint(
-        state=state,
-        checkpoint_dir=f'{checkpoint_dir}/{state_name}',
-        keep=config.checkpoints_keep,
-    )
-  del state
+  if save_last_checkpoint:
+    for state, state_name in zip(state_list, state_name_list):
+      save_checkpoint(
+          state=state,
+          checkpoint_dir=f'{checkpoint_dir}/{state_name}',
+          keep=config.checkpoints_keep,
+      )
+    del state
 
   # Last plot of posteriors
   if config.log_img_at_end:
     log_images(
         state_list=state_list,
-        batch=train_ds,
         prng_key=next(prng_seq),
         config=config,
-        profiles_id=dataset['LP'],
-        items_id=dataset['items'],
-        forms_id=dataset['forms'],
-        profile_is_anchor=profile_is_anchor,
+        lalme_dataset=dataset,
+        batch=train_ds,
+        show_mu=True,
+        show_zeta=True,
         show_basis_fields=True,
-        show_linguistic_fields=True,
-        num_loc_random_anchor_plot=dataset['num_profiles_anchor'],
-        num_loc_floating_plot=dataset['num_profiles_floating'],
+        show_W_items=True,
+        show_a_items=True,
+        lp_floating=dataset['LP'][dataset['num_profiles_anchor']:],
+        lp_floating_traces=config.lp_floating_grid10,
+        lp_floating_grid10=config.lp_floating_grid10,
+        lp_random_anchor=dataset['LP'][:dataset['num_profiles_anchor']],
+        lp_random_anchor_grid10=config.lp_random_anchor_10,
+        loc_inducing=train_ds['loc_inducing'],
         show_eval_metric=True,
         eta_eval_grid=jnp.linspace(0, 1, 10),
-        show_mixing_weights=False,
-        show_loc_given_y=False,
-        use_gamma_anchor=False,
         summary_writer=summary_writer,
         workdir_png=workdir,
-        samples_path="posterior_sample_dict.npz",
     )
 
 
 # # For debugging
 # config = get_config()
-# workdir = pathlib.Path.home() / 'spatial-smi-output/all_items/nsf/vmp_flow'
-# train_and_evaluate(config, workdir)
+# workdir = pathlib.Path.home() / 'spatial-smi-output-exp/all_items/nsf/vmp_flow'
+# # train_and_evaluate(config, workdir)

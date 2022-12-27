@@ -28,7 +28,7 @@ def get_config():
   # Number of bins to use in the rational-quadratic spline.
   config.flow_kwargs.num_bins = 10
   # the bounds of the quadratic spline transformer
-  config.flow_kwargs.spline_range = (-10., 10)
+  config.flow_kwargs.spline_range = (-10., 10.)
   # Ranges of posterior locations
   # (NOTE: these will be modified in the training script)
   config.flow_kwargs.loc_x_range = (0., 1.)
@@ -40,7 +40,7 @@ def get_config():
   config.prior_hparams.mu_prior_rate = 0.5
   config.prior_hparams.zeta_prior_a = 1.
   config.prior_hparams.zeta_prior_b = 1.
-  config.prior_hparams.w_prior_scale = 1.
+  config.prior_hparams.w_prior_scale = 5.
   config.prior_hparams.a_prior_scale = 10.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
@@ -49,7 +49,7 @@ def get_config():
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 50_000
+  config.training_steps = 100
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -83,19 +83,16 @@ def get_config():
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5
   config.log_img_at_end = True
-  config.show_basis_fields_during_training = True
-  config.show_linguistic_fields_during_training = True
 
-  # Number of posteriors samples used in the plots.
+  # Number of samples used in the plots.
   config.num_samples_plot = 10_000
 
-  config.eta_plot = [
-      [0.001],
-      [0.25],
-      [0.5],
-      [0.75],
-      [1.0],
-  ]
+  # Floating profiles to plot in grid
+  config.lp_floating_grid10 = [5, 29, 30, 16, 45, 52, 46, 38, 51, 49]
+  config.lp_random_anchor_10 = [85, 133, 363, 544, 1135, 91, 90, 1287, 612, 731]
+
+  # eta shown in figures
+  config.eta_plot = [0.001, 0.25, 0.5, 0.75, 1.0]
 
   # How often to save model checkpoints.
   config.checkpoint_steps = config.training_steps // 2

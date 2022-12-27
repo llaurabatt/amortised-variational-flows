@@ -440,6 +440,13 @@ def meta_nsf_global_params(
     # Flip the mask after each layer.
     mask = jnp.logical_not(mask)
 
+  # Affine transformation layer
+  conditioner = modularbayes.MeanFieldConditioner(
+      flow_dim=flow_dim, name='affine_global_params')
+  loc, log_scale = conditioner()
+  flow_layers.append(
+      distrax.Block(distrax.ScalarAffine(shift=loc, log_scale=log_scale), 1))
+
   # Last layer: Map values to parameter domain
   # Layer 2: Map values to parameter domain
   block_bijectors = [

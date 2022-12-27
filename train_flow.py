@@ -27,12 +27,10 @@ from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
                                       IntLike, List, Optional, PRNGKey,
                                       Sequence, SmiEta, Tuple, Union)
 
-import data
-import flows
-
 import log_prob_fun_2
 from log_prob_fun_2 import ModelParamsGlobal, ModelParamsLocations
-
+import data
+import flows
 import plot
 from misc import issymmetric
 
@@ -187,7 +185,9 @@ def q_distr_global(
   # Sample from flow
   (sample_flow_concat, sample_logprob,
    sample_base) = q_distr.sample_and_log_prob_with_base(
-       seed=hk.next_rng_key(), sample_shape=sample_shape)
+       seed=hk.next_rng_key(),
+       sample_shape=sample_shape,
+   )
 
   # Split flow into model parameters
   q_distr_out['sample'] = flows.split_flow_global_params(
@@ -243,12 +243,12 @@ def q_distr_loc_floating(
 
   ## Posterior for locations of floating profiles ##
   # Define normalizing flow
-  q_distr_locations = getattr(flows, flow_name + '_locations')(
+  q_distr = getattr(flows, flow_name + '_locations')(
       num_profiles=flow_kwargs['num_profiles_floating'], **flow_kwargs)
 
   # Sample from flow
   num_samples = global_params_base_sample.shape[0]
-  sample_flow_concat, sample_logprob = q_distr_locations.sample_and_log_prob(
+  sample_flow_concat, sample_logprob = q_distr.sample_and_log_prob(
       seed=hk.next_rng_key(),
       sample_shape=(num_samples,),
       context=global_params_base_sample,
@@ -262,7 +262,6 @@ def q_distr_loc_floating(
       name=name,
   )
 
-  # log P(beta,tau|sigma)
   q_distr_out['sample_logprob'] = sample_logprob
 
   return q_distr_out
@@ -300,12 +299,12 @@ def q_distr_loc_random_anchor(
   ## Posterior for locations of anchor profiles treated as unkbowb locations##
 
   # Define normalizing flow
-  num_samples = global_params_base_sample.shape[0]
-
-  q_distr_locations = getattr(flows, flow_name + '_locations')(
+  q_distr = getattr(flows, flow_name + '_locations')(
       num_profiles=flow_kwargs['num_profiles_anchor'], **flow_kwargs)
+
   # Sample from flow
-  (sample_flow_concat, sample_logprob) = q_distr_locations.sample_and_log_prob(
+  num_samples = global_params_base_sample.shape[0]
+  (sample_flow_concat, sample_logprob) = q_distr.sample_and_log_prob(
       seed=hk.next_rng_key(),
       sample_shape=(num_samples,),
       context=global_params_base_sample,
@@ -358,15 +357,12 @@ def sample_all_flows(
       global_params_base_sample=q_distr_out_global['sample_base'],
       name='loc_floating',
   )
-  q_distr_out.update(
-      {f"locations_{k}": v for k, v in q_distr_out_loc_floating.items()})
-
   q_distr_out['locations_sample'] = q_distr_out_loc_floating['sample']
   q_distr_out['loc_floating_logprob'] = q_distr_out_loc_floating[
       'sample_logprob']
 
   if flow_kwargs.is_smi:
-    # Floating profiles locations
+    # Auxiliary Floating profiles locations
     q_distr_out_loc_floating_aux = hk.transform(q_distr_loc_floating).apply(
         params_tuple[2],
         next(prng_seq),
@@ -404,6 +400,84 @@ def sample_all_flows(
         'sample_logprob']
 
   return q_distr_out
+
+
+def sample_lalme_az(
+    state_list: List[TrainState],
+    batch: Batch,
+    prng_key: PRNGKey,
+    config: ConfigDict,
+    lalme_dataset: Dict[str, Any],
+    include_gamma: bool = False,
+    num_samples_chunk: int = 1_000,
+) -> InferenceData:
+  """Plots to monitor during training."""
+
+  prng_seq = hk.PRNGSequence(prng_key)
+
+  global_sample = []
+  locations_sample = []
+  gamma_sample = []
+
+  for _ in range(config.num_samples_plot // num_samples_chunk):
+    # Sample from variational posterior
+    q_distr_out = sample_all_flows(
+        params_tuple=[state.params for state in state_list],
+        prng_key=next(prng_seq),
+        flow_name=config.flow_name,
+        flow_kwargs=config.flow_kwargs,
+        sample_shape=(num_samples_chunk,),
+        include_random_anchor=config.include_random_anchor,
+    )
+
+    global_sample.append(q_distr_out['global_sample'])
+    locations_sample.append(q_distr_out['locations_sample'])
+
+    if include_gamma:
+      # Get a sample of the basis GPs on profiles locations
+      # conditional on values at the inducing locations.
+      gamma_sample_, _ = jax.vmap(
+          lambda key_, global_, locations_: log_prob_fun_2.
+          sample_gamma_profiles_given_gamma_inducing(
+              batch=batch,
+              model_params_global=global_,
+              model_params_locations=locations_,
+              prng_key=key_,
+              kernel_name=config.kernel_name,
+              kernel_kwargs=config.kernel_kwargs,
+              gp_jitter=config.gp_jitter,
+              include_random_anchor=config.include_random_anchor,
+          ))(
+              jax.random.split(next(prng_seq), num_samples_chunk),
+              q_distr_out['global_sample'],
+              q_distr_out['locations_sample'],
+          )
+      gamma_sample.append(gamma_sample_)
+
+  global_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+      lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
+      *global_sample)
+  locations_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+      lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
+      *locations_sample)
+  if include_gamma:
+    gamma_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+        lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
+        *gamma_sample)
+  else:
+    gamma_sample = None
+
+  ### Posterior visualisation with Arviz
+
+  # Create InferenceData object
+  lalme_az = plot.lalme_az_from_samples(
+      lalme_dataset=lalme_dataset,
+      model_params_global=global_sample,
+      model_params_locations=locations_sample,
+      model_params_gamma=gamma_sample,
+  )
+
+  return lalme_az
 
 
 def logprob_lalme(
@@ -626,83 +700,6 @@ def loss(params_tuple: Tuple[hk.Params], *args, **kwargs) -> Array:
                   elbo_dict['stage_3']))
 
   return loss_avg
-
-
-def sample_lalme_az(
-    state_list: List[TrainState],
-    batch: Batch,
-    prng_key: PRNGKey,
-    config: ConfigDict,
-    lalme_dataset: Dict[str, Any],
-) -> InferenceData:
-  """Plots to monitor during training."""
-
-  prng_seq = hk.PRNGSequence(prng_key)
-
-  global_sample = []
-  locations_sample = []
-  gamma_sample = []
-
-  num_samples_chunk = 1_000
-
-  for _ in range(config.num_samples_plot // num_samples_chunk):
-    # Sample from variational posterior
-    q_distr_out = sample_all_flows(
-        params_tuple=[state.params for state in state_list],
-        prng_key=next(prng_seq),
-        flow_name=config.flow_name,
-        flow_kwargs=config.flow_kwargs,
-        sample_shape=(num_samples_chunk,),
-        include_random_anchor=config.include_random_anchor,
-    )
-
-    global_sample_ = q_distr_out['global_sample']
-    locations_sample_ = q_distr_out['locations_sample']
-
-    # Get a sample of the basis GPs on profiles locations
-    # conditional on values at the inducing locations.
-    gamma_sample_, _ = jax.vmap(
-        lambda key_, global_, locations_: log_prob_fun_2.
-        sample_gamma_profiles_given_gamma_inducing(
-            batch=batch,
-            model_params_global=global_,
-            model_params_locations=locations_,
-            prng_key=key_,
-            kernel_name=config.kernel_name,
-            kernel_kwargs=config.kernel_kwargs,
-            gp_jitter=config.gp_jitter,
-            include_random_anchor=config.include_random_anchor,
-        ))(
-            jax.random.split(next(prng_seq), num_samples_chunk),
-            q_distr_out['global_sample'],
-            q_distr_out['locations_sample'],
-        )
-
-    global_sample.append(global_sample_)
-    locations_sample.append(locations_sample_)
-    gamma_sample.append(gamma_sample_)
-
-  global_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
-      lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
-      *global_sample)
-  locations_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
-      lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
-      *locations_sample)
-  gamma_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
-      lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
-      *gamma_sample)
-
-  ### Posterior visualisation with Arviz
-
-  # Create InferenceData object
-  lalme_az = plot.lalme_az_from_samples(
-      model_params_global=global_sample,
-      model_params_locations=locations_sample,
-      model_params_gamma=gamma_sample,
-      lalme_dataset=lalme_dataset,
-  )
-
-  return lalme_az
 
 
 def error_locations_estimate(
@@ -1023,6 +1020,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             prng_key=next(prng_seq),
             config=config,
             lalme_dataset=dataset,
+            include_gamma=False,
         )
         plot.lalme_plots_arviz(
             lalme_az=lalme_az,
@@ -1146,6 +1144,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         prng_key=next(prng_seq),
         config=config,
         lalme_dataset=dataset,
+        include_gamma=True,
     )
     # Save InferenceData object with final state
     lalme_az.to_netcdf(samples_path)
