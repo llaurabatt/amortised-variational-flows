@@ -597,21 +597,22 @@ def error_locations_vector_estimate(
           x[:, np.newaxis, ...], config.num_samples_eval, axis=1), smi_eta_grid)
 
   # Sample from flow
-  posterior_sample_eta_grid = jax.vmap(lambda smi_eta_i: sample_all_flows(
+  q_distr_out_grid = jax.vmap(lambda smi_eta_i: sample_all_flows(
       params_tuple=[state.params for state in state_list],
       prng_key=prng_key,
       flow_name=config.flow_name,
       flow_kwargs=config.flow_kwargs,
       smi_eta=smi_eta_i,
       include_random_anchor=config.include_random_anchor,
-  ))(smi_eta_grid_expanded)['posterior_sample']
+  ))(
+      smi_eta_grid_expanded)
 
   error_loc_dict = jax.vmap(
       lambda posterior_sample_dict_i: error_locations_estimate(
           locations_sample=posterior_sample_dict_i,
           batch=batch,
       ))(
-          posterior_sample_eta_grid)
+          q_distr_out_grid['locations_sample'])
 
   return error_loc_dict
 
@@ -1061,7 +1062,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             lp_floating_grid10=config.lp_floating_grid10,
             lp_random_anchor_grid10=config.lp_random_anchor_10,
             show_eval_metric=True,
-            eta_eval_grid=jnp.linspace(0, 1, 10),
+            eta_eval_grid=jnp.linspace(0, 1, 21),
             summary_writer=summary_writer,
             workdir_png=workdir,
         )

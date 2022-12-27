@@ -49,7 +49,7 @@ def get_config():
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 100
+  config.training_steps = 100_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
