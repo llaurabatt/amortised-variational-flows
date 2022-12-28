@@ -1027,6 +1027,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             config=config,
             lalme_dataset=lalme_dataset,
             include_gamma=False,
+            num_samples_chunk=config.num_samples_chunk_plot,
         )
         plot.lalme_plots_arviz(
             lalme_az=lalme_az,
@@ -1151,6 +1152,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         config=config,
         lalme_dataset=lalme_dataset,
         include_gamma=True,
+        num_samples_chunk=config.num_samples_chunk_plot,
     )
     # Save InferenceData object with final state
     lalme_az.to_netcdf(samples_path)

@@ -73,8 +73,8 @@ def get_config():
   config.remove_empty_forms = True
 
   # Number of posteriors samples to approximate the variational loss (ELBO).
-  config.num_samples_elbo = 5
-  config.num_samples_gamma_profiles = 5
+  config.num_samples_elbo = 3
+  config.num_samples_gamma_profiles = 3
 
   # How often to evaluate the model.
   config.eval_steps = config.training_steps // 5
@@ -86,6 +86,7 @@ def get_config():
 
   # Number of samples used in the plots.
   config.num_samples_plot = 10_000
+  config.num_samples_chunk_plot = 500
 
   # Floating profiles to plot in grid
   config.lp_floating_grid10 = [5, 29, 30, 16, 45, 52, 46, 38, 51, 49]

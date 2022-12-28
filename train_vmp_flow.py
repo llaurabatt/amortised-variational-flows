@@ -636,6 +636,7 @@ def log_images(
     loc_inducing: Optional[Array] = None,
     show_eval_metric: bool = False,
     eta_eval_grid: Optional[Array] = None,
+    num_samples_chunk: int = 1_000,
     summary_writer: Optional[SummaryWriter] = None,
     workdir_png: Optional[str] = None,
 ) -> None:
@@ -670,6 +671,7 @@ def log_images(
         config=config,
         lalme_dataset=lalme_dataset,
         include_gamma=show_basis_fields,
+        num_samples_chunk=num_samples_chunk,
     )
 
     plot.lalme_plots_arviz(
@@ -1055,7 +1057,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     # Plots to monitor training
     if config.log_img_steps > 0:
       if (state_list[0].step % config.log_img_steps) == 0:
-        # print("Logging images...\n")
+        logging.info("Logging plots...")
         log_images(
             state_list=state_list,
             prng_key=next(prng_seq),
@@ -1068,9 +1070,11 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             lp_random_anchor_grid10=config.lp_random_anchor_10,
             show_eval_metric=True,
             eta_eval_grid=jnp.linspace(0, 1, 21),
+            num_samples_chunk=config.num_samples_chunk_plot,
             summary_writer=summary_writer,
             workdir_png=workdir,
         )
+        logging.info("...done.")
 
     # Log learning rate
     summary_writer.scalar(
@@ -1219,6 +1223,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         loc_inducing=train_ds['loc_inducing'],
         show_eval_metric=True,
         eta_eval_grid=jnp.linspace(0, 1, 10),
+        num_samples_chunk=config.num_samples_chunk_plot,
         summary_writer=summary_writer,
         workdir_png=workdir,
     )
