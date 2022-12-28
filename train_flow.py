@@ -746,19 +746,21 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
   # Full dataset used everytime
   # No batching for now
-  dataset = load_data(config=config)
+  lalme_dataset = load_data(config=config)
   # Add some parameters to config
-  config.num_profiles = dataset['num_profiles']
-  config.num_profiles_anchor = dataset['num_profiles_anchor']
-  config.num_profiles_floating = dataset['num_profiles_floating']
-  config.num_forms_tuple = dataset['num_forms_tuple']
+  config.num_profiles = lalme_dataset['num_profiles']
+  config.num_profiles_anchor = lalme_dataset['num_profiles_anchor']
+  config.num_profiles_floating = lalme_dataset['num_profiles_floating']
+  config.num_forms_tuple = lalme_dataset['num_forms_tuple']
   config.num_inducing_points = math.prod(config.flow_kwargs.inducing_grid_shape)
 
   samples_path = workdir + '/lalme_az.nc'
 
   # For training, we need a Dictionary compatible with jit
   # we remove string vector
-  train_ds = {k: v for k, v in dataset.items() if k not in ['items', 'forms']}
+  train_ds = {
+      k: v for k, v in lalme_dataset.items() if k not in ['items', 'forms']
+  }
 
   # Compute GP covariance between anchor profiles
   train_ds['cov_anchor'] = getattr(
@@ -791,16 +793,17 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   }
   # These parameters affect the dimension of the flow
   # so they are also part of the flow parameters
-  config.flow_kwargs.num_profiles_anchor = dataset['num_profiles_anchor']
-  config.flow_kwargs.num_profiles_floating = dataset['num_profiles_floating']
-  config.flow_kwargs.num_forms_tuple = dataset['num_forms_tuple']
+  config.flow_kwargs.num_profiles_anchor = lalme_dataset['num_profiles_anchor']
+  config.flow_kwargs.num_profiles_floating = lalme_dataset[
+      'num_profiles_floating']
+  config.flow_kwargs.num_forms_tuple = lalme_dataset['num_forms_tuple']
   config.flow_kwargs.num_inducing_points = int(
       math.prod(config.flow_kwargs.inducing_grid_shape))
   config.flow_kwargs.is_smi = True
   # Get locations bounds
   # These define the range of values produced by the posterior of locations
   loc_bounds = np.stack(
-      [dataset['loc'].min(axis=0), dataset['loc'].max(axis=0)],
+      [lalme_dataset['loc'].min(axis=0), lalme_dataset['loc'].max(axis=0)],
       axis=1).astype(np.float32)
   config.flow_kwargs.loc_x_range = tuple(loc_bounds[0])
   config.flow_kwargs.loc_y_range = tuple(loc_bounds[1])
@@ -1019,12 +1022,12 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             batch=train_ds,
             prng_key=next(prng_seq),
             config=config,
-            lalme_dataset=dataset,
+            lalme_dataset=lalme_dataset,
             include_gamma=False,
         )
         plot.lalme_plots_arviz(
             lalme_az=lalme_az,
-            lalme_dataset=dataset,
+            lalme_dataset=lalme_dataset,
             step=state_list[0].step,
             show_mu=True,
             show_zeta=True,
@@ -1143,7 +1146,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         batch=train_ds,
         prng_key=next(prng_seq),
         config=config,
-        lalme_dataset=dataset,
+        lalme_dataset=lalme_dataset,
         include_gamma=True,
     )
     # Save InferenceData object with final state
@@ -1154,17 +1157,18 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     logging.info("Plotting results...")
     plot.lalme_plots_arviz(
         lalme_az=lalme_az,
-        lalme_dataset=dataset,
+        lalme_dataset=lalme_dataset,
         step=state_list[0].step,
         show_mu=True,
         show_zeta=True,
         show_basis_fields=True,
-        show_W_items=dataset['items'],
-        show_a_items=dataset['items'],
-        lp_floating=dataset['LP'][dataset['num_profiles_anchor']:],
+        show_W_items=lalme_dataset['items'],
+        show_a_items=lalme_dataset['items'],
+        lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
         lp_floating_traces=config.lp_floating_grid10,
         lp_floating_grid10=config.lp_floating_grid10,
-        lp_random_anchor=dataset['LP'][:dataset['num_profiles_anchor']],
+        lp_random_anchor=lalme_dataset['LP']
+        [:lalme_dataset['num_profiles_anchor']],
         lp_random_anchor_grid10=config.lp_random_anchor_10,
         loc_inducing=train_ds['loc_inducing'],
         workdir_png=workdir,

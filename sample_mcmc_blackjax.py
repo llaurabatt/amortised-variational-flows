@@ -367,12 +367,12 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
   # Full dataset used everytime
   # No batching for now
-  dataset = load_data(config=config)
+  lalme_dataset = load_data(config=config)
   # Add some parameters to config
-  config.num_profiles = dataset['num_profiles']
-  config.num_profiles_anchor = dataset['num_profiles_anchor']
-  config.num_profiles_floating = dataset['num_profiles_floating']
-  config.num_forms_tuple = dataset['num_forms_tuple']
+  config.num_profiles = lalme_dataset['num_profiles']
+  config.num_profiles_anchor = lalme_dataset['num_profiles_anchor']
+  config.num_profiles_floating = lalme_dataset['num_profiles_floating']
+  config.num_forms_tuple = lalme_dataset['num_forms_tuple']
   config.num_inducing_points = math.prod(
       config.model_hparams.inducing_grid_shape)
 
@@ -381,7 +381,9 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
   # For training, we need a Dictionary compatible with jit
   # we remove string vectors
-  train_ds = {k: v for k, v in dataset.items() if k not in ['items', 'forms']}
+  train_ds = {
+      k: v for k, v in lalme_dataset.items() if k not in ['items', 'forms']
+  }
 
   # Compute GP covariance between anchor profiles
   train_ds['cov_anchor'] = getattr(
@@ -500,7 +502,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     # Create InferenceData object
     lalme_stg1_unb_az = plot.lalme_az_from_samples(
-        lalme_dataset=dataset,
+        lalme_dataset=lalme_dataset,
         model_params_global=ModelParamsGlobal(
             gamma_inducing=model_params_stg1_unb_samples.gamma_inducing,
             mixing_weights_list=model_params_stg1_unb_samples
@@ -675,7 +677,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     # Create InferenceData object
     lalme_az = plot.lalme_az_from_samples(
-        lalme_dataset=dataset,
+        lalme_dataset=lalme_dataset,
         model_params_global=model_params_global_samples,
         model_params_locations=model_params_locations_samples,
         model_params_gamma=None,
@@ -743,7 +745,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
                    model_params_locations_samples_,
                )
   lalme_az_with_gamma = plot.lalme_az_from_samples(
-      lalme_dataset=dataset,
+      lalme_dataset=lalme_dataset,
       model_params_global=model_params_global_samples_,
       model_params_locations=model_params_locations_samples_,
       model_params_gamma=model_params_gamma_samples_,
@@ -755,14 +757,14 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
   plot.lalme_plots_arviz(
       lalme_az=lalme_az_with_gamma,
-      lalme_dataset=dataset,
+      lalme_dataset=lalme_dataset,
       step=0,
       show_mu=True,
       show_zeta=True,
       show_basis_fields=True,
-      show_W_items=dataset['items'],
-      show_a_items=dataset['items'],
-      lp_floating=dataset['LP'][dataset['num_profiles_anchor']:],
+      show_W_items=lalme_dataset['items'],
+      show_a_items=lalme_dataset['items'],
+      lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
       lp_floating_traces=config.lp_floating_grid10,
       lp_floating_grid10=config.lp_floating_grid10,
       loc_inducing=train_ds['loc_inducing'],
@@ -782,7 +784,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     plot.posterior_samples_compare(
         lalme_az_1=lalme_az,
         lalme_az_2=lalme_az_variational,
-        lalme_dataset=dataset,
+        lalme_dataset=lalme_dataset,
         step=0,
         lp_floating_grid10=config.lp_floating_grid10,
         summary_writer=summary_writer,

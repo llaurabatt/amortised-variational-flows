@@ -92,7 +92,7 @@ def get_config():
   config.lp_random_anchor_10 = [85, 133, 363, 544, 1135, 91, 90, 1287, 612, 731]
 
   # eta shown in figures
-  config.eta_plot = [0.001, 0.25, 0.5, 0.75, 1.0]
+  config.eta_plot = [0.001, 0.250, 0.500, 0.750, 1.000]
 
   # How often to save model checkpoints.
   config.checkpoint_steps = config.training_steps // 2
