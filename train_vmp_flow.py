@@ -577,42 +577,48 @@ def error_locations_vector_estimate(
     prng_key: PRNGKey,
     config: ConfigDict,
     eta_eval_grid: Array,
+    num_samples: int,
     profile_is_anchor: Array,
 ) -> Dict[str, Array]:
-  """Compute average distance error."""
+  """Compute average distance error along eta_eval_grid.
+  
+  Note:
+    This could be computed using vmap, but ran into OOM issues.
+  """
 
-  smi_eta_grid = {
-      'profiles':
-          jax.vmap(lambda eta_profiles_floating: jnp.where(
-              profile_is_anchor,
-              1.,
-              eta_profiles_floating,
-          ))(eta_eval_grid.reshape(-1, 1)),
-      'items':
-          jnp.ones((len(eta_eval_grid), len(batch['num_forms_tuple']))),
-  }
+  prng_seq = hk.PRNGSequence(prng_key)
 
-  smi_eta_grid_expanded = jax.tree_map(
-      lambda x: jnp.repeat(
-          x[:, np.newaxis, ...], config.num_samples_eval, axis=1), smi_eta_grid)
+  error_grid = []
 
-  # Sample from flow
-  q_distr_out_grid = jax.vmap(lambda smi_eta_i: sample_all_flows(
-      params_tuple=[state.params for state in state_list],
-      prng_key=prng_key,
-      flow_name=config.flow_name,
-      flow_kwargs=config.flow_kwargs,
-      smi_eta=smi_eta_i,
-      include_random_anchor=config.include_random_anchor,
-  ))(
-      smi_eta_grid_expanded)
+  for eta_i in eta_eval_grid:
+    eta_i_profiles = eta_i * jnp.ones((num_samples, config.num_profiles))
 
-  error_loc_dict = jax.vmap(
-      lambda posterior_sample_dict_i: error_locations_estimate(
-          locations_sample=posterior_sample_dict_i,
-          batch=batch,
-      ))(
-          q_distr_out_grid['locations_sample'])
+    smi_eta_ = {
+        'profiles':
+            jax.vmap(lambda eta_: jnp.where(
+                profile_is_anchor,
+                1.,
+                eta_,
+            ))(eta_i_profiles),
+        'items':
+            jnp.ones((num_samples, len(config.num_forms_tuple))),
+    }
+    q_distr_out = sample_all_flows(
+        params_tuple=[state.params for state in state_list],
+        prng_key=next(prng_seq),
+        flow_name=config.flow_name,
+        flow_kwargs=config.flow_kwargs,
+        smi_eta=smi_eta_,
+        include_random_anchor=config.include_random_anchor,
+    )
+
+    error_grid.append(
+        error_locations_estimate(
+            locations_sample=q_distr_out['locations_sample'],
+            batch=batch,
+        ))
+
+  error_loc_dict = jax.tree_map(lambda *x: jnp.stack(x, axis=0), *error_grid)  # pylint: disable=no-value-for-parameter
 
   return error_loc_dict
 
@@ -704,6 +710,7 @@ def log_images(
         prng_key=next(prng_seq),
         config=config,
         eta_eval_grid=eta_eval_grid,
+        num_samples=num_samples_chunk,
         profile_is_anchor=profile_is_anchor,
     )
     images = []
@@ -1008,25 +1015,25 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
   # globals().update(loss_fn_kwargs)
 
-  @jax.jit
-  def elbo_validation_jit(state_list, batch, prng_key):
-    return elbo_estimate_along_eta(
-        params_tuple=[state.params for state in state_list],
-        batch=batch,
-        prng_key=prng_key,
-        num_samples=config.num_samples_eval,
-        flow_name=config.flow_name,
-        flow_kwargs=config.flow_kwargs,
-        eta_sampling_a=1.0,
-        eta_sampling_b=1.0,
-        include_random_anchor=config.include_random_anchor,
-        prior_hparams=config.prior_hparams,
-        profile_is_anchor=profile_is_anchor,
-        kernel_name=config.kernel_name,
-        kernel_kwargs=config.kernel_kwargs,
-        num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-        gp_jitter=config.gp_jitter,
-    )
+  # @jax.jit
+  # def elbo_validation_jit(state_list, batch, prng_key):
+  #   return elbo_estimate_along_eta(
+  #       params_tuple=[state.params for state in state_list],
+  #       batch=batch,
+  #       prng_key=prng_key,
+  #       num_samples=config.num_samples_eval,
+  #       flow_name=config.flow_name,
+  #       flow_kwargs=config.flow_kwargs,
+  #       eta_sampling_a=1.0,
+  #       eta_sampling_b=1.0,
+  #       include_random_anchor=config.include_random_anchor,
+  #       prior_hparams=config.prior_hparams,
+  #       profile_is_anchor=profile_is_anchor,
+  #       kernel_name=config.kernel_name,
+  #       kernel_kwargs=config.kernel_kwargs,
+  #       num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+  #       gp_jitter=config.gp_jitter,
+  #   )
 
   # error_locations_estimate_jit = lambda state_list, batch, prng_key: error_locations_estimate(
   #     params_tuple=[state.params for state in state_list],
@@ -1106,21 +1113,21 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       logging.info("STEP: %5d; training loss: %.3f", state_list[0].step - 1,
                    metrics["train_loss"])
 
-      # Multi-stage ELBO
-      elbo_dict_eval = elbo_validation_jit(
-          state_list=state_list,
-          batch=train_ds,
-          prng_key=next(prng_seq),
-      )
-      for k, v in elbo_dict_eval.items():
-        summary_writer.scalar(
-            tag=f'elbo_{k}',
-            value=v.mean(),
-            step=state_list[0].step,
-        )
+      # # Multi-stage ELBO
+      # elbo_dict_eval = elbo_validation_jit(
+      #     state_list=state_list,
+      #     batch=train_ds,
+      #     prng_key=next(prng_seq),
+      # )
+      # for k, v in elbo_dict_eval.items():
+      #   summary_writer.scalar(
+      #       tag=f'elbo_{k}',
+      #       value=v.mean(),
+      #       step=state_list[0].step,
+      #   )
 
       # Estimate posterior distance to true locations
-      eta_eval_grid_ = jnp.linspace(0, 1, 20)
+      eta_eval_grid_ = jnp.linspace(0, 1, 21)
       # Each element is a vector across eta
       error_loc_all_eta_dict = error_locations_vector_estimate(
           state_list=state_list,
@@ -1128,8 +1135,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           prng_key=next(prng_seq),
           config=config,
           eta_eval_grid=eta_eval_grid_,
+          num_samples=config.num_samples_eval,
           profile_is_anchor=profile_is_anchor,
       )
+
       # Summarize the distances
       error_loc_dict = {}
       for k, v in error_loc_all_eta_dict.items():
@@ -1222,7 +1231,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         lp_random_anchor_grid10=config.lp_random_anchor_10,
         loc_inducing=train_ds['loc_inducing'],
         show_eval_metric=True,
-        eta_eval_grid=jnp.linspace(0, 1, 10),
+        eta_eval_grid=jnp.linspace(0, 1, 21),
         num_samples_chunk=config.num_samples_chunk_plot,
         summary_writer=summary_writer,
         workdir_png=workdir,
