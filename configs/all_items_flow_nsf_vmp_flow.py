@@ -78,7 +78,7 @@ def get_config():
 
   # How often to evaluate the model.
   config.eval_steps = config.training_steps // 5
-  config.num_samples_eval = 100
+  config.num_samples_eval = 500
 
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5
