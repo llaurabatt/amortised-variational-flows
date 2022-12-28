@@ -418,7 +418,7 @@ def profile_locations_grid(
           kind=["kde"],
           kde_kwargs={
               "fill_last": False,
-              "hdi_probs": [0.05, 0.5, 0.95]
+              "hdi_probs": [0.01, 0.05, 0.5, 0.95, 0.99]
           },
           ax=axs[i // ncols, i % ncols],
       )
@@ -824,6 +824,7 @@ def lalme_plots_arviz(
     plt.tight_layout()
     if workdir_png:
       plot_name = "lalme_mu_trace"
+      plot_name += suffix
       plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
     image = plot_to_image(None)
 
@@ -847,6 +848,7 @@ def lalme_plots_arviz(
     plt.tight_layout()
     if workdir_png:
       plot_name = "lalme_zeta_trace"
+      plot_name += suffix
       plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
     image = plot_to_image(None)
 
@@ -883,6 +885,7 @@ def lalme_plots_arviz(
       plt.tight_layout()
       if workdir_png:
         plot_name = f"lalme_W_{i}"
+        plot_name += suffix
         plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
       images.append(plot_to_image(None))
 
@@ -906,6 +909,7 @@ def lalme_plots_arviz(
       plt.tight_layout()
       if workdir_png:
         plot_name = f"lalme_a_{i}"
+        plot_name += suffix
         plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
       images.append(plot_to_image(None))
 
@@ -946,6 +950,7 @@ def lalme_plots_arviz(
 
       if workdir_png:
         plot_name = f"floating_profile_{lp_:03d}_loc"
+        plot_name += suffix
         plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
         # summary_writer.image(plot_name, plot_to_image(fig), step=step)
       images.append(plot_to_image(None))
@@ -977,6 +982,7 @@ def lalme_plots_arviz(
 
     if workdir_png:
       plot_name = "lalme_loc_floating_traces_x"
+      plot_name += suffix
       plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
     image = plot_to_image(None)
 
@@ -1028,6 +1034,7 @@ def lalme_plots_arviz(
     )
     if workdir_png:
       plot_name = "lalme_floating_profiles_grid"
+      plot_name += suffix
       plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
     image = plot_to_image(fig)
 
@@ -1067,6 +1074,7 @@ def lalme_plots_arviz(
 
       if workdir_png:
         plot_name = f"anchor_profile_{lp_:03d}_loc"
+        plot_name += suffix
         plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
         # summary_writer.image(plot_name, plot_to_image(fig), step=step)
       images.append(plot_to_image(None))
@@ -1094,6 +1102,7 @@ def lalme_plots_arviz(
     )
     if workdir_png:
       plot_name = "lalme_random_anchor_profiles_grid"
+      plot_name += suffix
       plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
     image = plot_to_image(fig)
 

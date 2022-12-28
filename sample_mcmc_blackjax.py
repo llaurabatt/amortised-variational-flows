@@ -362,6 +362,9 @@ def logprob_lalme(
 def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   """Sample and evaluate the random effects model."""
 
+  # Remove trailing slash
+  workdir = workdir.rstrip("/")
+
   # Initialize random keys
   prng_seq = hk.PRNGSequence(config.seed)
 
@@ -419,120 +422,120 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     summary_writer = tensorboard.SummaryWriter(workdir)
     summary_writer.hparams(flatten_dict(config))
 
-  times_data = {}
-  times_data['start_sampling'] = time.perf_counter()
-
-  ### Sample First Stage ###
-  if os.path.exists(samples_path_stg1):
-    logging.info("\t Loading samples for stage 1...")
-    lalme_stg1_unb_az = az.from_netcdf(samples_path_stg1)
-  else:
-    logging.info("\t Stage 1...")
-
-    # Define target logprob function
-    @jax.jit
-    def logdensity_fn_stg1(model_params, prng_key_gamma):
-      model_params_global_unb = ModelParamsGlobal(
-          gamma_inducing=model_params.gamma_inducing,
-          mixing_weights_list=model_params.mixing_weights_list,
-          mixing_offset_list=model_params.mixing_offset_list,
-          mu=model_params.mu,
-          zeta=model_params.zeta,
-      )
-      model_params_locations_unb = ModelParamsLocations(
-          loc_floating=model_params.loc_floating_aux,
-          loc_floating_aux=None,
-          loc_random_anchor=None,
-      )
-
-      log_prob = logprob_lalme(
-          batch=train_ds,
-          prng_key=prng_key_gamma,
-          model_params_global_unb=model_params_global_unb,
-          model_params_locations_unb=model_params_locations_unb,
-          prior_hparams=config.prior_hparams,
-          kernel_name=config.kernel_name,
-          kernel_kwargs=config.kernel_kwargs,
-          num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-          smi_eta_profiles=smi_eta['profiles'],
-          gp_jitter=config.gp_jitter,
-      )
-      return log_prob
-
-    # initial positions of model parameters
-    # (vmap to produce one for each MCMC chains)
-    model_params_stg1_unb_init = jax.vmap(lambda prng_key: init_param_fn_stg1(
-        prng_key=prng_key,
-        num_forms_tuple=config.num_forms_tuple,
-        num_basis_gps=config.model_hparams.num_basis_gps,
-        num_inducing_points=config.num_inducing_points,
-        num_profiles_floating=config.num_profiles_floating,
-    ))(
-        jax.random.split(next(prng_seq), config.num_chains))
-
-    # Tune HMC parameters automatically
-    logging.info('\t tuning HMC parameters stg1...')
-    key_gamma_ = next(prng_seq)
-    initial_states_stg1, hmc_params_stg1 = jax.vmap(
-        lambda prng_key, model_params: call_warmup(
-            prng_key=prng_key,
-            logdensity_fn=lambda x: logdensity_fn_stg1(x, key_gamma_),
-            model_params=model_params,
-            num_steps=config.num_steps_call_warmup,
-        ))(
-            jax.random.split(next(prng_seq), config.num_chains),
-            model_params_stg1_unb_init,
-        )
-
-    # Sampling loop stage 1
-    logging.info('\t sampling stage 1...')
-    states_stg1, _ = inference_loop_stg1(
-        prng_key=next(prng_seq),
-        initial_states=initial_states_stg1,
-        hmc_params=hmc_params_stg1,
-        logdensity_fn=logdensity_fn_stg1,
-        num_samples=config.num_samples,
-        num_chains=config.num_chains,
-    )
-
-    # Save samples from stage 1
-    # swap position axes to have shape (num_chains, num_samples, ...)
-    model_params_stg1_unb_samples = jax.tree_map(lambda x: x.swapaxes(0, 1),
-                                                 states_stg1.position)
-
-    # Create InferenceData object
-    lalme_stg1_unb_az = plot.lalme_az_from_samples(
-        lalme_dataset=lalme_dataset,
-        model_params_global=ModelParamsGlobal(
-            gamma_inducing=model_params_stg1_unb_samples.gamma_inducing,
-            mixing_weights_list=model_params_stg1_unb_samples
-            .mixing_weights_list,
-            mixing_offset_list=model_params_stg1_unb_samples.mixing_offset_list,
-            mu=model_params_stg1_unb_samples.mu,
-            zeta=model_params_stg1_unb_samples.zeta,
-        ),
-        model_params_locations=ModelParamsLocations(
-            loc_floating=None,
-            loc_floating_aux=model_params_stg1_unb_samples.loc_floating_aux,
-            loc_random_anchor=None,
-        ),
-        model_params_gamma=None,
-    )
-    # Save InferenceData object from stage 1
-    lalme_stg1_unb_az.to_netcdf(samples_path_stg1)
-
-    logging.info(
-        "\t\t posterior means mu (before transform):  %s",
-        str(jnp.array(lalme_stg1_unb_az.posterior.mu).mean(axis=[0, 1])))
-
-    times_data['end_mcmc_stg_1'] = time.perf_counter()
-
-  ### Sample Second Stage ###
-
   if os.path.exists(samples_path):
     logging.info("\t Loading final samples")
     lalme_az = az.from_netcdf(samples_path)
   else:
+    times_data = {}
+    times_data['start_sampling'] = time.perf_counter()
+
+    ### Sample First Stage ###
+    if os.path.exists(samples_path_stg1):
+      logging.info("\t Loading samples for stage 1...")
+      lalme_stg1_unb_az = az.from_netcdf(samples_path_stg1)
+    else:
+      logging.info("\t Stage 1...")
+
+      # Define target logprob function
+      @jax.jit
+      def logdensity_fn_stg1(model_params, prng_key_gamma):
+        model_params_global_unb = ModelParamsGlobal(
+            gamma_inducing=model_params.gamma_inducing,
+            mixing_weights_list=model_params.mixing_weights_list,
+            mixing_offset_list=model_params.mixing_offset_list,
+            mu=model_params.mu,
+            zeta=model_params.zeta,
+        )
+        model_params_locations_unb = ModelParamsLocations(
+            loc_floating=model_params.loc_floating_aux,
+            loc_floating_aux=None,
+            loc_random_anchor=None,
+        )
+
+        log_prob = logprob_lalme(
+            batch=train_ds,
+            prng_key=prng_key_gamma,
+            model_params_global_unb=model_params_global_unb,
+            model_params_locations_unb=model_params_locations_unb,
+            prior_hparams=config.prior_hparams,
+            kernel_name=config.kernel_name,
+            kernel_kwargs=config.kernel_kwargs,
+            num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+            smi_eta_profiles=smi_eta['profiles'],
+            gp_jitter=config.gp_jitter,
+        )
+        return log_prob
+
+      # initial positions of model parameters
+      # (vmap to produce one for each MCMC chains)
+      model_params_stg1_unb_init = jax.vmap(lambda prng_key: init_param_fn_stg1(
+          prng_key=prng_key,
+          num_forms_tuple=config.num_forms_tuple,
+          num_basis_gps=config.model_hparams.num_basis_gps,
+          num_inducing_points=config.num_inducing_points,
+          num_profiles_floating=config.num_profiles_floating,
+      ))(
+          jax.random.split(next(prng_seq), config.num_chains))
+
+      # Tune HMC parameters automatically
+      logging.info('\t tuning HMC parameters stg1...')
+      key_gamma_ = next(prng_seq)
+      initial_states_stg1, hmc_params_stg1 = jax.vmap(
+          lambda prng_key, model_params: call_warmup(
+              prng_key=prng_key,
+              logdensity_fn=lambda x: logdensity_fn_stg1(x, key_gamma_),
+              model_params=model_params,
+              num_steps=config.num_steps_call_warmup,
+          ))(
+              jax.random.split(next(prng_seq), config.num_chains),
+              model_params_stg1_unb_init,
+          )
+
+      # Sampling loop stage 1
+      logging.info('\t sampling stage 1...')
+      states_stg1, _ = inference_loop_stg1(
+          prng_key=next(prng_seq),
+          initial_states=initial_states_stg1,
+          hmc_params=hmc_params_stg1,
+          logdensity_fn=logdensity_fn_stg1,
+          num_samples=config.num_samples,
+          num_chains=config.num_chains,
+      )
+
+      # Save samples from stage 1
+      # swap position axes to have shape (num_chains, num_samples, ...)
+      model_params_stg1_unb_samples = jax.tree_map(lambda x: x.swapaxes(0, 1),
+                                                   states_stg1.position)
+
+      # Create InferenceData object
+      lalme_stg1_unb_az = plot.lalme_az_from_samples(
+          lalme_dataset=lalme_dataset,
+          model_params_global=ModelParamsGlobal(
+              gamma_inducing=model_params_stg1_unb_samples.gamma_inducing,
+              mixing_weights_list=model_params_stg1_unb_samples
+              .mixing_weights_list,
+              mixing_offset_list=model_params_stg1_unb_samples
+              .mixing_offset_list,
+              mu=model_params_stg1_unb_samples.mu,
+              zeta=model_params_stg1_unb_samples.zeta,
+          ),
+          model_params_locations=ModelParamsLocations(
+              loc_floating=None,
+              loc_floating_aux=model_params_stg1_unb_samples.loc_floating_aux,
+              loc_random_anchor=None,
+          ),
+          model_params_gamma=None,
+      )
+      # Save InferenceData object from stage 1
+      lalme_stg1_unb_az.to_netcdf(samples_path_stg1)
+
+      logging.info(
+          "\t\t posterior means mu (before transform):  %s",
+          str(jnp.array(lalme_stg1_unb_az.posterior.mu).mean(axis=[0, 1])))
+
+      times_data['end_mcmc_stg_1'] = time.perf_counter()
+
+    ### Sample Second Stage ###
     logging.info("\t Stage 2...")
 
     # Extract global parameters from stage 1 samples
@@ -691,19 +694,19 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     times_data['end_mcmc_stg_2'] = time.perf_counter()
 
-  times_data['end_sampling'] = time.perf_counter()
+    times_data['end_sampling'] = time.perf_counter()
 
-  logging.info("Sampling times:")
-  logging.info("\t Total: %s",
-               str(times_data['end_sampling'] - times_data['start_sampling']))
-  if ('start_mcmc_stg_1' in times_data) and ('end_mcmc_stg_1' in times_data):
-    logging.info(
-        "\t Stg 1: %s",
-        str(times_data['end_mcmc_stg_1'] - times_data['start_mcmc_stg_1']))
-  if ('start_mcmc_stg_2' in times_data) and ('end_mcmc_stg_2' in times_data):
-    logging.info(
-        "\t Stg 2: %s",
-        str(times_data['end_mcmc_stg_2'] - times_data['start_mcmc_stg_2']))
+    logging.info("Sampling times:")
+    logging.info("\t Total: %s",
+                 str(times_data['end_sampling'] - times_data['start_sampling']))
+    if ('start_mcmc_stg_1' in times_data) and ('end_mcmc_stg_1' in times_data):
+      logging.info(
+          "\t Stg 1: %s",
+          str(times_data['end_mcmc_stg_1'] - times_data['start_mcmc_stg_1']))
+    if ('start_mcmc_stg_2' in times_data) and ('end_mcmc_stg_2' in times_data):
+      logging.info(
+          "\t Stg 2: %s",
+          str(times_data['end_mcmc_stg_2'] - times_data['start_mcmc_stg_2']))
 
   # Get a sample of the basis GPs on profiles locations
   # conditional on values at the inducing locations.

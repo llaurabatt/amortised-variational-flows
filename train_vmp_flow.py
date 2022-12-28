@@ -648,7 +648,6 @@ def log_images(
 
   # Plot posterior samples
   for eta_i in config.eta_plot:
-    # i = 1; eta_i = config.eta_plot[i]
     eta_i_profiles = eta_i * jnp.ones(
         (config.num_samples_plot, config.num_profiles))
 
@@ -755,6 +754,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   Returns:
     Final TrainState.
   """
+
+  # Remove trailing slash
+  workdir = workdir.rstrip("/")
 
   # Initialize random keys
   prng_seq = hk.PRNGSequence(config.seed)
@@ -1166,6 +1168,33 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           keep=config.checkpoints_keep,
       )
     del state
+
+  # Save samples from the last state
+  for eta_i in config.eta_plot:
+    eta_i_profiles = eta_i * jnp.ones(
+        (config.num_samples_plot, config.num_profiles))
+
+    smi_eta_ = {
+        'profiles':
+            jax.vmap(lambda eta_: jnp.where(
+                profile_is_anchor,
+                1.,
+                eta_,
+            ))(eta_i_profiles),
+        'items':
+            jnp.ones((config.num_samples_plot, len(config.num_forms_tuple))),
+    }
+
+    lalme_az_ = sample_lalme_az(
+        state_list=state_list,
+        batch=train_ds,
+        smi_eta=smi_eta_,
+        prng_key=next(prng_seq),
+        config=config,
+        lalme_dataset=lalme_dataset,
+        include_gamma=False,
+    )
+    lalme_az_.to_netcdf(workdir + f'/lalme_az_eta_{float(eta_i):.3f}.nc')
 
   # Last plot of posteriors
   if config.log_img_at_end:

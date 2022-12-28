@@ -741,6 +741,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     Final TrainState.
   """
 
+  # Remove trailing slash
+  workdir = workdir.rstrip("/")
+
   # Initialize random keys
   prng_seq = hk.PRNGSequence(config.seed)
 
