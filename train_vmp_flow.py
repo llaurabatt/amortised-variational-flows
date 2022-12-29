@@ -1058,6 +1058,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     prng_seq = hk.PRNGSequence(config.seed)
     save_last_checkpoint = True
 
+  loss_ = []
   while state_list[0].step < config.training_steps:
     # step = 0
 
@@ -1097,6 +1098,14 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         batch=train_ds,
         prng_key=next(prng_seq),
     )
+
+    loss_.append(float(metrics['train_loss']))
+    if len(loss_) >= config.max_steps_nan:
+      loss_ = loss_[-config.max_steps_nan:]
+      if jnp.isnan(jnp.array(loss_).astype(float)).all():
+        logging.warning('Training stopped, %d steps with NaN loss',
+                        config.max_steps_nan)
+        break
 
     summary_writer.scalar(
         tag='train_loss',
@@ -1182,6 +1191,39 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       )
     del state
 
+  # Estimate posterior distance to true locations
+  eval_last = True
+  if eval_last:
+    eta_eval_grid_ = jnp.linspace(0, 1, 21)
+    # Each element is a vector across eta
+    error_loc_all_eta_dict = error_locations_vector_estimate(
+        state_list=state_list,
+        batch=train_ds,
+        prng_key=next(prng_seq),
+        config=config,
+        eta_eval_grid=eta_eval_grid_,
+        num_samples=config.num_samples_eval,
+        profile_is_anchor=profile_is_anchor,
+    )
+
+    # Summarize the distances
+    error_loc_dict = {}
+    for k, v in error_loc_all_eta_dict.items():
+      error_loc_dict[k + '_min'] = jnp.min(v)
+      error_loc_dict[k + '_min_eta'] = eta_eval_grid_[jnp.argmin(v)]
+      error_loc_dict[k + '_max'] = jnp.max(v)
+      error_loc_dict[k + '_max_eta'] = eta_eval_grid_[jnp.argmax(v)]
+
+    for k, v in error_loc_dict.items():
+      summary_writer.scalar(
+          tag=k,
+          value=float(v),
+          step=state_list[0].step,
+      )
+      # Report the metric used by syne-tune
+      if k == config.synetune_metric:
+        synetune_report(**{k: float(v)})
+
   # Save samples from the last state
   for eta_i in config.eta_plot:
     eta_i_profiles = eta_i * jnp.ones(
@@ -1241,5 +1283,17 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
 # # For debugging
 # config = get_config()
-# workdir = pathlib.Path.home() / 'spatial-smi-output-exp/8_items/nsf/vmp_flow'
+# workdir = str(pathlib.Path.home() / 'spatial-smi-output-exp/all_items/nsf/vmp_flow')
 # # train_and_evaluate(config, workdir)
+
+# config.checkpoint_steps = -1
+# config.eval_steps = 5000
+# config.kernel_kwargs.amplitude = 0.515
+# config.kernel_kwargs.length_scale = 0.515
+# config.log_img_at_end = False
+# config.log_img_steps = -1
+# config.optim_kwargs.lr_schedule_kwargs.decay_rate = 0.55
+# config.optim_kwargs.lr_schedule_kwargs.peak_value = 0.00031622776601683783
+# config.optim_kwargs.lr_schedule_kwargs.transition_steps = 10000
+# config.synetune_metric = "distance_random_anchor_min"
+# config.training_steps = 30000
