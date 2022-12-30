@@ -283,8 +283,9 @@ def get_kernel_bijector_stg2(
     # TODO(chrcarm): enable shift
     # loc_y_range_bijector = tfp.Shift(shift=loc_y_range[0])
 
-  block_bijectors_loc_floating = [loc_x_range_bijector, loc_y_range_bijector]
-  block_sizes_loc_floating = [num_profiles_floating, num_profiles_floating]
+  block_bijectors_loc_floating = [loc_x_range_bijector, loc_y_range_bijector
+                                 ] * num_profiles_floating
+  block_sizes_loc_floating = [1, 1] * num_profiles_floating
   bijector_loc_floating_layers.append(
       tfb.Blockwise(
           bijectors=block_bijectors_loc_floating,
@@ -432,6 +433,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
       # Define target logdensity function
       prng_key_gamma = next(prng_seq)
+
       @jax.jit
       def logdensity_fn_stg1(model_params_concat):
         model_params_stg1 = split_params_stg1(
@@ -558,9 +560,8 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       # Save InferenceData object from stage 1
       lalme_stg1_az.to_netcdf(samples_path_stg1)
 
-      logging.info(
-          "\t\t posterior means mu (before transform):  %s",
-          str(jnp.array(lalme_stg1_az.posterior.mu).mean(axis=[0, 1])))
+      logging.info("\t\t posterior means mu:  %s",
+                   str(jnp.array(lalme_stg1_az.posterior.mu).mean(axis=[0, 1])))
 
       times_data['end_mcmc_stg_1'] = time.perf_counter()
 
@@ -582,7 +583,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         zeta=jnp.array(lalme_stg1_az.posterior.zeta),
     )
     model_params_global_samples = jax.tree_map(lambda x: x[0],
-                                                model_params_global_samples)
+                                               model_params_global_samples)
 
     # Define bijector for samples
     bijector_stg2 = get_kernel_bijector_stg2(
@@ -592,6 +593,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     # Define target logdensity function
     prng_key_gamma = next(prng_seq)
+
     @jax.jit
     def logdensity_fn_stg2(model_params_concat, conditioner):
       model_params_locations = split_flow_locations(
@@ -712,10 +714,11 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     lalme_az = plot.lalme_az_from_samples(
         lalme_dataset=lalme_dataset,
         model_params_global=jax.tree_map(lambda x: x[None, ...],
-                                           model_params_global_samples),
+                                         model_params_global_samples),
         model_params_locations=ModelParamsLocations(
             loc_floating=model_params_stg2_samples.loc_floating[None, ...],
-            loc_floating_aux=jnp.array(lalme_stg1_az.posterior.loc_floating_aux),
+            loc_floating_aux=jnp.array(
+                lalme_stg1_az.posterior.loc_floating_aux),
             loc_random_anchor=None,
         ),
         model_params_gamma=None,
@@ -778,10 +781,9 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
                    gp_jitter=config.gp_jitter,
                    include_random_anchor=False,
                )))(
-                   jax.random.split(
-                       next(prng_seq),
-                       1 * config.num_samples).reshape(
-                           (1, config.num_samples, 2)),
+                   jax.random.split(next(prng_seq),
+                                    1 * config.num_samples).reshape(
+                                        (1, config.num_samples, 2)),
                    model_params_global_samples_,
                    model_params_locations_samples_,
                )
@@ -823,7 +825,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     lalme_az_variational = az.from_netcdf(config.path_variational_samples)
 
     plot.posterior_samples_compare(
-        lalme_az_1=lalme_az,
+        lalme_az_1=lalme_az_with_gamma,
         lalme_az_2=lalme_az_variational,
         lalme_dataset=lalme_dataset,
         step=0,
@@ -831,17 +833,17 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         summary_writer=summary_writer,
         workdir_png=workdir,
         suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
-        scatter_kwargs={"alpha": 0.03},
+        scatter_kwargs={"alpha": 0.05},
     )
     logging.info("...done!")
 
 
 # # For debugging
 # config = get_config()
-# eta = 0.001
+# eta = 1.000
 # import pathlib
 # workdir = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/mcmc/eta_floating_{eta:.3f}')
-# config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/nsf/eta_floating_{eta:.3f}/posterior_sample_dict.npz')
+# config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output/8_items/nsf/vmp_flow/lalme_az_eta_{eta:.3f}.nc')
 # config.eta_profiles_floating = eta
 # # config.num_samples = 100
 # # config.num_burnin_steps_stg1 = 5

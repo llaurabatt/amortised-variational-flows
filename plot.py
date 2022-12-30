@@ -1,4 +1,4 @@
-"""Plot methods for the LALME model."""
+"""Plotting methods for the LALME model."""
 
 import pathlib
 
