@@ -5,30 +5,49 @@ import os
 import time
 import math
 
+from collections import namedtuple
+
 from absl import logging
 
 import numpy as np
+
+import arviz as az
 
 import jax
 from jax import numpy as jnp
 
 import haiku as hk
+import distrax
 
 from tensorflow_probability.substrates import jax as tfp
 
 from flax.metrics import tensorboard
 
-import log_prob_fun
+from modularbayes import flatten_dict
+from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
+                                      Mapping, Optional, PRNGKey, Tuple)
+
+# import log_prob_fun
+import log_prob_fun_2
+from log_prob_fun_2 import ModelParamsGlobal, ModelParamsLocations
+
 import plot
 from train_flow import load_data, get_inducing_points
 from flows import (split_flow_global_params, split_flow_locations,
-                   concat_samples_global_params, concat_samples_locations,
-                   get_global_params_dim)
-from misc import lalme_az_from_dict
-from modularbayes import flatten_dict
-from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
-                                      Mapping, Optional, OrderedDict, PRNGKey,
-                                      Tuple)
+                   concat_global_params, concat_locations,
+                   get_global_params_shapes)
+
+ModelParamsStg1 = namedtuple("modelparams_stg1", [
+    'gamma_inducing',
+    'mixing_weights_list',
+    'mixing_offset_list',
+    'mu',
+    'zeta',
+    'loc_floating_aux',
+])
+ModelParamsStg2 = namedtuple("modelparams_stg2", [
+    'loc_floating',
+])
 
 tfd = tfp.distributions
 tfb = tfp.bijectors
@@ -41,82 +60,77 @@ jax.config.update('jax_default_matmul_precision', 'float32')
 np.set_printoptions(suppress=True, precision=4)
 
 
-def split_samples(
-    samples: Array,
+def split_params_stg1(
+    params_concat: Array,
     num_forms_tuple: Tuple[int, ...],
     num_basis_gps: int,
     num_inducing_points: int,
     num_profiles_floating: int,
-):
+) -> ModelParamsStg1:
   """Get dictionary with parametes to initialize MCMC.
 
   The order of the parameters
   """
 
-  global_params_names = [
-      'gamma_inducing', 'mixing_weights_list', 'mixing_offset_list', 'mu',
-      'zeta'
-  ]
-  all_params_names = global_params_names + ['loc_floating']
-  posterior_sample = OrderedDict()
-  for key in all_params_names:
-    posterior_sample[key] = None
-
-  global_params_dim = get_global_params_dim(
-      num_forms_tuple=num_forms_tuple,
-      num_basis_gps=num_basis_gps,
-      num_inducing_points=num_inducing_points,
-  )
-  assert samples.shape[-1] == global_params_dim + 2 * num_profiles_floating
-
   ### Global parameters ###
-  samples_global, samples_loc_floating = jnp.split(
-      samples, [global_params_dim], axis=-1)
+  global_dim_ = params_concat.shape[-1] - 2 * num_profiles_floating
+  params_global, params_loc_floating_aux = jnp.split(
+      params_concat, [global_dim_], axis=-1)
 
-  posterior_sample_global = split_flow_global_params(
-      samples=samples_global,
+  model_params_global = split_flow_global_params(
+      samples=params_global[None, ...],
       num_forms_tuple=num_forms_tuple,
       num_basis_gps=num_basis_gps,
       num_inducing_points=num_inducing_points,
   )
-
-  for key in global_params_names:
-    posterior_sample[key] = posterior_sample_global[key]
+  model_params_global = jax.tree_map(lambda x: x[0], model_params_global)
 
   ### Location floating profiles ###
-  posterior_sample_loc_floating = split_flow_locations(
-      samples=samples_loc_floating,
+  model_params_locations = split_flow_locations(
+      samples=params_loc_floating_aux[None, ...],
       num_profiles=num_profiles_floating,
-      name='loc_floating',
-      is_aux=False,
+      name='loc_floating_aux',
+  )
+  model_params_locations = jax.tree_map(lambda x: x[0], model_params_locations)
+
+  model_params_stg1 = ModelParamsStg1(
+      gamma_inducing=model_params_global.gamma_inducing,
+      mixing_weights_list=model_params_global.mixing_weights_list,
+      mixing_offset_list=model_params_global.mixing_offset_list,
+      mu=model_params_global.mu,
+      zeta=model_params_global.zeta,
+      loc_floating_aux=model_params_locations.loc_floating_aux,
   )
 
-  posterior_sample['loc_floating'] = posterior_sample_loc_floating[
-      'loc_floating']
-
-  # Verify that the parameters are in the correct order
-  assert list(posterior_sample.keys()) == all_params_names
-
-  return posterior_sample
+  return model_params_stg1
 
 
-def concat_samples(samples_dict: Dict[str, Any]) -> Array:
+def concat_params_stg1(model_params_stg1: ModelParamsStg1) -> Array:
 
-  samples = []
+  params_concat = []
 
-  samples.append(concat_samples_global_params(samples_dict))
-  samples.append(
-      concat_samples_locations(
-          samples_dict=samples_dict,
-          is_aux=False,
-          name='loc_floating',
+  params_concat.append(
+      concat_global_params(
+          model_params_global=ModelParamsGlobal(
+              gamma_inducing=model_params_stg1.gamma_inducing,
+              mixing_weights_list=model_params_stg1.mixing_weights_list,
+              mixing_offset_list=model_params_stg1.mixing_offset_list,
+              mu=model_params_stg1.mu,
+              zeta=model_params_stg1.zeta,
+          )))
+  params_concat.append(
+      concat_locations(
+          model_params_locations=ModelParamsLocations(
+              loc_floating_aux=model_params_stg1.loc_floating_aux),
+          name='loc_floating_aux',
       ))
-  samples = jnp.concatenate(samples, axis=-1)
+  params_concat = jnp.concatenate(params_concat, axis=-1)
 
-  return samples
+  return params_concat
 
 
-def get_posterior_sample_init_stg1(
+def init_param_fn_stg1(
+    prng_key: PRNGKey,
     num_forms_tuple: Tuple[int, ...],
     num_basis_gps: int,
     num_inducing_points: int,
@@ -124,35 +138,32 @@ def get_posterior_sample_init_stg1(
 ):
   """Get dictionary with parametes to initialize MCMC.
 
-  The order of the parameters
+  This function produce unbounded values, i.e. before bijectors to map into the
+  domain of the model parameters.
   """
 
-  num_samples = 1
-  global_params_names = [
-      'gamma_inducing', 'mixing_weights_list', 'mixing_offset_list', 'mu',
-      'zeta'
-  ]
-  all_params_names = global_params_names + ['loc_floating']
-  posterior_sample = OrderedDict()
-  for key in all_params_names:
-    posterior_sample[key] = None
+  prng_seq = hk.PRNGSequence(prng_key)
 
-  ### Global parameters ###
-  samples_dim = get_global_params_dim(
+  # Dictionary with shapes of model parameters in stage 1
+  samples_shapes = get_global_params_shapes(
       num_forms_tuple=num_forms_tuple,
       num_basis_gps=num_basis_gps,
       num_inducing_points=num_inducing_points,
-  ) + 2 * num_profiles_floating
+  )
+  samples_shapes['loc_floating_aux'] = (num_profiles_floating, 2)
 
-  posterior_sample = split_samples(
-      samples=jnp.zeros((num_samples, samples_dim)),
-      num_forms_tuple=num_forms_tuple,
-      num_basis_gps=num_basis_gps,
-      num_inducing_points=num_inducing_points,
-      num_profiles_floating=num_profiles_floating,
+  # Get a sample for all parameters
+  model_params_stg1_ = jax.tree_map(
+      lambda shape_i: distrax.Normal(0., 1.).sample(
+          seed=next(prng_seq), sample_shape=shape_i),
+      tree=samples_shapes,
+      is_leaf=lambda x: isinstance(x, Tuple),
   )
 
-  return posterior_sample
+  # Define the named tuple to preserve the order of the parameters
+  model_params_stg1 = ModelParamsStg1(**model_params_stg1_)
+
+  return model_params_stg1
 
 
 def get_kernel_bijector_stg1(
@@ -283,31 +294,22 @@ def get_kernel_bijector_stg2(
   return bijector_loc_floating
 
 
-def log_prob_fn(
+def logprob_lalme(
     batch: Batch,
     prng_key: PRNGKey,
-    posterior_sample_raw_1d: Array,
+    model_params_global: ModelParamsGlobal,
+    model_params_locations: ModelParamsLocations,
     prior_hparams: Dict[str, Any],
     kernel_name: str,
     kernel_kwargs: Dict[str, Any],
     num_samples_gamma_profiles: int,
     smi_eta_profiles: Optional[Array],
-    num_forms_tuple: Tuple[int, ...],
-    num_basis_gps: int,
-    num_inducing_points: int,
-    num_profiles_floating: int,
-    include_random_anchor: bool = False,
     gp_jitter: float = 1e-5,
 ):
-
-  # Split the array of raw samples to create a dictionary with named samples.
-  posterior_sample_dict = split_samples(
-      samples=jnp.expand_dims(posterior_sample_raw_1d, axis=0),
-      num_forms_tuple=num_forms_tuple,
-      num_basis_gps=num_basis_gps,
-      num_inducing_points=num_inducing_points,
-      num_profiles_floating=num_profiles_floating,
-  )
+  """Joint log probability of the LALME model.
+  
+  Using unbounded input parameters.
+  """
 
   # Put Smi eta values into a dictionary.
   if smi_eta_profiles is not None:
@@ -320,28 +322,33 @@ def log_prob_fn(
 
   # Sample the basis GPs on profiles locations conditional on GP values on the
   # inducing points.
-  gamma_sample_dict = log_prob_fun.sample_gamma_profiles_given_gamma_inducing(
-      batch=batch,
-      posterior_sample_dict=posterior_sample_dict,
-      prng_key=prng_key,
-      kernel_name=kernel_name,
-      kernel_kwargs=kernel_kwargs,
-      gp_jitter=gp_jitter,
-      num_samples_gamma_profiles=num_samples_gamma_profiles,
-      is_smi=False,  # Do not sample the auxiliary gamma
-      include_random_anchor=include_random_anchor,
-  )
-  posterior_sample_dict.update(gamma_sample_dict)
+  model_params_gamma_profiles_sample, gamma_profiles_logprob_sample = jax.vmap(
+      lambda key_: log_prob_fun_2.sample_gamma_profiles_given_gamma_inducing(
+          batch=batch,
+          model_params_global=model_params_global,
+          model_params_locations=model_params_locations,
+          prng_key=key_,
+          kernel_name=kernel_name,
+          kernel_kwargs=kernel_kwargs,
+          gp_jitter=gp_jitter,
+          include_random_anchor=False,  # Do not sample gamma for random anchor locations
+      ))(
+          jax.random.split(prng_key, num_samples_gamma_profiles))
 
-  # Compute the log probability function.
-  log_prob = log_prob_fun.log_prob_joint(
-      batch=batch,
-      posterior_sample_dict=posterior_sample_dict,
-      smi_eta=smi_eta,
-      random_anchor=False,
-      **prior_hparams,
-  ).squeeze()
-  # globals().update(prior_hparams)
+  # Average joint logprob across samples of gamma_profiles
+  log_prob = jax.vmap(lambda gamma_profiles_, gamma_profiles_logprob_:
+                      log_prob_fun_2.logprob_joint(
+                          batch=batch,
+                          model_params_global=model_params_global,
+                          model_params_locations=model_params_locations,
+                          model_params_gamma_profiles=gamma_profiles_,
+                          gamma_profiles_logprob=gamma_profiles_logprob_,
+                          smi_eta=smi_eta,
+                          random_anchor=False,
+                          **prior_hparams,
+                      ))(model_params_gamma_profiles_sample,
+                         gamma_profiles_logprob_sample)
+  log_prob = jnp.mean(log_prob)
 
   return log_prob
 
@@ -349,27 +356,31 @@ def log_prob_fn(
 def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   """Sample and evaluate the random effects model."""
 
+  # Remove trailing slash
+  workdir = workdir.rstrip("/")
+
   # Initialize random keys
   prng_seq = hk.PRNGSequence(config.seed)
 
   # Full dataset used everytime
   # No batching for now
-  dataset = load_data(config=config)
+  lalme_dataset = load_data(config=config)
   # Add some parameters to config
-  config.num_profiles = dataset['num_profiles']
-  config.num_profiles_anchor = dataset['num_profiles_anchor']
-  config.num_profiles_floating = dataset['num_profiles_floating']
-  config.num_forms_tuple = dataset['num_forms_tuple']
+  config.num_profiles = lalme_dataset['num_profiles']
+  config.num_profiles_anchor = lalme_dataset['num_profiles_anchor']
+  config.num_profiles_floating = lalme_dataset['num_profiles_floating']
+  config.num_forms_tuple = lalme_dataset['num_forms_tuple']
   config.num_inducing_points = math.prod(
       config.model_hparams.inducing_grid_shape)
 
-  samples_path_stg1 = workdir + '/posterior_sample_dict_stg1.npz'
-  samples_path_stg2 = workdir + '/posterior_sample_dict_stg2.npz'
-  samples_path = workdir + '/posterior_sample_dict.npz'
+  samples_path_stg1 = workdir + '/lalme_stg1_az.nc'
+  samples_path = workdir + '/lalme_az.nc'
 
   # For training, we need a Dictionary compatible with jit
   # we remove string vectors
-  train_ds = {k: v for k, v in dataset.items() if k not in ['items', 'forms']}
+  train_ds = {
+      k: v for k, v in lalme_dataset.items() if k not in ['items', 'forms']
+  }
 
   # Compute GP covariance between anchor profiles
   train_ds['cov_anchor'] = getattr(
@@ -405,369 +416,436 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     summary_writer = tensorboard.SummaryWriter(workdir)
     summary_writer.hparams(flatten_dict(config))
 
-  # Initilize the model parameters
-  posterior_sample_dict_init = get_posterior_sample_init_stg1(
-      num_forms_tuple=config.num_forms_tuple,
-      num_basis_gps=config.model_hparams.num_basis_gps,
-      num_inducing_points=config.num_inducing_points,
-      num_profiles_floating=config.num_profiles_floating,
-  )
-
-  times_data = {}
-  times_data['start_sampling'] = time.perf_counter()
-
-  ### Sample First Stage ###
-  if os.path.exists(samples_path_stg1):
-    logging.info("\t Loading samples for stage 1...")
-    posterior_sample_dict = np.load(
-        str(samples_path_stg1), allow_pickle=True)['arr_0'].item()
+  if os.path.exists(samples_path):
+    logging.info("\t Loading final samples")
+    lalme_az = az.from_netcdf(samples_path)
   else:
-    logging.info("\t sampling stage 1...")
+    times_data = {}
+    times_data['start_sampling'] = time.perf_counter()
 
-    posterior_sample_raw_init = concat_samples(
-        samples_dict=posterior_sample_dict_init)[0, :]
+    ### Sample First Stage ###
+    if os.path.exists(samples_path_stg1):
+      logging.info("\t Loading samples for stage 1...")
+      lalme_stg1_az = az.from_netcdf(samples_path_stg1)
+    else:
+      logging.info("\t Stage 1...")
 
-    # Verify that split_samples is the inverse of concat_samples
-    assert all([
-        v for v in jax.tree_map(
-            lambda x, y: (x == y).all(),
-            posterior_sample_dict_init,
-            split_samples(
-                samples=jnp.expand_dims(posterior_sample_raw_init, 0),
-                num_forms_tuple=config.num_forms_tuple,
-                num_basis_gps=config.model_hparams.num_basis_gps,
-                num_inducing_points=config.num_inducing_points,
-                num_profiles_floating=config.num_profiles_floating,
-            ),
-        ).values()
-    ])
-
-    prng_key_gamma = next(prng_seq)
-
-    @jax.jit
-    def target_log_prob_fn_stg1(posterior_sample_raw):
-      return log_prob_fn(
-          batch=train_ds,
-          prng_key=prng_key_gamma,
-          posterior_sample_raw_1d=posterior_sample_raw,
-          prior_hparams=config.prior_hparams,
-          kernel_name=config.kernel_name,
-          kernel_kwargs=config.kernel_kwargs,
-          num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-          smi_eta_profiles=smi_eta['profiles'] if smi_eta is not None else None,
-          num_forms_tuple=config.num_forms_tuple,
-          num_basis_gps=config.model_hparams.num_basis_gps,
-          num_inducing_points=config.num_inducing_points,
-          num_profiles_floating=config.num_profiles_floating,
-          include_random_anchor=False,
-          gp_jitter=config.gp_jitter,
-      )
-
-    # Define bijector for samples
-    bijector_stg1 = get_kernel_bijector_stg1(
-        num_forms_tuple=config.num_forms_tuple,
-        num_profiles_floating=config.num_profiles_floating,
-        **config.model_hparams,
-    )
-
-    # Test the log probability function
-    _ = target_log_prob_fn_stg1(
-        posterior_sample_raw=bijector_stg1.forward(posterior_sample_raw_init))
-
-    # Define sampling kernel
-    kernel = tfp.mcmc.TransformedTransitionKernel(
-        inner_kernel=tfm.NoUTurnSampler(
-            target_log_prob_fn=target_log_prob_fn_stg1,
-            step_size=config.mcmc_step_size,
-        ),
-        bijector=bijector_stg1)
-
-    # Sample stage 1 chain
-
-    times_data['start_mcmc_stg_1'] = time.perf_counter()
-    posterior_sample_stg1 = tfm.sample_chain(
-        num_results=config.num_samples,
-        num_burnin_steps=config.num_burnin_steps_stg1,
-        kernel=kernel,
-        current_state=bijector_stg1.forward(posterior_sample_raw_init),
-        trace_fn=None,
-        seed=next(prng_seq),
-    )
-
-    posterior_sample_dict = split_samples(
-        samples=posterior_sample_stg1,
-        num_forms_tuple=config.num_forms_tuple,
-        num_basis_gps=config.model_hparams.num_basis_gps,
-        num_inducing_points=config.num_inducing_points,
-        num_profiles_floating=config.num_profiles_floating,
-    )
-    # Verify that concat_samples is the inverse of split_samples
-    assert (posterior_sample_stg1 == concat_samples(
-        samples_dict=posterior_sample_dict)).all()
-    global_params_sample, loc_floating_aux_sample = jnp.split(
-        posterior_sample_stg1, [
-            get_global_params_dim(
-                num_forms_tuple=config.num_forms_tuple,
-                num_basis_gps=config.model_hparams.num_basis_gps,
-                num_inducing_points=config.num_inducing_points,
-            )
-        ],
-        axis=-1)
-    assert loc_floating_aux_sample.shape == (config.num_samples,
-                                             2 * config.num_profiles_floating)
-
-    logging.info("posterior means mu %s",
-                 str(posterior_sample_dict['mu'].mean(axis=0)))
-
-    times_data['end_mcmc_stg_1'] = time.perf_counter()
-
-    # Save MCMC samples from stage 1
-    np.savez_compressed(samples_path_stg1, posterior_sample_dict)
-
-  ### Sample Second Stage ###
-
-  if os.path.exists(samples_path_stg2):
-    logging.info("\t Loading samples for stage 2...")
-
-    posterior_sample_dict = np.load(
-        str(samples_path_stg2), allow_pickle=True)['arr_0'].item()
-  else:
-
-    if smi_eta is not None:
-
-      logging.info("\t sampling stage 2...")
-
-      # Define parameters split for SMI
-      # shared_params_names = [
-      #     'gamma_inducing',
-      #     'mixing_weights_list',
-      #     'mixing_offset_list',
-      #     'mu',
-      #     'zeta',
-      # ]
-      refit_params_names = [
-          'loc_floating',
-      ]
-      for key in refit_params_names:
-        posterior_sample_dict[key + '_aux'] = posterior_sample_dict[key]
-        del posterior_sample_dict[key]
-
-      logging.info("posterior means loc_floating_aux %s",
-                   str(posterior_sample_dict['loc_floating_aux'].mean(axis=0)))
-      # Define bijector for samples
-      bijector_stg2 = get_kernel_bijector_stg2(
-          num_profiles_floating=config.num_profiles_floating,
-          **config.model_hparams,
-      )
-
+      # Define target logdensity function
+      prng_key_gamma = next(prng_seq)
       @jax.jit
-      def target_log_prob_fn_stg2(global_params, loc_floating_sample):
-        return log_prob_fn(
-            batch=train_ds,
-            prng_key=prng_key_gamma,
-            posterior_sample_raw_1d=jnp.concatenate(
-                [global_params, loc_floating_sample], axis=-1),
-            prior_hparams=config.prior_hparams,
-            kernel_name=config.kernel_name,
-            kernel_kwargs=config.kernel_kwargs,
-            num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-            smi_eta_profiles=None,
+      def logdensity_fn_stg1(model_params_concat):
+        model_params_stg1 = split_params_stg1(
+            params_concat=model_params_concat,
             num_forms_tuple=config.num_forms_tuple,
             num_basis_gps=config.model_hparams.num_basis_gps,
             num_inducing_points=config.num_inducing_points,
             num_profiles_floating=config.num_profiles_floating,
-            include_random_anchor=False,
+        )
+        model_params_global = ModelParamsGlobal(
+            gamma_inducing=model_params_stg1.gamma_inducing,
+            mixing_weights_list=model_params_stg1.mixing_weights_list,
+            mixing_offset_list=model_params_stg1.mixing_offset_list,
+            mu=model_params_stg1.mu,
+            zeta=model_params_stg1.zeta,
+        )
+        model_params_locations = ModelParamsLocations(
+            loc_floating=model_params_stg1.loc_floating_aux,)
+        logprob_ = logprob_lalme(
+            batch=train_ds,
+            prng_key=prng_key_gamma,
+            model_params_global=model_params_global,
+            model_params_locations=model_params_locations,
+            prior_hparams=config.prior_hparams,
+            kernel_name=config.kernel_name,
+            kernel_kwargs=config.kernel_kwargs,
+            num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+            smi_eta_profiles=smi_eta['profiles'],
             gp_jitter=config.gp_jitter,
         )
+        return logprob_
+
+      # initial positions of model parameters
+      model_params_stg1_unb_init = init_param_fn_stg1(
+          prng_key=next(prng_seq),
+          num_forms_tuple=config.num_forms_tuple,
+          num_basis_gps=config.model_hparams.num_basis_gps,
+          num_inducing_points=config.num_inducing_points,
+          num_profiles_floating=config.num_profiles_floating,
+      )
+
+      posterior_sample_raw_init = concat_params_stg1(model_params_stg1_unb_init)
+
+      # Verify that split_samples is the inverse of concat_samples
+      assert all(
+          v for v in jax.tree_map(
+              lambda x, y: (x == y).all(),
+              model_params_stg1_unb_init,
+              split_params_stg1(
+                  params_concat=posterior_sample_raw_init,
+                  num_forms_tuple=config.num_forms_tuple,
+                  num_basis_gps=config.model_hparams.num_basis_gps,
+                  num_inducing_points=config.num_inducing_points,
+                  num_profiles_floating=config.num_profiles_floating,
+              ),
+          )._asdict().values())
+
+      # Define bijector for samples
+      bijector_stg1 = get_kernel_bijector_stg1(
+          num_forms_tuple=config.num_forms_tuple,
+          num_profiles_floating=config.num_profiles_floating,
+          **config.model_hparams,
+      )
 
       # Test the log probability function
-      _ = target_log_prob_fn_stg2(
-          global_params_sample[0],
-          bijector_stg2.forward(5 *
-                                jnp.zeros(2 * config.num_profiles_floating)),
+      _ = logdensity_fn_stg1(
+          model_params_concat=bijector_stg1.forward(posterior_sample_raw_init))
+
+      # Define sampling kernel
+      kernel = tfp.mcmc.TransformedTransitionKernel(
+          inner_kernel=tfm.NoUTurnSampler(
+              target_log_prob_fn=logdensity_fn_stg1,
+              step_size=config.mcmc_step_size,
+          ),
+          bijector=bijector_stg1)
+
+      # Sample stage 1 chain
+      times_data['start_mcmc_stg_1'] = time.perf_counter()
+      model_params_stg1_samples_concat = tfm.sample_chain(
+          num_results=config.num_samples,
+          num_burnin_steps=config.num_burnin_steps_stg1,
+          kernel=kernel,
+          current_state=bijector_stg1.forward(posterior_sample_raw_init),
+          trace_fn=None,
+          seed=next(prng_seq),
       )
 
-      def sample_stg2(
-          global_params: Array,
-          loc_floating_init: Array,
-          num_samples_subchain_stg2: int,
-          prng_key: PRNGKey,
-      ):
+      # Save samples from stage 1
+      model_params_stg1_samples = jax.vmap(lambda x: split_params_stg1(
+          params_concat=x,
+          num_forms_tuple=config.num_forms_tuple,
+          num_basis_gps=config.model_hparams.num_basis_gps,
+          num_inducing_points=config.num_inducing_points,
+          num_profiles_floating=config.num_profiles_floating,
+      ))(
+          model_params_stg1_samples_concat)
 
-        inner_kernel = tfm.NoUTurnSampler(
-            target_log_prob_fn=lambda x: target_log_prob_fn_stg2(
-                global_params, x),
-            step_size=config.mcmc_step_size,
-        )
+      # Verify that concat_samples is the inverse of split_samples
+      assert (model_params_stg1_samples_concat == jax.vmap(
+          lambda x: concat_params_stg1(model_params_stg1=x))(
+              model_params_stg1_samples)).all()
 
-        kernel = tfp.mcmc.TransformedTransitionKernel(
-            inner_kernel=inner_kernel, bijector=bijector_stg2)
+      model_params_global_samples = ModelParamsGlobal(
+          gamma_inducing=model_params_stg1_samples.gamma_inducing,
+          mixing_weights_list=model_params_stg1_samples.mixing_weights_list,
+          mixing_offset_list=model_params_stg1_samples.mixing_offset_list,
+          mu=model_params_stg1_samples.mu,
+          zeta=model_params_stg1_samples.zeta,
+      )
 
-        posterior_sample = tfm.sample_chain(
-            num_results=1,
-            num_burnin_steps=num_samples_subchain_stg2 - 1,
-            kernel=kernel,
-            current_state=loc_floating_init,
-            trace_fn=None,
-            seed=prng_key,
-        )
+      # Create InferenceData object
+      lalme_stg1_az = plot.lalme_az_from_samples(
+          lalme_dataset=lalme_dataset,
+          model_params_global=jax.tree_map(lambda x: x[None, ...],
+                                           model_params_global_samples),
+          model_params_locations=ModelParamsLocations(
+              loc_floating=None,
+              loc_floating_aux=model_params_stg1_samples.loc_floating_aux[None,
+                                                                          ...],
+              loc_random_anchor=None,
+          ),
+          model_params_gamma=None,
+      )
+      # Save InferenceData object from stage 1
+      lalme_stg1_az.to_netcdf(samples_path_stg1)
 
-        return posterior_sample
+      logging.info(
+          "\t\t posterior means mu (before transform):  %s",
+          str(jnp.array(lalme_stg1_az.posterior.mu).mean(axis=[0, 1])))
 
-      # # Get one sample of parameters in stage 2
-      # loc_floating_sample_ = sample_stg2(
-      #     global_params=global_params_sample[0],
-      #     loc_floating_init=loc_floating_aux_sample[0],
-      #     num_samples_subchain_stg2=5,
-      #     prng_key=next(prng_seq),
-      # )
+      times_data['end_mcmc_stg_1'] = time.perf_counter()
 
-      # Define function to parallelize sample_stage2
-      # TODO(chris): use pmap?
-      sample_stg2_vmap = jax.vmap(
-          lambda global_params, loc_floating_init, prng_key: sample_stg2(
-              global_params=global_params,
-              loc_floating_init=loc_floating_init,
-              num_samples_subchain_stg2=config.num_samples_subchain_stg2,
-              prng_key=prng_key,
-          ))
+    ### Sample Second Stage ###
+    logging.info("\t Stage 2...")
 
-      def _sample_stage2_loop(chunk_size):
-        """Sequential sampling of stage 2.
+    # Extract global parameters from stage 1 samples
+    model_params_global_samples = ModelParamsGlobal(
+        gamma_inducing=jnp.array(lalme_stg1_az.posterior.gamma_inducing),
+        mixing_weights_list=[
+            jnp.array(lalme_stg1_az.posterior[f'W_{i}'])
+            for i in range(len(config.num_forms_tuple))
+        ],
+        mixing_offset_list=[
+            jnp.array(lalme_stg1_az.posterior[f'a_{i}'])
+            for i in range(len(config.num_forms_tuple))
+        ],
+        mu=jnp.array(lalme_stg1_az.posterior.mu),
+        zeta=jnp.array(lalme_stg1_az.posterior.zeta),
+    )
+    model_params_global_samples = jax.tree_map(lambda x: x[0],
+                                                model_params_global_samples)
 
-        Improve performance of nested HMC by splitting the total number of samples
-        into several steps, initialising the chains of each step in values
-        obtained from the previous step.
-        """
+    # Define bijector for samples
+    bijector_stg2 = get_kernel_bijector_stg2(
+        num_profiles_floating=config.num_profiles_floating,
+        **config.model_hparams,
+    )
 
-        assert (config.num_samples % chunk_size) == 0
-
-        # Initialize loc_floating
-        loc_floating = [loc_floating_aux_sample[:chunk_size, :]]
-
-        for i in range(config.num_samples // chunk_size):
-          # i=0
-          loc_floating_i = sample_stg2_vmap(
-              global_params=global_params_sample[(i *
-                                                  chunk_size):((i + 1) *
-                                                               chunk_size), :],
-              loc_floating_init=loc_floating[-1],
-              prng_key=jax.random.split(next(prng_seq), chunk_size),
-          )
-          loc_floating.append(loc_floating_i.squeeze(1))
-
-        loc_floating = jnp.concatenate(loc_floating[1:], axis=0)
-
-        return loc_floating
-
-      # Sample loc_floating
-      times_data['start_mcmc_stg_2'] = time.perf_counter()
-      loc_floating_sample = _sample_stage2_loop(
-          chunk_size=config.num_samples_perchunk_stg2)
-      posterior_sample_dict_stg2 = split_flow_locations(
-          samples=loc_floating_sample,
+    # Define target logdensity function
+    prng_key_gamma = next(prng_seq)
+    @jax.jit
+    def logdensity_fn_stg2(model_params_concat, conditioner):
+      model_params_locations = split_flow_locations(
+          samples=model_params_concat[None, ...],
           num_profiles=config.num_profiles_floating,
           name='loc_floating',
-          is_aux=False,
       )
-      posterior_sample_dict.update(posterior_sample_dict_stg2)
+      model_params_locations = jax.tree_map(lambda x: x[0],
+                                            model_params_locations)
+      logprob_ = logprob_lalme(
+          batch=train_ds,
+          prng_key=prng_key_gamma,
+          model_params_global=conditioner,
+          model_params_locations=model_params_locations,
+          prior_hparams=config.prior_hparams,
+          kernel_name=config.kernel_name,
+          kernel_kwargs=config.kernel_kwargs,
+          num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+          smi_eta_profiles=smi_eta['profiles'],
+          gp_jitter=config.gp_jitter,
+      )
+      return logprob_
 
-    logging.info("posterior means loc_floating %s",
-                 str(posterior_sample_dict['loc_floating'].mean(axis=0)))
+    # Test the log probability function
+    _ = logdensity_fn_stg2(
+        model_params_concat=bijector_stg2.forward(
+            5 * jnp.zeros(2 * config.num_profiles_floating)),
+        conditioner=jax.tree_map(lambda x: x[0], model_params_global_samples))
+
+    def sample_stg2(
+        loc_floating_init: Array,
+        model_params_global: ModelParamsGlobal,
+        num_samples_subchain_stg2: int,
+        prng_key: PRNGKey,
+    ):
+
+      inner_kernel = tfm.NoUTurnSampler(
+          target_log_prob_fn=lambda x: logdensity_fn_stg2(
+              x, conditioner=model_params_global),
+          step_size=config.mcmc_step_size,
+      )
+
+      kernel = tfp.mcmc.TransformedTransitionKernel(
+          inner_kernel=inner_kernel, bijector=bijector_stg2)
+
+      loc_floating_concat_init = concat_locations(
+          model_params_locations=loc_floating_init,
+          name='loc_floating',
+      )
+      posterior_sample = tfm.sample_chain(
+          num_results=1,
+          num_burnin_steps=num_samples_subchain_stg2 - 1,
+          kernel=kernel,
+          current_state=loc_floating_concat_init,
+          trace_fn=None,
+          seed=prng_key,
+      ).squeeze(0)
+
+      return posterior_sample
+
+    model_params_locations_init = ModelParamsLocations(
+        loc_floating=jax.tree_map(
+            lambda x: x[:config.num_samples_perchunk_stg2, ...],
+            jnp.array(lalme_stg1_az.posterior.loc_floating_aux[0])))
+
+    # # Get one sample of parameters in stage 2
+    # loc_floating_sample_ = sample_stg2(
+    #     loc_floating_init=jax.tree_map(lambda x: x[0],
+    #                                    model_params_locations_init),
+    #     model_params_global=jax.tree_map(lambda x: x[0],
+    #                                      model_params_global_samples),
+    #     num_samples_subchain_stg2=5,
+    #     prng_key=next(prng_seq),
+    # )
+
+    # Define function to parallelize sample_stage2
+    sample_stg2_vmap = jax.vmap(
+        lambda loc_floating_concat, global_, key_: sample_stg2(
+            loc_floating_init=loc_floating_concat,
+            model_params_global=global_,
+            num_samples_subchain_stg2=config.num_samples_subchain_stg2,
+            prng_key=key_,
+        ))
+
+    # The number of samples is large and often it does not fit into GPU memory
+    # we split the sampling of stage 2 into chunks
+    assert config.num_samples % config.num_samples_perchunk_stg2 == 0
+    num_chunks_stg2 = config.num_samples // config.num_samples_perchunk_stg2
+
+    # Initialize loc_floating
+    initial_position_i = model_params_locations_init
+    chunks_positions = []
+    for i in range(num_chunks_stg2):
+      cond_i = jax.tree_map(
+          lambda x: x[(i * config.num_samples_perchunk_stg2):
+                      ((i + 1) * config.num_samples_perchunk_stg2), ...],
+          model_params_global_samples)
+
+      model_params_concat_i = sample_stg2_vmap(
+          initial_position_i,
+          cond_i,
+          jax.random.split(next(prng_seq), config.num_samples_perchunk_stg2),
+      )
+
+      model_params_i = split_flow_locations(
+          samples=model_params_concat_i,
+          num_profiles=config.num_profiles_floating,
+          name='loc_floating',
+      )
+      chunks_positions.append(model_params_i)
+      initial_position_i = model_params_i
+
+    model_params_stg2_samples = jax.tree_map(  # pylint: disable=no-value-for-parameter
+        lambda *x: jnp.concatenate(x, axis=0), *chunks_positions)
 
     times_data['end_mcmc_stg_2'] = time.perf_counter()
 
-    # Save MCMC samples from stage 2
-    np.savez_compressed(samples_path_stg2, posterior_sample_dict)
+    lalme_az = plot.lalme_az_from_samples(
+        lalme_dataset=lalme_dataset,
+        model_params_global=jax.tree_map(lambda x: x[None, ...],
+                                           model_params_global_samples),
+        model_params_locations=ModelParamsLocations(
+            loc_floating=model_params_stg2_samples.loc_floating[None, ...],
+            loc_floating_aux=jnp.array(lalme_stg1_az.posterior.loc_floating_aux),
+            loc_random_anchor=None,
+        ),
+        model_params_gamma=None,
+    )
 
-  times_data['end_sampling'] = time.perf_counter()
-
-  logging.info("Sampling times:")
-  logging.info("\t Total: %s",
-               str(times_data['end_sampling'] - times_data['start_sampling']))
-  if ('start_mcmc_stg_1' in times_data) and ('end_mcmc_stg_1' in times_data):
     logging.info(
-        "\t Stg 1: %s",
-        str(times_data['end_mcmc_stg_1'] - times_data['start_mcmc_stg_1']))
-  if ('start_mcmc_stg_2' in times_data) and ('end_mcmc_stg_2' in times_data):
-    logging.info(
-        "\t Stg 2: %s",
-        str(times_data['end_mcmc_stg_2'] - times_data['start_mcmc_stg_2']))
+        "\t\t posterior means loc_floating (before transform): %s",
+        str(jnp.array(lalme_az.posterior.loc_floating).mean(axis=[0, 1])))
 
-  # Save final MCMC samples
-  np.savez_compressed(samples_path, posterior_sample_dict)
+    # Save InferenceData object
+    lalme_az.to_netcdf(samples_path)
+
+    logging.info(
+        "\t\t posterior means loc_floating: %s",
+        str(jnp.array(lalme_az.posterior.loc_floating).mean(axis=[0, 1])))
+
+    times_data['end_sampling'] = time.perf_counter()
+
+    logging.info("Sampling times:")
+    logging.info("\t Total: %s",
+                 str(times_data['end_sampling'] - times_data['start_sampling']))
+    if ('start_mcmc_stg_1' in times_data) and ('end_mcmc_stg_1' in times_data):
+      logging.info(
+          "\t Stg 1: %s",
+          str(times_data['end_mcmc_stg_1'] - times_data['start_mcmc_stg_1']))
+    if ('start_mcmc_stg_2' in times_data) and ('end_mcmc_stg_2' in times_data):
+      logging.info(
+          "\t Stg 2: %s",
+          str(times_data['end_mcmc_stg_2'] - times_data['start_mcmc_stg_2']))
+
+  # Get a sample of the basis GPs on profiles locations
+  # conditional on values at the inducing locations.
+  model_params_global_samples_ = ModelParamsGlobal(
+      gamma_inducing=jnp.array(lalme_az.posterior.gamma_inducing),
+      mixing_weights_list=[
+          jnp.array(lalme_az.posterior[f'W_{i}'])
+          for i in range(len(config.num_forms_tuple))
+      ],
+      mixing_offset_list=[
+          jnp.array(lalme_az.posterior[f'a_{i}'])
+          for i in range(len(config.num_forms_tuple))
+      ],
+      mu=jnp.array(lalme_az.posterior.mu),
+      zeta=jnp.array(lalme_az.posterior.zeta),
+  )
+  model_params_locations_samples_ = ModelParamsLocations(
+      loc_floating=jnp.array(lalme_az.posterior.loc_floating),
+      loc_floating_aux=jnp.array(lalme_az.posterior.loc_floating_aux),
+      loc_random_anchor=None,
+  )
+  model_params_gamma_samples_, _ = jax.vmap(
+      jax.vmap(lambda key_, global_, locations_: log_prob_fun_2.
+               sample_gamma_profiles_given_gamma_inducing(
+                   batch=train_ds,
+                   model_params_global=global_,
+                   model_params_locations=locations_,
+                   prng_key=key_,
+                   kernel_name=config.kernel_name,
+                   kernel_kwargs=config.kernel_kwargs,
+                   gp_jitter=config.gp_jitter,
+                   include_random_anchor=False,
+               )))(
+                   jax.random.split(
+                       next(prng_seq),
+                       1 * config.num_samples).reshape(
+                           (1, config.num_samples, 2)),
+                   model_params_global_samples_,
+                   model_params_locations_samples_,
+               )
+  lalme_az_with_gamma = plot.lalme_az_from_samples(
+      lalme_dataset=lalme_dataset,
+      model_params_global=model_params_global_samples_,
+      model_params_locations=model_params_locations_samples_,
+      model_params_gamma=model_params_gamma_samples_,
+  )
+
+  ### Posterior visualisation with Arviz
 
   logging.info("Plotting results...")
 
-  ### Plot SMI samples ###
-  plot.posterior_samples(
-      posterior_sample_dict=posterior_sample_dict,
-      batch=train_ds,
-      prng_key=next(prng_seq),
-      kernel_name=config.kernel_name,
-      kernel_kwargs=config.kernel_kwargs,
-      gp_jitter=config.gp_jitter,
+  plot.lalme_plots_arviz(
+      lalme_az=lalme_az_with_gamma,
+      lalme_dataset=lalme_dataset,
       step=0,
-      profiles_id=dataset['LP'],
-      items_id=dataset['items'],
-      forms_id=dataset['forms'],
+      show_mu=True,
+      show_zeta=True,
       show_basis_fields=True,
-      show_linguistic_fields=True,
-      num_loc_random_anchor_plot=None,
-      num_loc_floating_plot=dataset['num_profiles_floating'],
-      show_mixing_weights=False,
-      show_loc_given_y=False,
-      suffix=f"eta_floating_{float(config.eta_profiles_floating):.3f}",
-      summary_writer=summary_writer,
+      show_W_items=lalme_dataset['items'],
+      show_a_items=lalme_dataset['items'],
+      lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
+      lp_floating_traces=config.lp_floating_grid10,
+      lp_floating_grid10=config.lp_floating_grid10,
+      loc_inducing=train_ds['loc_inducing'],
       workdir_png=workdir,
-      use_gamma_anchor=False,
+      summary_writer=summary_writer,
+      suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
+      scatter_kwargs={"alpha": 0.05},
   )
-
-  lalme_az = lalme_az_from_dict(
-      samples_dict=jax.tree_map(lambda x: x[None, ...], posterior_sample_dict),
-      lalme_dataset=dataset,
-  )
+  logging.info("...done!")
 
   # Load samples to compare MCMC vs Variational posteriors
   if (config.path_variational_samples != '') and (os.path.exists(
       config.path_variational_samples)):
-    logging.info("Loading variational samples for comparison...")
-    posterior_sample_dict_variational = np.load(
-        str(config.path_variational_samples),
-        allow_pickle=True)['arr_0'].item()
+    logging.info("Plotting comparison MCMC and Variational...")
+    lalme_az_variational = az.from_netcdf(config.path_variational_samples)
 
     plot.posterior_samples_compare(
-        batch=train_ds,
-        posterior_sample_dict_1=posterior_sample_dict_variational,
-        posterior_sample_dict_2=posterior_sample_dict,
+        lalme_az_1=lalme_az,
+        lalme_az_2=lalme_az_variational,
+        lalme_dataset=lalme_dataset,
         step=0,
-        profiles_id=dataset['LP'],
-        num_loc_floating_plot=dataset['num_profiles_floating'],
-        suffix=f"eta_floating_{float(config.eta_profiles_floating):.3f}",
+        lp_floating_grid10=config.lp_floating_grid10,
         summary_writer=summary_writer,
         workdir_png=workdir,
+        suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
+        scatter_kwargs={"alpha": 0.03},
     )
-
-  # j = 1
-  # fig, axs = plt.subplots(2, 1)
-  # axs[0].hist(posterior_sample_dict['beta'][:, j], 30)
-  # axs[1].plot(posterior_sample_dict['beta'][:, j])
-
-  return posterior_sample_dict
+    logging.info("...done!")
 
 
 # # For debugging
 # config = get_config()
-# eta = 1.000
+# eta = 0.001
 # import pathlib
 # workdir = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/mcmc/eta_floating_{eta:.3f}')
 # config.path_variational_samples = str(pathlib.Path.home() / f'spatial-smi-output-exp/8_items/nsf/eta_floating_{eta:.3f}/posterior_sample_dict.npz')
+# config.eta_profiles_floating = eta
 # # config.num_samples = 100
 # # config.num_burnin_steps_stg1 = 5
 # # config.num_samples_subchain_stg2 = 5
 # # config.num_samples_perchunk_stg2 = 10
 # # config.mcmc_step_size = 0.001
-# # config.num_items_keep = 20
-# # config.num_profiles_floating_keep = 20
-# # config.eta_profiles_floating = eta
 # # sample_and_evaluate(config, workdir)

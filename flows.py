@@ -792,63 +792,56 @@ def split_flow_locations(
   return model_params_locations_sample
 
 
-def concat_samples_global_params(samples_dict: Dict[str, Any]) -> Array:
+def concat_global_params(model_params_global: ModelParamsGlobal) -> Array:
   """Undo split_flow_global_params"""
 
   # Get sizes
-  num_samples, num_basis_gps, num_inducing_points = samples_dict[
-      'gamma_inducing'].shape
+  num_basis_gps, num_inducing_points = model_params_global.gamma_inducing.shape
 
   # pylint: disable=consider-using-generator
   num_forms_tuple = tuple(
-      [x.shape[-1] for x in samples_dict['mixing_weights_list']])
+      [x.shape[-1] for x in model_params_global.mixing_weights_list])
 
-  samples = []
+  params_concat = []
 
   # GPs on inducing points
-  samples.append(samples_dict['gamma_inducing'].reshape(num_samples, -1))
-  assert samples[-1].shape == (num_samples, num_basis_gps * num_inducing_points)
+  params_concat.append(model_params_global.gamma_inducing.reshape(-1))
+  assert params_concat[-1].shape == (num_basis_gps * num_inducing_points,)
 
   # mixing weights
-  samples.append(
-      jnp.concatenate([
-          x.reshape(num_samples, -1)
-          for x in samples_dict['mixing_weights_list']
-      ],
-                      axis=-1))
-  assert samples[-1].shape == (num_samples,
-                               num_basis_gps * sum(num_forms_tuple))
+  params_concat.append(
+      jnp.concatenate(
+          [x.reshape(-1) for x in model_params_global.mixing_weights_list],
+          axis=-1))
+  assert params_concat[-1].shape == (num_basis_gps * sum(num_forms_tuple),)
 
   # mixing offset
-  samples.append(
-      jnp.concatenate([
-          x.reshape(num_samples, -1) for x in samples_dict['mixing_offset_list']
-      ],
-                      axis=-1))
-  assert samples[-1].shape == (num_samples, sum(num_forms_tuple))
+  params_concat.append(
+      jnp.concatenate(
+          [x.reshape(-1) for x in model_params_global.mixing_offset_list],
+          axis=-1))
+  assert params_concat[-1].shape == (sum(num_forms_tuple),)
 
   # mu
-  samples.append(samples_dict['mu'])
+  params_concat.append(model_params_global.mu)
 
   # zeta
-  samples.append(samples_dict['zeta'])
+  params_concat.append(model_params_global.zeta)
 
   # Concatenate all samples
-  samples = jnp.concatenate(samples, axis=-1)
+  params_concat = jnp.concatenate(params_concat, axis=-1)
 
-  return samples
+  return params_concat
 
 
-def concat_samples_locations(
-    samples_dict: Dict[str, Any],
-    is_aux: bool,
+def concat_locations(
+    model_params_locations: ModelParamsLocations,
     name='loc_floating',
 ) -> Array:
   """Undo split_flow_locations"""
 
-  key = name + ('_aux' if is_aux else '')
   # Get sizes
-  num_samples, num_profiles, _ = samples_dict[key].shape
+  num_profiles, _ = model_params_locations._asdict()[name].shape
 
   # Unfolding the location samples depend on the choice made in split_flow_locations
   # Two options to reshape the flow into paired locations
@@ -857,8 +850,8 @@ def concat_samples_locations(
   # # 1) Assume that coordinates in the flow come (x1,...,xn,y1,...,yn)
   # samples = samples_dict[key].swapaxes(1, 2).reshape(num_samples, -1)
   # 2) Assume that coordinates in the flow come (x1,y1,...,xn,yn)
-  samples = samples_dict[key].reshape(num_samples, -1)
+  params_concat = model_params_locations._asdict()[name].reshape(-1)
 
-  assert samples.shape == (num_samples, 2 * num_profiles)
+  assert params_concat.shape == (2 * num_profiles,)
 
-  return samples
+  return params_concat

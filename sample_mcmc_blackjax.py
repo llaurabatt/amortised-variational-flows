@@ -436,7 +436,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     else:
       logging.info("\t Stage 1...")
 
-      # Define target logprob function
+      # Define target logdensity function
       @jax.jit
       def logdensity_fn_stg1(model_params, prng_key_gamma):
         model_params_global_unb = ModelParamsGlobal(
@@ -452,7 +452,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
             loc_random_anchor=None,
         )
 
-        log_prob = logprob_lalme(
+        logprob_ = logprob_lalme(
             batch=train_ds,
             prng_key=prng_key_gamma,
             model_params_global_unb=model_params_global_unb,
@@ -464,7 +464,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
             smi_eta_profiles=smi_eta['profiles'],
             gp_jitter=config.gp_jitter,
         )
-        return log_prob
+        return logprob_
 
       # initial positions of model parameters
       # (vmap to produce one for each MCMC chains)
@@ -553,10 +553,10 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         zeta=jnp.array(lalme_stg1_unb_az.posterior.zeta),
     )
 
-    # Define target logprob function
+    # Define target logdensity function
     @jax.jit
     def logdensity_fn_stg2(model_params, conditioner, prng_key_gamma):
-      log_prob = logprob_lalme(
+      logprob_ = logprob_lalme(
           batch=train_ds,
           prng_key=prng_key_gamma,
           model_params_global_unb=conditioner,
@@ -568,7 +568,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
           smi_eta_profiles=None,
           gp_jitter=config.gp_jitter,
       )
-      return log_prob
+      return logprob_
 
     # Tune HMC parameters automatically
     logging.info('\t tuning HMC parameters stg2...')
@@ -659,6 +659,8 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       # Subsequent chunks initialise in last position of the previous chunk
       initial_position_i = states_stg2_i.position
 
+    times_data['end_mcmc_stg_2'] = time.perf_counter()
+
     # Concatenate samples from each chunk, across samples dimension
     model_params_stg2_unb_samples = jax.tree_map(  # pylint: disable=no-value-for-parameter
         lambda *x: jnp.concatenate(x, axis=0), *chunks_positions)
@@ -691,8 +693,6 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     logging.info(
         "\t\t posterior means loc_floating (before transform): %s",
         str(jnp.array(lalme_az.posterior.loc_floating).mean(axis=[0, 1])))
-
-    times_data['end_mcmc_stg_2'] = time.perf_counter()
 
     times_data['end_sampling'] = time.perf_counter()
 
