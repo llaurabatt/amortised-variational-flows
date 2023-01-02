@@ -13,9 +13,11 @@ def get_config():
   config.dataset_id = 'coarsen_all_items'
 
   # Data specification
-  config.num_profiles_anchor_keep = None
-  config.num_profiles_floating_keep = None
-  config.num_items_keep = None
+  config.num_lp_anchor_train = 120
+  config.num_lp_floating_train = 247
+  config.num_items_keep = 71
+  config.num_lp_anchor_val = 0
+  config.num_lp_anchor_test = 0
   config.remove_empty_forms = True
 
   # Defined in `flows.py`.
@@ -105,7 +107,7 @@ def get_config():
   # Use random location for anchor profiles for evaluation
   config.include_random_anchor = True
   # Metrics for Hyperparameter Optimization
-  config.synetune_metric = 'distance_random_anchor'
+  config.synetune_metric = "mean_dist_anchor_val"
 
   # Random seed
   config.seed = 0

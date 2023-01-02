@@ -42,33 +42,99 @@ jax.config.update('jax_default_matmul_precision', 'float32')
 np.set_printoptions(suppress=True, precision=4)
 
 
-def load_data(config: ConfigDict) -> Dict[str, Array]:
+def load_data(prng_key: PRNGKey, config: ConfigDict) -> Dict[str, Array]:
   """Load LALME data."""
 
-  data_dict = data.load_lalme(dataset_id=config.dataset_id)
+  prng_seq = hk.PRNGSequence(prng_key)
+
+  lalme_dataset = data.load_lalme(dataset_id=config.dataset_id)
 
   # Get locations bounds
   # loc_bounds = jnp.array([[0., 1.], [0., 1.]])
-  loc_bounds = np.stack(
-      [data_dict['loc'].min(axis=0), data_dict['loc'].max(axis=0)],
-      axis=1).astype(np.float32)
+  loc_bounds = jnp.stack(
+      [lalme_dataset['loc'].min(axis=0), lalme_dataset['loc'].max(axis=0)],
+      axis=1).astype(float)
   # Shift x's and y's to start on zero
   loc_bounds = loc_bounds - loc_bounds[:, [0]]
   # scale to the unit square, preserving relative size of axis
   loc_scale = 1 / loc_bounds.max()
   loc_bounds = loc_bounds * loc_scale
 
+  # Select Linguistic Profiles to use
+  assert config.num_lp_anchor_train > 0
+  assert (config.num_lp_anchor_train + config.num_lp_anchor_val +
+          config.num_lp_anchor_test <= lalme_dataset['num_profiles_anchor'])
+  assert config.num_lp_floating_train > 0
+
+  ### Choose profiles to use ###
+  ## Anchor profiles
+  # Start with all the anchor profiles
+  lp_anchor_ = lalme_dataset['LP'][:lalme_dataset['num_profiles_anchor']]
+  # Choose training anchor profiles
+  lp_anchor_train = jax.random.choice(
+      next(prng_seq),
+      a=lp_anchor_,
+      shape=(config.num_lp_anchor_train,),
+      replace=False)
+  lp_anchor_ = jnp.setdiff1d(lp_anchor_, lp_anchor_train)
+  lp_anchor_train = jnp.sort(lp_anchor_train).tolist()
+  if config.num_lp_anchor_val > 0:
+    # Choose validation anchor profiles
+    lp_anchor_val = jax.random.choice(
+        next(prng_seq),
+        a=lp_anchor_,
+        shape=(config.num_lp_anchor_val,),
+        replace=False)
+    lp_anchor_ = jnp.setdiff1d(lp_anchor_, lp_anchor_val)
+    lp_anchor_val = jnp.sort(lp_anchor_val).tolist()
+  else:
+    lp_anchor_val = None
+  if config.num_lp_anchor_test > 0:
+    # Choose test anchor profiles
+    lp_anchor_test = jax.random.choice(
+        next(prng_seq),
+        a=lp_anchor_,
+        shape=(config.num_lp_anchor_test,),
+        replace=False)
+    lp_anchor_test = jnp.sort(lp_anchor_test).tolist()
+  else:
+    lp_anchor_test = None
+
+  ## Floating profiles
+  lp_floating_ = lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:]
+  # Choose training floating profiles
+  lp_floating_train = jax.random.choice(
+      next(prng_seq),
+      a=lp_floating_,
+      shape=(config.num_lp_floating_train,),
+      replace=False)
+  lp_floating_train = jnp.sort(lp_floating_train).tolist()
+  # lp_floating_train = [
+  #     2, 3, 4, 5, 16, 17, 23, 26, 29, 30, 32, 36, 38, 43, 45, 46, 49, 51, 52, 54
+  # ]
+
+  ### Choose items to use ###
+  # Start with all the items
+  items_keep = lalme_dataset['items'][jax.random.choice(
+      next(prng_seq),
+      len(lalme_dataset['items']),
+      shape=(config.num_items_keep,),
+      replace=False)]
+  items_keep = np.sort(items_keep).tolist()
+
   # Process data
-  data_dict = data.process_lalme(
-      data_raw=data_dict,
-      num_profiles_anchor_keep=config.num_profiles_anchor_keep,
-      num_profiles_floating_keep=config.num_profiles_floating_keep,
-      num_items_keep=config.num_items_keep,
+  lalme_dataset_out = data.process_lalme(
+      lalme_dataset=lalme_dataset,
+      lp_anchor_train=lp_anchor_train,
+      lp_floating_train=lp_floating_train,
+      items_keep=items_keep,
       loc_bounds=loc_bounds,
+      lp_anchor_val=lp_anchor_val,
+      lp_anchor_test=lp_anchor_test,
       remove_empty_forms=config.remove_empty_forms,
   )
 
-  return data_dict
+  return lalme_dataset_out
 
 
 def make_optimizer(
@@ -710,22 +776,68 @@ def error_locations_estimate(
 
   error_loc_out = {}
 
-  # Anchor profiles
-  if locations_sample.loc_random_anchor is not None:
-    predictions = locations_sample.loc_random_anchor
-    targets = jnp.broadcast_to(
-        batch['loc'][:batch['num_profiles_anchor'], :],
-        shape=locations_sample.loc_random_anchor.shape)
-    distances = jnp.linalg.norm(predictions - targets, ord=2, axis=-1)
-    error_loc_out['distance_random_anchor'] = distances.mean()
+  # Locations of LPs
+  # (anchor, anchor_val, anchor_test, floating)
+  targets_all = np.split(
+      batch['loc'],
+      np.cumsum(batch['num_profiles_split']),
+      axis=0,
+  )[:-1]  # Last element is empty
+  assert len(targets_all) == 4
+
+  # Predicted locations of floating profiles
+  # (anchor_val, anchor_test, floating)
+  pred_floating = np.split(
+      locations_sample.loc_floating,
+      np.cumsum(batch['num_profiles_split'][1:]),
+      axis=1,
+  )[:-1]  # Last element is empty
+  assert len(pred_floating) == 3
+
+  if batch['num_profiles_split'][1] > 0:
+    ## Anchor validation profiles
+    # Average of Mean posterior distance to true locations
+    distances = jnp.linalg.norm(
+        pred_floating[0] - targets_all[1][None, ...], ord=2, axis=-1)
+    error_loc_out['mean_dist_anchor_val'] = distances.mean()
+    # Average of distance between true locations and posterior mean
+    distances = jnp.linalg.norm(
+        pred_floating[0].mean(axis=0) - targets_all[1], ord=2, axis=-1)
+    error_loc_out['dist_mean_anchor_val'] = distances.mean()
+
+  if batch['num_profiles_split'][2] > 0:
+    # Anchor test profiles
+    # Average of Mean posterior distance to true locations
+    distances = jnp.linalg.norm(
+        pred_floating[1] - targets_all[2][None, ...], ord=2, axis=-1)
+    error_loc_out['mean_dist_anchor_test'] = distances.mean()
+    # Average of distance between true locations and posterior mean
+    distances = jnp.linalg.norm(
+        pred_floating[1].mean(axis=0) - targets_all[2], ord=2, axis=-1)
+    error_loc_out['dist_mean_anchor_test'] = distances.mean()
 
   # Floating profiles
-  predictions = locations_sample.loc_floating
-  targets = jnp.broadcast_to(
-      batch['loc'][batch['num_profiles_anchor']:, :],
-      shape=locations_sample.loc_floating.shape)
-  distances = jnp.linalg.norm(predictions - targets, ord=2, axis=-1)
-  error_loc_out['distance_floating'] = distances.mean()
+  # Average of Mean posterior distance to Fit-technique locations
+  distances = jnp.linalg.norm(
+      pred_floating[2] - targets_all[3][None, ...], ord=2, axis=-1)
+  error_loc_out['mean_dist_floating'] = distances.mean()
+  # Average of distance between Fit-technique locations and posterior mean
+  distances = jnp.linalg.norm(
+      pred_floating[2].mean(axis=0) - targets_all[3], ord=2, axis=-1)
+  error_loc_out['dist_mean_floating'] = distances.mean()
+
+  # Random Anchor profiles
+  if locations_sample.loc_random_anchor is not None:
+    distances = jnp.linalg.norm(
+        locations_sample.loc_random_anchor - targets_all[0][None, ...],
+        ord=2,
+        axis=-1)
+    error_loc_out['mean_dist_random_anchor'] = distances.mean()
+    distances = jnp.linalg.norm(
+        locations_sample.loc_random_anchor.mean(axis=0) - targets_all[0],
+        ord=2,
+        axis=-1)
+    error_loc_out['dist_mean_random_anchor'] = distances.mean()
 
   return error_loc_out
 
@@ -747,9 +859,12 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   # Initialize random keys
   prng_seq = hk.PRNGSequence(config.seed)
 
-  # Full dataset used everytime
-  # No batching for now
-  lalme_dataset = load_data(config=config)
+  # Load and process LALME dataset
+  lalme_dataset = load_data(
+      prng_key=jax.random.PRNGKey(0),  # use fixed seed for data loading
+      config=config,
+  )
+
   # Add some parameters to config
   config.num_profiles = lalme_dataset['num_profiles']
   config.num_profiles_anchor = lalme_dataset['num_profiles_anchor']

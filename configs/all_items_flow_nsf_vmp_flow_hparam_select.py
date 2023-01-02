@@ -7,22 +7,24 @@ def get_config():
   """Get the hyperparameter configuration."""
   config = ml_collections.ConfigDict()
 
-  config.method = 'flow'
+  config.method = 'vmp_flow'
 
   # Dataset to use
-  config.dataset_id = 'coarsen_8_items'
+  config.dataset_id = 'coarsen_all_items'
 
   # Defined in `flows.py`.
-  config.flow_name = 'nsf'
+  config.flow_name = 'meta_nsf'
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
-  config.flow_kwargs.num_basis_gps = 8
+  config.flow_kwargs.num_basis_gps = 10
   config.flow_kwargs.inducing_grid_shape = (11, 11)
   # Number of layers to use in the flow.
-  config.flow_kwargs.num_layers = 8
+  config.flow_kwargs.num_layers = 6
   # Hidden sizes of the MLP conditioner.
-  config.flow_kwargs.hidden_sizes = [30] * 5
+  config.flow_kwargs.hidden_sizes_conditioner = [30] * 5
+  # Hidden sizes of the MLP conditioner.
+  config.flow_kwargs.hidden_sizes_conditioner_eta = [30] * 5
   # Number of bins to use in the rational-quadratic spline.
   config.flow_kwargs.num_bins = 10
   # the bounds of the quadratic spline transformer
@@ -31,9 +33,6 @@ def get_config():
   # (NOTE: these will be modified in the training script)
   config.flow_kwargs.loc_x_range = (0., 1.)
   config.flow_kwargs.loc_y_range = (0., 0.8939394)
-
-  # SMI degree of influence of floating profiles
-  config.eta_profiles_floating = 1.0
 
   # Define priors
   config.prior_hparams = ml_collections.ConfigDict()
@@ -45,12 +44,12 @@ def get_config():
   config.prior_hparams.a_prior_scale = 10.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
-  config.kernel_kwargs.amplitude = 0.65
-  config.kernel_kwargs.length_scale = 0.2
+  config.kernel_kwargs.amplitude = 0.4
+  config.kernel_kwargs.length_scale = 0.1
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 200_000
+  config.training_steps = 100_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -59,56 +58,62 @@ def get_config():
   config.optim_kwargs.lr_schedule_kwargs = ml_collections.ConfigDict()
   config.optim_kwargs.lr_schedule_kwargs = {
       'init_value': 0.,
-      'peak_value': 5e-3,
+      'peak_value': 3e-4,
       'warmup_steps': 3_000,
-      'transition_steps': 40_000,
+      'transition_steps': 10_000,
       'decay_rate': 0.5,
       'transition_begin': 0,
       'staircase': False,
       'end_value': None,
   }
 
-  config.num_lp_anchor_train = 120
-  config.num_lp_floating_train = 20
-  config.num_items_keep = 8
-  config.num_lp_anchor_val = 0
-  config.num_lp_anchor_test = 0
+  config.num_lp_anchor_train = 100
+  config.num_lp_floating_train = 247
+  config.num_items_keep = 71
+  config.num_lp_anchor_val = 10
+  config.num_lp_anchor_test = 10
   config.remove_empty_forms = True
 
   # Number of posteriors samples to approximate the variational loss (ELBO).
-  config.num_samples_elbo = 20
-  config.num_samples_gamma_profiles = 10
+  config.num_samples_elbo = 3
+  config.num_samples_gamma_profiles = 3
 
   # How often to evaluate the model.
-  config.eval_steps = config.training_steps // 20
+  config.eval_steps = config.training_steps // 5
+  config.num_samples_eval = 500
 
-  config.num_samples_eval = 100
+  config.max_steps_nan = 1_000
 
-  # How often to generate posterior plots.
+  # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5
   config.log_img_at_end = True
-  config.show_basis_fields_during_training = False
-  config.show_linguistic_fields_during_training = False
 
   # Number of samples used in the plots.
   config.num_samples_plot = 10_000
-  config.num_samples_chunk_plot = 1_000
+  config.num_samples_chunk_plot = 500
 
   # Floating profiles to plot in grid
   config.lp_floating_grid10 = [5, 29, 30, 16, 45, 52, 46, 38, 51, 49]
-  config.lp_random_anchor_10 = [85, 133, 363, 544, 1135, 91, 90, 1287, 612, 731]
+  config.lp_random_anchor_10 = None
+
+  # eta shown in figures
+  config.eta_plot = [0.001, 0.25, 0.5, 0.75, 1.0]
 
   # How often to save model checkpoints.
   config.checkpoint_steps = config.training_steps // 2
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
 
+  # Number of samples of eta for Meta-Posterior training
+  config.eta_sampling_a = 0.5
+  config.eta_sampling_b = 0.5
+
   # Use random location for anchor profiles for evaluation
-  config.include_random_anchor = True
+  config.include_random_anchor = False
   # Metric for Hyperparameter Optimization
   config.synetune_metric = "mean_dist_anchor_val"
 
   # Random seed
-  config.seed = 0
+  config.seed = 321
 
   return config

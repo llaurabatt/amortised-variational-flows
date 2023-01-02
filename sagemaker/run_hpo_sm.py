@@ -58,7 +58,7 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
   instance_type = "ml.p3.2xlarge"
 
   if smi_method == 'flow':
-    metric = 'distance_random_anchor'
+    metric = 'mean_dist_anchor_val'
     config_space_dict = {
         'config':
             config_fn,
@@ -90,7 +90,7 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
             -1,
     }
   elif smi_method == 'vmp_flow':
-    metric = 'distance_random_anchor_min'
+    metric = 'mean_dist_anchor_val_min'
     config_space_dict = {
         'config':
             config_fn,

@@ -13,9 +13,11 @@ def get_config():
   config.dataset_id = 'coarsen_8_items'
 
   # Data specification
-  config.num_profiles_anchor_keep = None
-  config.num_profiles_floating_keep = 20
-  config.num_items_keep = None
+  config.num_lp_anchor_train = 120
+  config.num_lp_floating_train = 20
+  config.num_items_keep = 8
+  config.num_lp_anchor_val = 0
+  config.num_lp_anchor_test = 0
   config.remove_empty_forms = True
 
   # Model hyperparameters.

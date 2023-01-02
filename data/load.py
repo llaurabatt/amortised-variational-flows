@@ -1,3 +1,7 @@
+"""LALME data loading and processing."""
+from collections import namedtuple
+
+from absl import logging
 import pkg_resources
 
 import numpy as np
@@ -8,7 +12,7 @@ from sklearn.preprocessing import MinMaxScaler
 from jax import numpy as jnp
 from tensorflow_probability.substrates import jax as tfp
 
-from modularbayes._src.typing import Any, Dict, Optional
+from modularbayes._src.typing import Any, Dict, List, Optional
 
 kernels = tfp.math.psd_kernels
 tfd = tfp.distributions
@@ -16,6 +20,13 @@ tfd = tfp.distributions
 Array = jnp.ndarray
 PRNGKey = jnp.ndarray
 Kernel = kernels.PositiveSemidefiniteKernel
+
+LpSplit = namedtuple("lp_split", [
+    'lp_anchor_train',
+    'lp_anchor_val',
+    'lp_anchor_test',
+    'lp_floating_train',
+])
 
 
 def load_lalme(dataset_id: str = 'coarsen_8_items') -> Dict[str, Any]:
@@ -107,11 +118,13 @@ def load_lalme(dataset_id: str = 'coarsen_8_items') -> Dict[str, Any]:
 
 
 def process_lalme(
-    data_raw: Dict,
-    num_profiles_anchor_keep: Optional[int] = None,
-    num_profiles_floating_keep: Optional[int] = None,
-    num_items_keep: Optional[int] = None,
-    loc_bounds: Optional[np.ndarray] = 5. * np.array([[-1., 1.], [-1., 1.]]),
+    lalme_dataset: Dict,
+    lp_anchor_train: List[int],
+    lp_floating_train: List[int],
+    items_keep: List[str],
+    loc_bounds: Optional[np.ndarray] = np.array([[-1., 1.], [-1., 1.]]),
+    lp_anchor_val: Optional[List[int]] = None,
+    lp_anchor_test: Optional[List[int]] = None,
     remove_empty_forms: bool = True,
 ) -> Dict[str, Any]:
   """Data processing for the LALME dataset.
@@ -119,11 +132,19 @@ def process_lalme(
     Args:
         data : Dictionary with LALME data, as produced by load_lalme.
         loc_bounds : Array indicating the bounded area to map profile locations
-            from their original Easting/Northing coordinates.
-        num_profiles_anchor_keep : Number of anchor profiles to keep. If None,
-            keep all profiles.
-        num_profiles_floating_keep : Number of floating profiles to keep. If
-            None, keep all profiles.
+          from their original Easting/Northing coordinates.
+        num_lp_anchor_train : Number of anchor profiles considered for
+          training. The exact locations of these profiles are known and no
+          imputation is done for them.
+        num_lp_anchor_val : Number of anchor profiles considered
+          for validation. The exact locations of these profiles are known, but
+          we reconstruct them using the model. Hyperparameters (eg. kernel)
+          are tuned on these profiles.
+        num_lp_anchor_test : Number of anchor profiles considered
+          for validation. The exact locations of these profiles are known, but
+          we reconstruct them using the model. These are not used for tunning
+          but rather to estimate the error of the model.
+        num_lp_floating_train : Number of floating profiles to keep.
         remove_empty_forms : If True, eliminates forms that have not a single
             profile using it.
 
@@ -136,91 +157,87 @@ def process_lalme(
         [http://www.lel.ed.ac.uk/ihd/elalme/elalme.html]
     """
 
-  data = data_raw.copy()
+  # Copy data to avoid modifying the original
+  lalme_dataset = lalme_dataset.copy()
+
+  # Set default values
+  if lp_anchor_val is None:
+    lp_anchor_val = []
+  if lp_anchor_test is None:
+    lp_anchor_test = []
 
   # Map locations to the square defined by loc_bounds
   if loc_bounds is not None:
     scaler = MinMaxScaler()
-    data['loc'] = scaler.fit_transform(data['loc'])
-    data['loc'] *= loc_bounds[:, 1] - loc_bounds[:, 0]
-    data['loc'] += loc_bounds[:, 0]
+    lalme_dataset['loc'] = scaler.fit_transform(lalme_dataset['loc'])
+    lalme_dataset['loc'] *= loc_bounds[:, 1] - loc_bounds[:, 0]
+    lalme_dataset['loc'] += loc_bounds[:, 0]
 
   ### Subsetting data ###
 
   ## Profiles subsetting ##
-  num_profiles_anchor = data['num_profiles_anchor']
-  num_profiles_floating = data['num_profiles_floating']
-  num_profiles_anchor_keep = int(
-      num_profiles_anchor_keep
-  ) if num_profiles_anchor_keep is not None else num_profiles_anchor
-  num_profiles_floating_keep = int(
-      num_profiles_floating_keep
-  ) if num_profiles_floating_keep is not None else num_profiles_floating
-  assert 0 < num_profiles_anchor_keep <= num_profiles_anchor
-  assert 0 < num_profiles_floating_keep <= num_profiles_floating
-  if (num_profiles_anchor_keep < num_profiles_anchor) or (
-      num_profiles_floating_keep < num_profiles_floating):
-    # profiles to be kept
-    index_profiles_anchor_keep = np.arange(num_profiles_anchor_keep)
+  lp_keep = np.array(lp_anchor_train + lp_anchor_val + lp_anchor_test +
+                     lp_floating_train)
+  lalme_dataset['num_profiles'] = len(lp_keep)
+  lalme_dataset['num_profiles_anchor'] = len(lp_anchor_train)
+  lalme_dataset['num_profiles_floating'] = len(lp_anchor_val + lp_anchor_test +
+                                               lp_floating_train)
+  lalme_dataset['num_profiles_split'] = LpSplit(
+      len(lp_anchor_train), len(lp_anchor_val), len(lp_anchor_test),
+      len(lp_floating_train))
 
-    index_profiles_floating_keep = np.arange(
-        1 + num_profiles_anchor, num_profiles_anchor +
-        num_profiles_floating)[:num_profiles_floating_keep]
+  assert len(lp_keep) == len(np.unique(lp_keep))
+  assert np.in1d(lp_keep, lalme_dataset['LP']).all()
+  # return indices of lalme_dataset['LP'] corresponding to lp_keep
+  lp_keep_idx = np.array(
+      [np.where(lalme_dataset['LP'] == lp_)[0][0] for lp_ in lp_keep])
+  assert (lalme_dataset['LP'][lp_keep_idx] == lp_keep).all()
 
-    # Select these profiles only
-    index_profiles_keep = np.concatenate(
-        [index_profiles_anchor_keep, index_profiles_floating_keep])
+  # Subset elements in data dictionary
+  lalme_dataset['LP'] = lalme_dataset['LP'][lp_keep_idx]
+  lalme_dataset['loc'] = lalme_dataset['loc'][lp_keep_idx, :]
+  lalme_dataset['y'] = [y_item[:, lp_keep_idx] for y_item in lalme_dataset['y']]
 
-    # Subset elements in data dictionary
-    data['LP'] = data['LP'][index_profiles_keep]
-    data['loc'] = data['loc'][index_profiles_keep, :]
-    data['y'] = [y_item[:, index_profiles_keep] for y_item in data['y']]
-    data['num_profiles'] = num_profiles_anchor_keep + num_profiles_floating_keep
-    data['num_profiles_anchor'] = num_profiles_anchor_keep
-    data['num_profiles_floating'] = num_profiles_floating_keep
-
-    assert all(
-        [y_item.shape[1] == data['num_profiles'] for y_item in data['y']])
-    assert data['LP'].shape[0] == data['num_profiles']
-    assert data['loc'].shape[0] == data['num_profiles']
+  assert all([
+      y_item.shape[1] == lalme_dataset['num_profiles']
+      for y_item in lalme_dataset['y']
+  ])
+  assert lalme_dataset['LP'].shape[0] == lalme_dataset['num_profiles']
+  assert lalme_dataset['loc'].shape[0] == lalme_dataset['num_profiles']
 
   ## Forms subsetting ##
   if remove_empty_forms:
-    for i in range(data['num_items']):
+    for i in range(lalme_dataset['num_items']):
       # identifies forms that actually appear in profiles
-      form_used = np.where(data['y'][i].sum(axis=1) > 0)[0]
+      form_used = np.where(lalme_dataset['y'][i].sum(axis=1) > 0)[0]
       # Only keep those form with at least one observation
-      data['num_forms_tuple'] = data['num_forms_tuple'][:i] + (
-          len(form_used),) + data['num_forms_tuple'][(i + 1):]
-      data['forms'][i] = data['forms'][i][form_used]
-      data['y'][i] = data['y'][i][form_used, :]
+      lalme_dataset[
+          'num_forms_tuple'] = lalme_dataset['num_forms_tuple'][:i] + (
+              len(form_used),) + lalme_dataset['num_forms_tuple'][(i + 1):]
+      lalme_dataset['forms'][i] = lalme_dataset['forms'][i][form_used]
+      lalme_dataset['y'][i] = lalme_dataset['y'][i][form_used, :]
 
   ## Items subsetting ##
 
   # Keep only items with at least two forms
   # (otherwise, the model cannot be trained because softmax over fields is undefined)
-  items_ok = np.array([f_i >= 2 for f_i in data['num_forms_tuple']])
-  index_items_keep = np.where(items_ok)[0]
-  data['items'] = data['items'][index_items_keep]
-  data['num_items'] = np.sum(items_ok)
-  data['num_forms_tuple'] = tuple(
-      data['num_forms_tuple'][i] for i in index_items_keep)
-  data['forms'] = [data['forms'][i] for i in index_items_keep]
-  data['y'] = [data['y'][i] for i in index_items_keep]
+  items_ok_bool = np.array(
+      [f_i >= 2 for f_i in lalme_dataset['num_forms_tuple']])
+  if not all(items_ok_bool):
+    logging.warning("Removing items with less than two forms: %s",
+                    str(lalme_dataset['items'][~items_ok_bool]))
+  items_keep = np.intersect1d(lalme_dataset['items'][items_ok_bool], items_keep)
 
-  # Keep a defined subset of items
-  num_items = data['num_items']
-  num_items_keep = (
-      int(num_items_keep) if num_items_keep is not None else num_items)
-  assert 0 < num_items_keep <= num_items
-  if num_items_keep < num_items:
-    # Items to keep
-    index_items_keep = np.arange(num_items_keep)
-    data['items'] = data['items'][index_items_keep]
-    data['num_items'] = num_items_keep
-    data['num_forms_tuple'] = tuple(
-        data['num_forms_tuple'][i] for i in index_items_keep)
-    data['forms'] = [data['forms'][i] for i in index_items_keep]
-    data['y'] = [data['y'][i] for i in index_items_keep]
+  assert len(items_keep) > 0
+  items_keep_idx = np.array(
+      [np.where(lalme_dataset['items'] == i_)[0][0] for i_ in items_keep])
+  assert (lalme_dataset['items'][items_keep_idx] == items_keep).all()
 
-  return data
+  lalme_dataset['items'] = lalme_dataset['items'][items_keep_idx]
+  lalme_dataset['num_items'] = len(items_keep)
+  lalme_dataset['num_forms_tuple'] = tuple(
+      lalme_dataset['num_forms_tuple'][i] for i in items_keep_idx)
+  lalme_dataset['forms'] = [lalme_dataset['forms'][i] for i in items_keep_idx]
+  lalme_dataset['y'] = [lalme_dataset['y'][i] for i in items_keep_idx]
+
+  return lalme_dataset

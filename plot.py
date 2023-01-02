@@ -805,6 +805,8 @@ def lalme_plots_arviz(
     lp_floating_grid10: Optional[List[int]] = None,
     lp_random_anchor: Optional[List[int]] = None,
     lp_random_anchor_grid10: Optional[List[int]] = None,
+    lp_anchor_val: Optional[List[int]] = None,
+    lp_anchor_test: Optional[List[int]] = None,
     loc_inducing: Optional[Array] = None,
     workdir_png: Optional[str] = None,
     summary_writer: Optional[SummaryWriter] = None,
@@ -936,6 +938,7 @@ def lalme_plots_arviz(
           scatter_kwargs=scatter_kwargs,
           marginals=True,
       )
+
       axs[1, 0].scatter(
           x=lalme_dataset['loc'][[p_], 0],
           y=lalme_dataset['loc'][[p_], 1],
@@ -1108,6 +1111,56 @@ def lalme_plots_arviz(
 
     if summary_writer:
       plot_name = "lalme_random_anchor_profiles_grid"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+  if lp_anchor_val is not None:
+    fig, axs = profile_locations_grid(
+        lalme_az=lalme_az,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_anchor_val,
+        var_name='loc_floating',
+        coord="LP_floating",
+        nrows=2,
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_lp_anchor_val_grid"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_lp_anchor_val_grid"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+  if lp_anchor_test is not None:
+    fig, axs = profile_locations_grid(
+        lalme_az=lalme_az,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_anchor_test,
+        var_name='loc_floating',
+        coord="LP_floating",
+        nrows=2,
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_lp_anchor_test_grid"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_lp_anchor_test_grid"
       plot_name += suffix
       summary_writer.image(
           tag=plot_name,

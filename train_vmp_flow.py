@@ -7,7 +7,6 @@ from absl import logging
 
 import numpy as np
 from matplotlib import pyplot as plt
-import arviz as az
 from arviz import InferenceData
 
 from flax.metrics import tensorboard
@@ -578,7 +577,6 @@ def error_locations_vector_estimate(
     config: ConfigDict,
     eta_eval_grid: Array,
     num_samples: int,
-    profile_is_anchor: Array,
 ) -> Dict[str, Array]:
   """Compute average distance error along eta_eval_grid.
   
@@ -591,12 +589,12 @@ def error_locations_vector_estimate(
   error_grid = []
 
   for eta_i in eta_eval_grid:
+    # eta_i = eta_eval_grid[0]
     eta_i_profiles = eta_i * jnp.ones((num_samples, config.num_profiles))
-
     smi_eta_ = {
         'profiles':
             jax.vmap(lambda eta_: jnp.where(
-                profile_is_anchor,
+                jnp.arange(config.num_profiles) < config.num_profiles_anchor,
                 1.,
                 eta_,
             ))(eta_i_profiles),
@@ -639,6 +637,8 @@ def log_images(
     lp_floating_grid10: Optional[List[int]] = None,
     lp_random_anchor: Optional[List[int]] = None,
     lp_random_anchor_grid10: Optional[List[int]] = None,
+    show_lp_anchor_val: Optional[bool] = False,
+    show_lp_anchor_test: Optional[bool] = False,
     loc_inducing: Optional[Array] = None,
     show_eval_metric: bool = False,
     eta_eval_grid: Optional[Array] = None,
@@ -653,18 +653,32 @@ def log_images(
   profile_is_anchor = jnp.arange(
       config.num_profiles) < config.num_profiles_anchor
 
+  # List of LP for validation
+  if show_lp_anchor_val:
+    lp_anchor_val = np.split(lalme_dataset['LP'],
+                             np.cumsum(lalme_dataset['num_profiles_split']))[1]
+  else:
+    lp_anchor_val = None
+  # List of LP for test
+  if show_lp_anchor_test:
+    lp_anchor_test = np.split(lalme_dataset['LP'],
+                              np.cumsum(lalme_dataset['num_profiles_split']))[2]
+  else:
+    lp_anchor_test = None
+
   # Plot posterior samples
   for eta_i in config.eta_plot:
-    eta_i_profiles = eta_i * jnp.ones(
-        (config.num_samples_plot, config.num_profiles))
+
+    eta_i_profiles = jax.vmap(lambda eta_: jnp.where(
+        profile_is_anchor,
+        1.,
+        eta_,
+    ))(
+        eta_i * jnp.ones((config.num_samples_plot, config.num_profiles)))
 
     smi_eta_ = {
         'profiles':
-            jax.vmap(lambda eta_: jnp.where(
-                profile_is_anchor,
-                1.,
-                eta_,
-            ))(eta_i_profiles),
+            eta_i_profiles,
         'items':
             jnp.ones((config.num_samples_plot, len(config.num_forms_tuple))),
     }
@@ -694,6 +708,8 @@ def log_images(
         lp_floating_grid10=lp_floating_grid10,
         lp_random_anchor=lp_random_anchor,
         lp_random_anchor_grid10=lp_random_anchor_grid10,
+        lp_anchor_val=lp_anchor_val,
+        lp_anchor_test=lp_anchor_test,
         loc_inducing=loc_inducing,
         workdir_png=workdir_png,
         summary_writer=summary_writer,
@@ -711,18 +727,77 @@ def log_images(
         config=config,
         eta_eval_grid=eta_eval_grid,
         num_samples=num_samples_chunk,
-        profile_is_anchor=profile_is_anchor,
     )
     images = []
 
-    plot_name = 'lalme_vmp_distance_floating'
+    if 'mean_dist_anchor_val' in error_loc_dict:
+      plot_name = 'lalme_vmp_mean_dist_anchor_val'
+      fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+      # Plot distance as a function of eta
+      axs.plot(eta_eval_grid, error_loc_dict['mean_dist_anchor_val'])
+      axs.set_xlabel('eta_floating')
+      axs.set_ylabel('Mean posterior distance')
+      axs.set_title('Error distance for Anchor profiles (validation)\n' +
+                    '(Mean difference posterior vs. truth)')
+      fig.tight_layout()
+      if workdir_png:
+        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      if summary_writer:
+        images.append(plot_to_image(fig))
+
+    if 'dist_mean_anchor_val' in error_loc_dict:
+      plot_name = 'lalme_vmp_dist_mean_anchor_val'
+      fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+      # Plot distance as a function of eta
+      axs.plot(eta_eval_grid, error_loc_dict['dist_mean_anchor_val'])
+      axs.set_xlabel('eta_floating')
+      axs.set_ylabel('Distance to posterior mean')
+      axs.set_title('Error distance for Anchor profiles (validation)\n' +
+                    '(Posterior Mean vs. truth)')
+      fig.tight_layout()
+      if workdir_png:
+        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      if summary_writer:
+        images.append(plot_to_image(fig))
+
+    if 'mean_dist_anchor_test' in error_loc_dict:
+      plot_name = 'lalme_vmp_mean_dist_anchor_test'
+      fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+      # Plot distance as a function of eta
+      axs.plot(eta_eval_grid, error_loc_dict['mean_dist_anchor_test'])
+      axs.set_xlabel('eta_floating')
+      axs.set_ylabel('Mean posterior distance')
+      axs.set_title('Error distance for Anchor profiles (test)\n' +
+                    '(Mean difference posterior vs. truth)')
+      fig.tight_layout()
+      if workdir_png:
+        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      if summary_writer:
+        images.append(plot_to_image(fig))
+
+    if 'dist_mean_anchor_test' in error_loc_dict:
+      plot_name = 'lalme_vmp_dist_mean_anchor_test'
+      fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+      # Plot distance as a function of eta
+      axs.plot(eta_eval_grid, error_loc_dict['dist_mean_anchor_test'])
+      axs.set_xlabel('eta_floating')
+      axs.set_ylabel('Distance to posterior mean')
+      axs.set_title('Error distance for Anchor profiles (test)\n' +
+                    '(Posterior Mean vs. truth)')
+      fig.tight_layout()
+      if workdir_png:
+        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      if summary_writer:
+        images.append(plot_to_image(fig))
+
+    plot_name = 'lalme_vmp_mean_dist_floating'
     fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
-    # Plot distance_floating as a function of eta
-    axs.plot(eta_eval_grid, error_loc_dict['distance_floating'])
+    # Plot distance as a function of eta
+    axs.plot(eta_eval_grid, error_loc_dict['mean_dist_floating'])
     axs.set_xlabel('eta_floating')
     axs.set_ylabel('Mean distance')
-    axs.set_title('Mean distance for floating profiles\n' +
-                  '(posterior vs. linguistic guess)')
+    axs.set_title('Error distance for floating profiles\n' +
+                  '(posterior vs. fit-technique)')
     fig.tight_layout()
     if workdir_png:
       fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
@@ -730,27 +805,27 @@ def log_images(
       images.append(plot_to_image(fig))
 
     if config.include_random_anchor:
-      plot_name = 'lalme_vmp_distance_random_anchor'
+      plot_name = 'lalme_vmp_mean_dist_random_anchor'
       fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
-      # Plot distance_floating as a function of eta
-      axs.plot(eta_eval_grid, error_loc_dict['distance_random_anchor'])
+      # Plot distance as a function of eta
+      axs.plot(eta_eval_grid, error_loc_dict['mean_dist_random_anchor'])
       axs.set_xlabel('eta_floating')
-      axs.set_ylabel('Mean distance')
-      axs.set_title('Mean distance for anchor profiles\n' +
-                    '(posterior vs. real location)')
+      axs.set_ylabel('Mean posterior distance')
+      axs.set_title('Error distance for anchor profiles\n' +
+                    '(posterior vs. truth)')
       fig.tight_layout()
       if workdir_png:
         fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
       if summary_writer:
         images.append(plot_to_image(fig))
 
-      if summary_writer:
-        plot_name = 'lalme_vmp_distance'
-        summary_writer.image(
-            tag=plot_name,
-            image=normalize_images(images),
-            step=state_list[0].step,
-        )
+    if summary_writer:
+      plot_name = 'lalme_vmp_distance'
+      summary_writer.image(
+          tag=plot_name,
+          image=normalize_images(images),
+          step=state_list[0].step,
+      )
 
 
 def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
@@ -770,9 +845,12 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   # Initialize random keys
   prng_seq = hk.PRNGSequence(config.seed)
 
-  # Full dataset used everytime
-  # No batching for now
-  lalme_dataset = load_data(config=config)
+  # Load and process LALME dataset
+  lalme_dataset = load_data(
+      prng_key=jax.random.PRNGKey(0),  # use fixed seed for data loading
+      config=config,
+  )
+
   # Add some parameters to config
   config.num_profiles = lalme_dataset['num_profiles']
   config.num_profiles_anchor = lalme_dataset['num_profiles_anchor']
@@ -781,7 +859,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   config.num_inducing_points = math.prod(config.flow_kwargs.inducing_grid_shape)
 
   # For training, we need a Dictionary compatible with jit
-  # we remove string vector
+  # we remove string vectors
   train_ds = {
       k: v for k, v in lalme_dataset.items() if k not in ['items', 'forms']
   }
@@ -903,6 +981,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   else:
     summary_writer = None
     synetune_report = None
+  summary_writer = tensorboard.SummaryWriter(workdir)
+  summary_writer.hparams(flatten_dict(config))
 
   # Print a useful summary of the execution of the flows.
   logging.info('FLOW GLOBAL PARAMETERS:')
@@ -1064,7 +1144,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
     # Plots to monitor training
     if config.log_img_steps > 0:
-      if (state_list[0].step % config.log_img_steps) == 0:
+      if (state_list[0].step > 0) and (state_list[0].step %
+                                       config.log_img_steps) == 0:
         logging.info("Logging plots...")
         log_images(
             state_list=state_list,
@@ -1145,7 +1226,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           config=config,
           eta_eval_grid=eta_eval_grid_,
           num_samples=config.num_samples_eval,
-          profile_is_anchor=profile_is_anchor,
       )
 
       # Summarize the distances
@@ -1203,7 +1283,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         config=config,
         eta_eval_grid=eta_eval_grid_,
         num_samples=config.num_samples_eval,
-        profile_is_anchor=profile_is_anchor,
     )
 
     # Summarize the distances
@@ -1268,9 +1347,17 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
         lp_floating_traces=config.lp_floating_grid10,
         lp_floating_grid10=config.lp_floating_grid10,
-        lp_random_anchor=lalme_dataset['LP']
-        [:lalme_dataset['num_profiles_anchor']],
-        lp_random_anchor_grid10=config.lp_random_anchor_10,
+        lp_random_anchor=(
+            lalme_dataset['LP'][:lalme_dataset['num_profiles_anchor']]
+            if config.include_random_anchor else None),
+        lp_random_anchor_grid10=(config.lp_random_anchor_10
+                                 if config.include_random_anchor else None),
+        show_lp_anchor_val=(
+            True if lalme_dataset['num_profiles_split'].lp_anchor_val > 0 else
+            False),
+        show_lp_anchor_test=(
+            True if lalme_dataset['num_profiles_split'].lp_anchor_test > 0 else
+            False),
         loc_inducing=train_ds['loc_inducing'],
         show_eval_metric=True,
         eta_eval_grid=jnp.linspace(0, 1, 21),
@@ -1295,5 +1382,5 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 # config.optim_kwargs.lr_schedule_kwargs.decay_rate = 0.55
 # config.optim_kwargs.lr_schedule_kwargs.peak_value = 0.00031622776601683783
 # config.optim_kwargs.lr_schedule_kwargs.transition_steps = 10000
-# config.synetune_metric = "distance_random_anchor_min"
+# config.synetune_metric = "mean_dist_anchor_val"
 # config.training_steps = 30000

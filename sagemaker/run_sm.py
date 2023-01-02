@@ -128,7 +128,7 @@ def main(argv):
               'all_items_mcmc',
           ],
           hyperparameters_extra={
-              'config.num_profiles_floating_keep': num_profiles_floating_keep,
+              'config.num_lp_floating_train': num_profiles_floating_keep,
               'config.num_items_keep': num_items_keep,
           },
       )

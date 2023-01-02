@@ -368,9 +368,12 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   # Initialize random keys
   prng_seq = hk.PRNGSequence(config.seed)
 
-  # Full dataset used everytime
-  # No batching for now
-  lalme_dataset = load_data(config=config)
+  # Load and process LALME dataset
+  lalme_dataset = load_data(
+      prng_key=jax.random.PRNGKey(0),  # use fixed seed for data loading
+      config=config,
+  )
+
   # Add some parameters to config
   config.num_profiles = lalme_dataset['num_profiles']
   config.num_profiles_anchor = lalme_dataset['num_profiles_anchor']
