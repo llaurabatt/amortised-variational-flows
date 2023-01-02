@@ -133,8 +133,8 @@ def mean_field_locations(
         distrax.ScalarAffine(
             shift=loc_y_range[0], scale=loc_y_range[1] - loc_y_range[0]), 1)
 
-  block_bijectors = [loc_x_range_bijector, loc_y_range_bijector]
-  block_sizes = [num_profiles, num_profiles]
+  block_bijectors = [loc_x_range_bijector, loc_y_range_bijector] * num_profiles
+  block_sizes = [1, 1] * num_profiles
   flow_layers.append(
       modularbayes.Blockwise(
           bijectors=block_bijectors, block_sizes=block_sizes))
@@ -496,8 +496,8 @@ def meta_nsf_locations(
     **_,
 ) -> modularbayes.ConditionalTransformed:
   """Creates the Rational Quadratic Flow for the unknown locations of profiles
-in the LALME model.
-"""
+  in the LALME model.
+  """
 
   flow_dim = 2 * num_profiles
 
@@ -570,8 +570,8 @@ in the LALME model.
         distrax.ScalarAffine(
             shift=loc_y_range[0], scale=loc_y_range[1] - loc_y_range[0]), 1)
 
-  block_bijectors = [loc_x_range_bijector, loc_y_range_bijector]
-  block_sizes = [num_profiles, num_profiles]
+  block_bijectors = [loc_x_range_bijector, loc_y_range_bijector] * num_profiles
+  block_sizes = [1, 1] * num_profiles
   flow_layers.append(
       modularbayes.Blockwise(
           bijectors=block_bijectors, block_sizes=block_sizes))
