@@ -53,7 +53,7 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
   mode = "min"
   searcher = 'bayesopt'
   n_workers = 10
-  stop_criterion = StoppingCriterion(max_num_trials_started=50)
+  stop_criterion = StoppingCriterion(max_num_trials_started=70)
   container_name = "jax-tf:latest"
   instance_type = "ml.p3.2xlarge"
 
@@ -81,11 +81,11 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
         "config.optim_kwargs.lr_schedule_kwargs.decay_rate":
             config_space.uniform(0.1, 1.0),
         'config.optim_kwargs.lr_schedule_kwargs.transition_steps':
-            10000,
+            10_000,
         "config.training_steps":
-            30000,
+            50_000,
         "config.eval_steps":
-            5000,
+            5_000,
         "config.checkpoint_steps":
             -1,
     }
