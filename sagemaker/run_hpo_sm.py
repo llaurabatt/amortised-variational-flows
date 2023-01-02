@@ -58,7 +58,7 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
   instance_type = "ml.p3.2xlarge"
 
   if smi_method == 'flow':
-    metric = 'mean_dist_anchor_val'
+    metric = 'mean_dist_anchor_val_min'
     config_space_dict = {
         'config':
             config_fn,
@@ -100,8 +100,6 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
             'st_checkpoint_dir,st_instance_count,st_instance_type',
         "config.log_img_steps":
             -1,
-        "config.log_img_at_end":
-            False,
         "config.synetune_metric":
             metric,
         "config.kernel_kwargs.amplitude":
@@ -112,12 +110,6 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
             config_space.loguniform(1e-5, 1e-2),
         "config.optim_kwargs.lr_schedule_kwargs.decay_rate":
             config_space.uniform(0.1, 1.0),
-        'config.optim_kwargs.lr_schedule_kwargs.transition_steps':
-            10000,
-        "config.training_steps":
-            30000,
-        "config.eval_steps":
-            5000,
         "config.checkpoint_steps":
             -1,
     }

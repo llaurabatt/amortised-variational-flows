@@ -83,7 +83,7 @@ def send_experiment_to_sm(
           entry_point='main.py',
           instance_type="ml.p3.2xlarge",
           hyperparameters=hyperparameters,
-          max_run=5 * 24 * 60 * 60,
+          max_run=5 * 24 * 60 * 60, # Set MaxRuntimeInSeconds for Training Jobs
       )
       sm_estimator.fit(wait=False)
   logging.info('All training jobs send succesfully!')

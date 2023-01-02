@@ -49,7 +49,7 @@ def get_config():
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 100_000
+  config.training_steps = 50_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -79,14 +79,14 @@ def get_config():
   config.num_samples_gamma_profiles = 3
 
   # How often to evaluate the model.
-  config.eval_steps = config.training_steps // 5
+  config.eval_steps = config.training_steps // 10
   config.num_samples_eval = 500
 
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
-  config.log_img_steps = config.training_steps // 5
-  config.log_img_at_end = True
+  config.log_img_steps = -1
+  config.log_img_at_end = False
 
   # Number of samples used in the plots.
   config.num_samples_plot = 10_000
@@ -100,7 +100,7 @@ def get_config():
   config.eta_plot = [0.001, 0.25, 0.5, 0.75, 1.0]
 
   # How often to save model checkpoints.
-  config.checkpoint_steps = config.training_steps // 2
+  config.checkpoint_steps = -1
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
 
@@ -111,7 +111,7 @@ def get_config():
   # Use random location for anchor profiles for evaluation
   config.include_random_anchor = False
   # Metric for Hyperparameter Optimization
-  config.synetune_metric = "mean_dist_anchor_val"
+  config.synetune_metric = "mean_dist_anchor_val_min"
 
   # Random seed
   config.seed = 321

@@ -1382,5 +1382,5 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 # config.optim_kwargs.lr_schedule_kwargs.decay_rate = 0.55
 # config.optim_kwargs.lr_schedule_kwargs.peak_value = 0.00031622776601683783
 # config.optim_kwargs.lr_schedule_kwargs.transition_steps = 10000
-# config.synetune_metric = "mean_dist_anchor_val"
+# config.synetune_metric = "mean_dist_anchor_val_min"
 # config.training_steps = 30000

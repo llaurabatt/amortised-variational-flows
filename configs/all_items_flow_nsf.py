@@ -107,7 +107,7 @@ def get_config():
   # Use random location for anchor profiles for evaluation
   config.include_random_anchor = True
   # Metrics for Hyperparameter Optimization
-  config.synetune_metric = "mean_dist_anchor_val"
+  config.synetune_metric = "mean_dist_anchor_val_min"
 
   # Random seed
   config.seed = 0
