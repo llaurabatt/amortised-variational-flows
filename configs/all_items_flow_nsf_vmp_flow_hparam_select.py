@@ -67,11 +67,11 @@ def get_config():
       'end_value': None,
   }
 
-  config.num_lp_anchor_train = 100
+  config.num_lp_anchor_train = 80
   config.num_lp_floating_train = 247
   config.num_items_keep = 71
-  config.num_lp_anchor_val = 10
-  config.num_lp_anchor_test = 10
+  config.num_lp_anchor_val = 20
+  config.num_lp_anchor_test = 20
   config.remove_empty_forms = True
 
   # Number of posteriors samples to approximate the variational loss (ELBO).
