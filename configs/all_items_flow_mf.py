@@ -37,8 +37,8 @@ def get_config():
   config.prior_hparams.a_prior_scale = 10.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
-  config.kernel_kwargs.amplitude = 0.65
-  config.kernel_kwargs.length_scale = 0.2
+  config.kernel_kwargs.amplitude = 0.2
+  config.kernel_kwargs.length_scale = 0.3
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
@@ -51,7 +51,7 @@ def get_config():
   config.optim_kwargs.lr_schedule_kwargs = ml_collections.ConfigDict()
   config.optim_kwargs.lr_schedule_kwargs = {
       'init_value': 0.,
-      'peak_value': 3e-2,
+      'peak_value': 3e-3,
       'warmup_steps': 2_000,
       'transition_steps': 10_000,
       'decay_rate': 0.5,
@@ -92,8 +92,8 @@ def get_config():
   config.num_samples_chunk_plot = 1_000
 
   # Floating profiles to plot in grid
-  config.lp_floating_grid10 = [5, 29, 30, 16, 45, 52, 46, 38, 51, 49]
-  config.lp_random_anchor_10 = [85, 133, 363, 544, 1135, 91, 90, 1287, 612, 731]
+  config.lp_floating_grid10 = None
+  config.lp_random_anchor_10 = None
 
   # Use random location for anchor profiles for evaluation
   config.include_random_anchor = True

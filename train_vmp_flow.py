@@ -825,6 +825,7 @@ def log_images(
           tag=plot_name,
           image=normalize_images(images),
           step=state_list[0].step,
+          max_outputs=len(images),
       )
 
 
@@ -1300,35 +1301,37 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           step=state_list[0].step,
       )
       # Report the metric used by syne-tune
-      if k == config.synetune_metric:
+      if k == config.synetune_metric and synetune_report is not None:
         synetune_report(**{k: float(v)})
 
-  # Save samples from the last state
-  for eta_i in config.eta_plot:
-    eta_i_profiles = eta_i * jnp.ones(
-        (config.num_samples_plot, config.num_profiles))
+  # Save samples from the last state\
+  save_samples = True
+  if save_samples:
+    for eta_i in config.eta_plot:
+      eta_i_profiles = eta_i * jnp.ones(
+          (config.num_samples_plot, config.num_profiles))
 
-    smi_eta_ = {
-        'profiles':
-            jax.vmap(lambda eta_: jnp.where(
-                profile_is_anchor,
-                1.,
-                eta_,
-            ))(eta_i_profiles),
-        'items':
-            jnp.ones((config.num_samples_plot, len(config.num_forms_tuple))),
-    }
+      smi_eta_ = {
+          'profiles':
+              jax.vmap(lambda eta_: jnp.where(
+                  profile_is_anchor,
+                  1.,
+                  eta_,
+              ))(eta_i_profiles),
+          'items':
+              jnp.ones((config.num_samples_plot, len(config.num_forms_tuple))),
+      }
 
-    lalme_az_ = sample_lalme_az(
-        state_list=state_list,
-        batch=train_ds,
-        smi_eta=smi_eta_,
-        prng_key=next(prng_seq),
-        config=config,
-        lalme_dataset=lalme_dataset,
-        include_gamma=False,
-    )
-    lalme_az_.to_netcdf(workdir + f'/lalme_az_eta_{float(eta_i):.3f}.nc')
+      lalme_az_ = sample_lalme_az(
+          state_list=state_list,
+          batch=train_ds,
+          smi_eta=smi_eta_,
+          prng_key=next(prng_seq),
+          config=config,
+          lalme_dataset=lalme_dataset,
+          include_gamma=False,
+      )
+      lalme_az_.to_netcdf(workdir + f'/lalme_az_eta_{float(eta_i):.3f}.nc')
 
   # Last plot of posteriors
   if config.log_img_at_end:

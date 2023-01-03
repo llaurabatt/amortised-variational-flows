@@ -44,8 +44,8 @@ def get_config():
   config.prior_hparams.a_prior_scale = 10.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
-  config.kernel_kwargs.amplitude = 0.4
-  config.kernel_kwargs.length_scale = 0.1
+  config.kernel_kwargs.amplitude = 0.2
+  config.kernel_kwargs.length_scale = 0.3
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
@@ -61,7 +61,7 @@ def get_config():
       'peak_value': 3e-4,
       'warmup_steps': 3_000,
       'transition_steps': 10_000,
-      'decay_rate': 0.5,
+      'decay_rate': 0.6,
       'transition_begin': 0,
       'staircase': False,
       'end_value': None,
@@ -86,14 +86,14 @@ def get_config():
 
   # How often to log images to monitor convergence.
   config.log_img_steps = -1
-  config.log_img_at_end = False
+  config.log_img_at_end = True
 
   # Number of samples used in the plots.
   config.num_samples_plot = 10_000
   config.num_samples_chunk_plot = 500
 
   # Floating profiles to plot in grid
-  config.lp_floating_grid10 = [5, 29, 30, 16, 45, 52, 46, 38, 51, 49]
+  config.lp_floating_grid10 = None
   config.lp_random_anchor_10 = None
 
   # eta shown in figures
