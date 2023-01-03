@@ -615,7 +615,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
           kernel_name=config.kernel_name,
           kernel_kwargs=config.kernel_kwargs,
           num_samples_gamma_profiles=config.num_samples_gamma_profiles,
-          smi_eta_profiles=smi_eta['profiles'],
+          smi_eta_profiles=None,
           gp_jitter=config.gp_jitter,
       )
       return logprob_
