@@ -21,13 +21,13 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
     name='config_fn',
-    default='8_items_flow_nsf_vmp_flow.py',
+    default='configs/lalme_vmp_hparam_select.py',
     help='Path to the config file with parameters to be optimized.' +
     'The path is relative to the main repo directory.',
 )
 flags.DEFINE_string(
     name='smi_method',
-    default='flow',
+    default='vmp_flow',
     help='Method used for SMI.',
 )
 
@@ -64,6 +64,10 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
             config_fn,
         'workdir':
             '/opt/ml/model/',
+        'log_dir':
+            '/opt/ml/model/log_dir/',
+        'alsologtostderr':
+            '',
         'undefok':
             'st_checkpoint_dir,st_instance_count,st_instance_type',
         "config.log_img_steps":
@@ -96,6 +100,10 @@ def hpo_syne_sm(config_fn: str, smi_method: str) -> None:
             config_fn,
         'workdir':
             '/opt/ml/model/',
+        'log_dir':
+            '/opt/ml/model/log_dir/',
+        'alsologtostderr':
+            '',
         'undefok':
             'st_checkpoint_dir,st_instance_count,st_instance_type',
         "config.log_img_steps":
