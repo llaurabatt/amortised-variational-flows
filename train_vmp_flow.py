@@ -1345,13 +1345,13 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         # show_W_items=lalme_dataset['items'],
         # show_a_items=lalme_dataset['items'],
         lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
-        lp_floating_traces=config.lp_floating_grid10,
-        lp_floating_grid10=config.lp_floating_grid10,
+        # lp_floating_traces=config.lp_floating_grid10,
+        # lp_floating_grid10=config.lp_floating_grid10,
         lp_random_anchor=(
             lalme_dataset['LP'][:lalme_dataset['num_profiles_anchor']]
             if config.include_random_anchor else None),
-        lp_random_anchor_grid10=(config.lp_random_anchor_10
-                                 if config.include_random_anchor else None),
+        # lp_random_anchor_grid10=(config.lp_random_anchor_10
+        #                          if config.include_random_anchor else None),
         show_lp_anchor_val=(
             True if lalme_dataset['num_profiles_split'].lp_anchor_val > 0 else
             False),
