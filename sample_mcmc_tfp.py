@@ -800,14 +800,13 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   ### Posterior visualisation with Arviz
 
   logging.info("Plotting results...")
-
   plot.lalme_plots_arviz(
       lalme_az=lalme_az_with_gamma,
       lalme_dataset=lalme_dataset,
       step=0,
       show_mu=True,
       show_zeta=True,
-      # show_basis_fields=True,
+      show_basis_fields=True,
       show_W_items=lalme_dataset['items'],
       show_a_items=lalme_dataset['items'],
       lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
@@ -823,7 +822,8 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
   # Load samples to compare MCMC vs Variational posteriors
   if (config.path_variational_samples != '') and (os.path.exists(
-      config.path_variational_samples)):
+      config.path_variational_samples)) and (config.lp_floating_grid10
+                                             is not None):
     logging.info("Plotting comparison MCMC and Variational...")
     lalme_az_variational = az.from_netcdf(config.path_variational_samples)
 

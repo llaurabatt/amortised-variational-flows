@@ -418,7 +418,7 @@ def profile_locations_grid(
           kind=["kde"],
           kde_kwargs={
               "fill_last": False,
-              "hdi_probs": [0.01, 0.05, 0.5, 0.95, 0.99]
+              "hdi_probs": [0.05, 0.5, 0.95]
           },
           ax=axs[i // ncols, i % ncols],
       )

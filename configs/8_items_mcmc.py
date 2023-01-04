@@ -41,8 +41,8 @@ def get_config():
   config.prior_hparams.a_prior_scale = 10.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
-  config.kernel_kwargs.amplitude = 0.65
-  config.kernel_kwargs.length_scale = 0.2
+  config.kernel_kwargs.amplitude = 0.2
+  config.kernel_kwargs.length_scale = 0.3
   config.gp_jitter = 1e-3
 
   config.num_samples_gamma_profiles = 100
@@ -65,6 +65,9 @@ def get_config():
   config.path_variational_samples = ''
 
   # Plotting
-  config.lp_floating_grid10 = [5, 29, 30, 16, 45, 52, 46, 38, 51, 49]
+  config.lp_floating_grid10 = None
+  # config.lp_floating_grid10 = [
+  #     136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
+  # ]
 
   return config

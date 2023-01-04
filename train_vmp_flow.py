@@ -737,8 +737,9 @@ def log_images(
       axs.plot(eta_eval_grid, error_loc_dict['mean_dist_anchor_val'])
       axs.set_xlabel('eta_floating')
       axs.set_ylabel('Mean posterior distance')
-      axs.set_title('Error distance for Anchor profiles (validation)\n' +
-                    '(Mean difference posterior vs. truth)')
+      axs.set_title(
+          'Error distance for held-out (validation) anchor profiles\n' +
+          '(Mean difference posterior vs. truth)')
       fig.tight_layout()
       if workdir_png:
         fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
@@ -752,8 +753,9 @@ def log_images(
       axs.plot(eta_eval_grid, error_loc_dict['dist_mean_anchor_val'])
       axs.set_xlabel('eta_floating')
       axs.set_ylabel('Distance to posterior mean')
-      axs.set_title('Error distance for Anchor profiles (validation)\n' +
-                    '(Posterior Mean vs. truth)')
+      axs.set_title(
+          'Error distance for held-out (validation) anchor profiles\n' +
+          '(Posterior mean vs. truth)')
       fig.tight_layout()
       if workdir_png:
         fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
@@ -767,7 +769,7 @@ def log_images(
       axs.plot(eta_eval_grid, error_loc_dict['mean_dist_anchor_test'])
       axs.set_xlabel('eta_floating')
       axs.set_ylabel('Mean posterior distance')
-      axs.set_title('Error distance for Anchor profiles (test)\n' +
+      axs.set_title('Error distance for held-out (test) anchor profiles\n' +
                     '(Mean difference posterior vs. truth)')
       fig.tight_layout()
       if workdir_png:
@@ -782,8 +784,8 @@ def log_images(
       axs.plot(eta_eval_grid, error_loc_dict['dist_mean_anchor_test'])
       axs.set_xlabel('eta_floating')
       axs.set_ylabel('Distance to posterior mean')
-      axs.set_title('Error distance for Anchor profiles (test)\n' +
-                    '(Posterior Mean vs. truth)')
+      axs.set_title('Error distance for held-out (test) Anchor profiles\n' +
+                    '(Posterior mean vs. truth)')
       fig.tight_layout()
       if workdir_png:
         fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
