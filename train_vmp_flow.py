@@ -1275,8 +1275,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     del state
 
   # Estimate posterior distance to true locations
-  eval_last = True
-  if eval_last and summary_writer is not None:
+  if config.eval_last and summary_writer is not None:
+    logging.info("Logging distance error on last state...")
     eta_eval_grid_ = jnp.linspace(0, 1, 21)
     # Each element is a vector across eta
     error_loc_all_eta_dict = error_locations_vector_estimate(
@@ -1305,10 +1305,11 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       # Report the metric used by syne-tune
       if k == config.synetune_metric and synetune_report is not None:
         synetune_report(**{k: float(v)})
+    logging.info("...done!")
 
   # Save samples from the last state\
-  save_samples = True
-  if save_samples:
+  if config.save_samples:
+    logging.info("Saving samples of VMP...")
     for eta_i in config.eta_plot:
       eta_i_profiles = eta_i * jnp.ones(
           (config.num_samples_plot, config.num_profiles))
@@ -1334,6 +1335,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           include_gamma=False,
       )
       lalme_az_.to_netcdf(workdir + f'/lalme_az_eta_{float(eta_i):.3f}.nc')
+    logging.info("...done!")
 
   # Last plot of posteriors
   if config.log_img_at_end:

@@ -81,12 +81,14 @@ def get_config():
   # How often to evaluate the model.
   config.eval_steps = config.training_steps // 5
   config.num_samples_eval = 500
+  config.eval_last = True
 
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5
   config.log_img_at_end = True
+  config.save_samples = True
 
   # Number of samples used in the plots.
   config.num_samples_plot = 10_000

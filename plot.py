@@ -1125,9 +1125,7 @@ def lalme_plots_arviz(
         profiles_id=lp_anchor_val,
         var_name='loc_floating',
         coord="LP_floating",
-        nrows=(lalme_dataset['num_profiles_split'].lp_anchor_val // 5 +
-               (1 if lalme_dataset['num_profiles_split'].lp_anchor_val %
-                5 else 0)),
+        nrows=(len(lp_anchor_val) // 5 + (1 if len(lp_anchor_val) % 5 else 0)),
         scatter_kwargs=scatter_kwargs,
     )
     if workdir_png:
@@ -1152,9 +1150,8 @@ def lalme_plots_arviz(
         profiles_id=lp_anchor_test,
         var_name='loc_floating',
         coord="LP_floating",
-        nrows=(lalme_dataset['num_profiles_split'].lp_anchor_test // 5 +
-               (1 if lalme_dataset['num_profiles_split'].lp_anchor_test %
-                5 else 0)),
+        nrows=(len(lp_anchor_test) // 5 +
+               (1 if len(lp_anchor_test) % 5 else 0)),
         scatter_kwargs=scatter_kwargs,
     )
     if workdir_png:
