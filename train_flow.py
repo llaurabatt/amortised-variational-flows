@@ -108,10 +108,8 @@ def load_data(prng_key: PRNGKey, config: ConfigDict) -> Dict[str, Array]:
       a=lp_floating_,
       shape=(config.num_lp_floating_train,),
       replace=False)
+  # lp_floating_train = [136, 234, 1002, 501, 236, 237, 319, 515, 699, 755]
   lp_floating_train = jnp.sort(lp_floating_train).tolist()
-  # lp_floating_train = [
-  #     2, 3, 4, 5, 16, 17, 23, 26, 29, 30, 32, 36, 38, 43, 45, 46, 49, 51, 52, 54
-  # ]
 
   ### Choose items to use ###
   # Start with all the items

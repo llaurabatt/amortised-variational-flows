@@ -17,7 +17,7 @@ def get_config():
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
-  config.flow_kwargs.num_basis_gps = 8
+  config.flow_kwargs.num_basis_gps = 10
   config.flow_kwargs.inducing_grid_shape = (11, 11)
   # Ranges of posterior locations
   # (NOTE: these will be modified in the training script)
@@ -61,7 +61,7 @@ def get_config():
   }
 
   config.num_lp_anchor_train = 120
-  config.num_lp_floating_train = 20
+  config.num_lp_floating_train = 10
   config.num_items_keep = 8
   config.num_lp_anchor_val = 0
   config.num_lp_anchor_test = 0
@@ -92,6 +92,9 @@ def get_config():
   config.num_samples_chunk_plot = 1_000
 
   # Floating profiles to plot in grid
+  # config.lp_floating_grid10 = [
+  #     136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
+  # ]
   config.lp_floating_grid10 = None
   config.lp_random_anchor_10 = None
 
@@ -101,6 +104,6 @@ def get_config():
   config.synetune_metric = "mean_dist_anchor_val_min"
 
   # Random seed
-  config.seed = 0
+  config.seed = 1
 
   return config
