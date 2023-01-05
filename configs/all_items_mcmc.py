@@ -59,7 +59,7 @@ def get_config():
   # SMI degree of influence of floating profiles
   config.eta_profiles_floating = 1.0
 
-  config.seed = 0
+  config.seed = 1
 
   # Samples from variational posterior to compare locations
   config.path_variational_samples = ''

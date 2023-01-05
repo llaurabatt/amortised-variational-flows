@@ -116,6 +116,6 @@ def get_config():
   config.synetune_metric = "mean_dist_anchor_val_min"
 
   # Random seed
-  config.seed = 321
+  config.seed = 1
 
   return config
