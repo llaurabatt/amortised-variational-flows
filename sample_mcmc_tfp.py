@@ -822,8 +822,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
   # Load samples to compare MCMC vs Variational posteriors
   if (config.path_variational_samples != '') and (os.path.exists(
-      config.path_variational_samples)) and (config.lp_floating_grid10
-                                             is not None):
+      config.path_variational_samples)):
     logging.info("Plotting comparison MCMC and Variational...")
     lalme_az_variational = az.from_netcdf(config.path_variational_samples)
 
@@ -833,10 +832,13 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         lalme_dataset=lalme_dataset,
         step=0,
         lp_floating_grid10=config.lp_floating_grid10,
+        show_mu=(lalme_dataset['num_items'] <= 8),
+        show_zeta=(lalme_dataset['num_items'] <= 8),
         summary_writer=summary_writer,
         workdir_png=workdir,
         suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
         scatter_kwargs={"alpha": 0.05},
+        data_labels=["MCMC", "VI"],
     )
     logging.info("...done!")
 

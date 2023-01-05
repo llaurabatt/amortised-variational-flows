@@ -1119,6 +1119,7 @@ def lalme_plots_arviz(
       )
 
   if lp_anchor_val is not None:
+    # lp_anchor_val = np.setdiff1d(lp_anchor_val, [104, 138, 1198, 1301, 1348])
     fig, axs = profile_locations_grid(
         lalme_az=lalme_az,
         lalme_dataset=lalme_dataset,
@@ -1177,10 +1178,13 @@ def posterior_samples_compare(
     lalme_dataset: Dict[str, Any],
     step: int,
     lp_floating_grid10: Optional[List[int]] = None,
+    show_mu: bool = False,
+    show_zeta: bool = False,
     summary_writer: Optional[SummaryWriter] = None,
     workdir_png: Optional[str] = None,
     suffix: str = '',
     scatter_kwargs={'alpha': 0.07},
+    data_labels=["lalme_az_1", "lalme_az_2"],
 ):
   """Plot comparison two sets of posterior samples.
 
@@ -1207,6 +1211,65 @@ def posterior_samples_compare(
 
     if summary_writer:
       plot_name = "lalme_floating_profiles_grid_compare"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+  if show_mu:
+    axs = az.plot_density(
+        [lalme_az_1, lalme_az_2],
+        data_labels=data_labels,
+        var_names=['mu'],
+        grid=(1, lalme_dataset['num_items']),
+        figsize=(3 * lalme_dataset['num_items'], 2.5),
+        hdi_prob=1.0,
+        shade=0.2,
+    )
+    max_ = float(
+        max(lalme_az_1.posterior.mu.max(), lalme_az_2.posterior.mu.max()))
+    max_ = 40.
+    for axs_i in axs[0]:
+      axs_i.set_xlim([0, max_])
+    plt.tight_layout()
+    if workdir_png:
+      plot_name = "lalme_mu_compare"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      image = plot_to_image(None)
+
+    if summary_writer:
+      plot_name = "lalme_mu_compare"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+  if show_zeta:
+    axs = az.plot_density(
+        [lalme_az_1, lalme_az_2],
+        data_labels=data_labels,
+        var_names=['zeta'],
+        grid=(1, lalme_dataset['num_items']),
+        figsize=(3 * lalme_dataset['num_items'], 2.5),
+        hdi_prob=1.0,
+        shade=0.2,
+    )
+    for axs_i in axs[0]:
+      axs_i.set_xlim([0, 1])
+    plt.tight_layout()
+    if workdir_png:
+      plot_name = "lalme_zeta_compare"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      image = plot_to_image(None)
+
+    if summary_writer:
+      plot_name = "lalme_zeta_compare"
       plot_name += suffix
       summary_writer.image(
           tag=plot_name,
