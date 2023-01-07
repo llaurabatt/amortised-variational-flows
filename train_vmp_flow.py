@@ -1389,8 +1389,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         lp_random_anchor=(
             lalme_dataset['LP'][:lalme_dataset['num_profiles_anchor']]
             if config.include_random_anchor else None),
-        # lp_random_anchor_grid10=(config.lp_random_anchor_10
-        #                          if config.include_random_anchor else None),
+        # lp_random_anchor_grid10=config.lp_random_anchor_10,
         show_lp_anchor_val=(
             True if lalme_dataset['num_profiles_split'].lp_anchor_val > 0 else
             False),
