@@ -67,6 +67,8 @@ def get_config():
   config.num_lp_anchor_test = 0
   config.remove_empty_forms = True
 
+  config.lp_floating_train = [136, 234, 1002, 501, 236, 237, 319, 515, 699, 755]
+
   # Number of posteriors samples to approximate the variational loss (ELBO).
   config.num_samples_elbo = 20
   config.num_samples_gamma_profiles = 10
@@ -92,10 +94,10 @@ def get_config():
   config.num_samples_chunk_plot = 1_000
 
   # Floating profiles to plot in grid
-  # config.lp_floating_grid10 = [
-  #     136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
-  # ]
-  config.lp_floating_grid10 = None
+  config.lp_floating_grid10 = [
+      136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
+  ]
+  # config.lp_floating_grid10 = None
   config.lp_random_anchor_10 = None
 
   # Use random location for anchor profiles for evaluation

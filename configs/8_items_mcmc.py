@@ -20,6 +20,8 @@ def get_config():
   config.num_lp_anchor_test = 0
   config.remove_empty_forms = True
 
+  config.lp_floating_train = [136, 234, 1002, 501, 236, 237, 319, 515, 699, 755]
+
   # Model hyperparameters.
   config.model_hparams = ml_collections.ConfigDict()
   # Number of basis GPs
@@ -65,9 +67,9 @@ def get_config():
   config.path_variational_samples = ''
 
   # Plotting
-  config.lp_floating_grid10 = None
-  # config.lp_floating_grid10 = [
-  #     136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
-  # ]
+  config.lp_floating_grid10 = [
+      136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
+  ]
+  # config.lp_floating_grid10 = None
 
   return config

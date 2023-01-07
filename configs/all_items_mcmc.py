@@ -65,6 +65,9 @@ def get_config():
   config.path_variational_samples = ''
 
   # Plotting
-  config.lp_floating_grid10 = None
+  config.lp_floating_grid10 = [
+      136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
+  ]
+  # config.lp_floating_grid10 = None
 
   return config

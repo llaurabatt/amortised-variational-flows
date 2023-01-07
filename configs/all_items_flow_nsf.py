@@ -101,7 +101,10 @@ def get_config():
   config.num_samples_chunk_plot = 1_000
 
   # Floating profiles to plot in grid
-  config.lp_floating_grid10 = None
+  config.lp_floating_grid10 = [
+      136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
+  ]
+  # config.lp_floating_grid10 = None
   config.lp_random_anchor_10 = None
 
   # Use random location for anchor profiles for evaluation

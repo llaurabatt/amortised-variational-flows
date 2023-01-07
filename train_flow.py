@@ -103,13 +103,17 @@ def load_data(prng_key: PRNGKey, config: ConfigDict) -> Dict[str, Array]:
   ## Floating profiles
   lp_floating_ = lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:]
   # Choose training floating profiles
-  lp_floating_train = jax.random.choice(
-      next(prng_seq),
-      a=lp_floating_,
-      shape=(config.num_lp_floating_train,),
-      replace=False)
-  # lp_floating_train = [136, 234, 1002, 501, 236, 237, 319, 515, 699, 755]
-  lp_floating_train = jnp.sort(lp_floating_train).tolist()
+  if 'lp_floating_train' in config:
+    assert len(config.lp_floating_train) == config.num_lp_floating_train
+    lp_floating_train = config.lp_floating_train
+  else:
+    lp_floating_train = jax.random.choice(
+        next(prng_seq),
+        a=lp_floating_,
+        shape=(config.num_lp_floating_train,),
+        replace=False)
+
+  lp_floating_train = np.sort(lp_floating_train).tolist()
 
   ### Choose items to use ###
   # Start with all the items
@@ -792,19 +796,20 @@ def error_locations_estimate(
   )[:-1]  # Last element is empty
   assert len(pred_floating) == 3
 
+  ## Anchor validation profiles
   if batch['num_profiles_split'][1] > 0:
-    ## Anchor validation profiles
     # Average of Mean posterior distance to true locations
     distances = jnp.linalg.norm(
         pred_floating[0] - targets_all[1][None, ...], ord=2, axis=-1)
     error_loc_out['mean_dist_anchor_val'] = distances.mean()
+    error_loc_out['mean_sq_dist_anchor_val'] = (distances**2).mean()
     # Average of distance between true locations and posterior mean
     distances = jnp.linalg.norm(
         pred_floating[0].mean(axis=0) - targets_all[1], ord=2, axis=-1)
     error_loc_out['dist_mean_anchor_val'] = distances.mean()
 
+  # Anchor test profiles
   if batch['num_profiles_split'][2] > 0:
-    # Anchor test profiles
     # Average of Mean posterior distance to true locations
     distances = jnp.linalg.norm(
         pred_floating[1] - targets_all[2][None, ...], ord=2, axis=-1)
