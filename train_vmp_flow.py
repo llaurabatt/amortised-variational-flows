@@ -746,6 +746,22 @@ def log_images(
       if summary_writer:
         images.append(plot_to_image(fig))
 
+    if 'mean_sq_dist_anchor_val' in error_loc_dict:
+      plot_name = 'lalme_vmp_mean_sq_dist_anchor_val'
+      fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+      # Plot square distance as a function of eta
+      axs.plot(eta_eval_grid, error_loc_dict['mean_dist_anchor_val'])
+      axs.set_xlabel('eta_floating')
+      axs.set_ylabel('Mean posterior distance')
+      axs.set_title(
+          'Error square distance for held-out (validation) anchor profiles\n' +
+          '(Mean distance^2 posterior vs. truth)')
+      fig.tight_layout()
+      if workdir_png:
+        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      if summary_writer:
+        images.append(plot_to_image(fig))
+
     if 'dist_mean_anchor_val' in error_loc_dict:
       plot_name = 'lalme_vmp_dist_mean_anchor_val'
       fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
@@ -1278,7 +1294,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     # Wait until computations are done before the next step
     # jax.random.normal(jax.random.PRNGKey(0), ()).block_until_ready()
 
-  logging.info('Final training step: %i', state_list[0].step)
+    logging.info('Final training step: %i', state_list[0].step)
 
   # Saving checkpoint at the end of the training process
   if save_last_checkpoint:

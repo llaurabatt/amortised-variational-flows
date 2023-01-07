@@ -814,6 +814,7 @@ def error_locations_estimate(
     distances = jnp.linalg.norm(
         pred_floating[1] - targets_all[2][None, ...], ord=2, axis=-1)
     error_loc_out['mean_dist_anchor_test'] = distances.mean()
+    error_loc_out['mean_sq_dist_anchor_test'] = (distances**2).mean()
     # Average of distance between true locations and posterior mean
     distances = jnp.linalg.norm(
         pred_floating[1].mean(axis=0) - targets_all[2], ord=2, axis=-1)
