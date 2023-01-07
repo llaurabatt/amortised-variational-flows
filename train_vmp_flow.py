@@ -750,7 +750,7 @@ def log_images(
       plot_name = 'lalme_vmp_mean_sq_dist_anchor_val'
       fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
       # Plot square distance as a function of eta
-      axs.plot(eta_eval_grid, error_loc_dict['mean_dist_anchor_val'])
+      axs.plot(eta_eval_grid, error_loc_dict['mean_sq_dist_anchor_val'])
       axs.set_xlabel('eta_floating')
       axs.set_ylabel('Mean posterior distance')
       axs.set_title(
@@ -797,7 +797,7 @@ def log_images(
       plot_name = 'lalme_vmp_mean_sq_dist_anchor_test'
       fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
       # Plot square distance as a function of eta
-      axs.plot(eta_eval_grid, error_loc_dict['mean_dist_anchor_test'])
+      axs.plot(eta_eval_grid, error_loc_dict['mean_sq_dist_anchor_test'])
       axs.set_xlabel('eta_floating')
       axs.set_ylabel('Mean posterior distance')
       axs.set_title(
