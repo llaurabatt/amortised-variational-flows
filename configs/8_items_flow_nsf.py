@@ -109,7 +109,7 @@ def get_config():
   config.checkpoints_keep = 1
 
   # Use random location for anchor profiles for evaluation
-  config.include_random_anchor = True
+  config.include_random_anchor = False
   # Metric for Hyperparameter Optimization
   config.synetune_metric = "mean_dist_anchor_val_min"
 
