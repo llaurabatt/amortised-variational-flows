@@ -788,15 +788,18 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     lalme_az_variational = az.from_netcdf(config.path_variational_samples)
 
     plot.posterior_samples_compare(
-        lalme_az_1=lalme_az,
+        lalme_az_1=lalme_az_with_gamma,
         lalme_az_2=lalme_az_variational,
         lalme_dataset=lalme_dataset,
         step=0,
         lp_floating_grid10=config.lp_floating_grid10,
+        show_mu=(lalme_dataset['num_items'] <= 8),
+        show_zeta=(lalme_dataset['num_items'] <= 8),
         summary_writer=summary_writer,
         workdir_png=workdir,
         suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
         scatter_kwargs={"alpha": 0.03},
+        data_labels=["MCMC", "VI"],
     )
     logging.info("...done!")
 
