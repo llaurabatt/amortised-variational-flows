@@ -1013,6 +1013,7 @@ def lalme_plots_arviz(
 
     if workdir_png:
       plot_name = "lalme_loc_floating_traces_y"
+      plot_name += suffix
       plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
     image = plot_to_image(None)
 
