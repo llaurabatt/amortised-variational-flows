@@ -25,7 +25,7 @@ def get_config():
   # Model hyperparameters.
   config.model_hparams = ml_collections.ConfigDict()
   # Number of basis GPs
-  config.model_hparams.num_basis_gps = 8
+  config.model_hparams.num_basis_gps = 10
   # Grid of inducing points
   config.model_hparams.inducing_grid_shape = (11, 11)
   # Ranges of posterior locations
