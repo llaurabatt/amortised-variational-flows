@@ -10,7 +10,7 @@ from tensorflow_probability.substrates import jax as tfp
 import modularbayes
 from modularbayes._src.typing import Any, Array, Dict, Sequence, Tuple
 
-from log_prob_fun_2 import ModelParamsGlobal, ModelParamsLocations
+from log_prob_fun import ModelParamsGlobal, ModelParamsLocations
 
 tfb = tfp.bijectors
 tfd = tfp.distributions

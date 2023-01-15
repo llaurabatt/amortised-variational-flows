@@ -20,8 +20,8 @@ import optax
 
 from tensorflow_probability.substrates import jax as tfp
 
-import log_prob_fun_2
-from log_prob_fun_2 import ModelParamsGlobal, ModelParamsLocations
+import log_prob_fun
+from log_prob_fun import ModelParamsGlobal, ModelParamsLocations
 import flows
 import plot
 from train_flow import (load_data, make_optimizer, get_inducing_points,
@@ -353,7 +353,7 @@ def sample_lalme_az(
       # Get a sample of the basis GPs on profiles locations
       # conditional on values at the inducing locations.
       gamma_sample_, _ = jax.vmap(
-          lambda key_, global_, locations_: log_prob_fun_2.
+          lambda key_, global_, locations_: log_prob_fun.
           sample_gamma_profiles_given_gamma_inducing(
               batch=batch,
               model_params_global=global_,

@@ -17,8 +17,8 @@ from jax import numpy as jnp
 
 from tensorflow_probability.substrates import jax as tfp
 
-from log_prob_fun_2 import (ModelParamsGlobal, ModelParamsLocations,
-                            ModelParamsGammaProfiles)
+from log_prob_fun import (ModelParamsGlobal, ModelParamsLocations,
+                          ModelParamsGammaProfiles)
 
 from modularbayes import plot_to_image, normalize_images
 from modularbayes._src.typing import (Any, Array, Dict, List, Mapping, Optional,

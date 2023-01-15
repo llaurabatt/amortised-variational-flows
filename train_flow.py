@@ -27,8 +27,8 @@ from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
                                       IntLike, List, Optional, PRNGKey,
                                       Sequence, SmiEta, Tuple, Union)
 
-import log_prob_fun_2
-from log_prob_fun_2 import ModelParamsGlobal, ModelParamsLocations
+import log_prob_fun
+from log_prob_fun import ModelParamsGlobal, ModelParamsLocations
 import data
 import flows
 import plot
@@ -505,7 +505,7 @@ def sample_lalme_az(
       # Get a sample of the basis GPs on profiles locations
       # conditional on values at the inducing locations.
       gamma_sample_, _ = jax.vmap(
-          lambda key_, global_, locations_: log_prob_fun_2.
+          lambda key_, global_, locations_: log_prob_fun.
           sample_gamma_profiles_given_gamma_inducing(
               batch=batch,
               model_params_global=global_,
@@ -577,7 +577,7 @@ def logprob_lalme(
   # Sample the basis GPs on profiles locations conditional on GP values on the
   # inducing points.
   model_params_gamma_profiles_sample, gamma_profiles_logprob_sample = jax.vmap(
-      lambda key_: log_prob_fun_2.sample_gamma_profiles_given_gamma_inducing(
+      lambda key_: log_prob_fun.sample_gamma_profiles_given_gamma_inducing(
           batch=batch,
           model_params_global=model_params_global,
           model_params_locations=model_params_locations,
@@ -591,7 +591,7 @@ def logprob_lalme(
 
   # Average joint logprob across samples of gamma_profiles
   log_prob = jax.vmap(lambda gamma_profiles_, gamma_profiles_logprob_:
-                      log_prob_fun_2.logprob_joint(
+                      log_prob_fun.logprob_joint(
                           batch=batch,
                           model_params_global=model_params_global,
                           model_params_locations=model_params_locations,
