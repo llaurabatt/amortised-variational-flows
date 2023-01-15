@@ -27,7 +27,6 @@ from modularbayes import flatten_dict
 from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
                                       Mapping, Optional, PRNGKey, Tuple)
 
-# import log_prob_fun
 import log_prob_fun_2
 from log_prob_fun_2 import ModelParamsGlobal, ModelParamsLocations
 
