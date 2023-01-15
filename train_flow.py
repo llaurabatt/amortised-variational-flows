@@ -103,15 +103,15 @@ def load_data(prng_key: PRNGKey, config: ConfigDict) -> Dict[str, Array]:
   ## Floating profiles
   lp_floating_ = lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:]
   # Choose training floating profiles
-  if 'lp_floating_train' in config:
-    assert len(config.lp_floating_train) == config.num_lp_floating_train
-    lp_floating_train = config.lp_floating_train
-  else:
+  if 'lp_floating_train' not in config or len(config.lp_floating_train) == 0:
     lp_floating_train = jax.random.choice(
         next(prng_seq),
         a=lp_floating_,
         shape=(config.num_lp_floating_train,),
         replace=False)
+  else:
+    assert len(config.lp_floating_train) == config.num_lp_floating_train
+    lp_floating_train = config.lp_floating_train
 
   lp_floating_train = np.sort(lp_floating_train).tolist()
 
