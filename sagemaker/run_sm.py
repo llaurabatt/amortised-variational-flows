@@ -83,7 +83,7 @@ def send_experiment_to_sm(
           entry_point='main.py',
           instance_type="ml.p3.2xlarge",
           hyperparameters=hyperparameters,
-          max_run=5 * 24 * 60 * 60, # Set MaxRuntimeInSeconds for Training Jobs
+          max_run=5 * 24 * 60 * 60,
       )
       sm_estimator.fit(wait=False)
   logging.info('All training jobs send succesfully!')
@@ -96,13 +96,29 @@ def main(argv):
   eta_values = [0.001, 0.25, 0.5, 0.75, 1.]
 
   # SMI via MCMC
+
+  # MCMC, 8 items, all floating LPs, Bayes and Cut
   send_experiment_to_sm(
       experiment_names=[
           '8_items_mcmc',
-          # 'all_items_mcmc',
+      ],
+      eta_values=[0.001, 1.],
+      hyperparameters_extra={
+          'config.num_lp_floating_train': 247,
+          'config.lp_floating_train': '()',
+          'config.num_samples_perchunk_stg2': 25,
+          'config.seed': 1,
+      })
+
+  # MCMC, 8 items, 10 floating LPs
+  send_experiment_to_sm(
+      experiment_names=[
+          '8_items_mcmc',
       ],
       eta_values=eta_values,
-  )
+      hyperparameters_extra={
+          'config.seed': 1,
+      })
 
   # Variational SMI with single eta
   send_experiment_to_sm(
@@ -113,26 +129,21 @@ def main(argv):
           'all_items_flow_nsf',
       ],
       eta_values=eta_values,
-  )
+      hyperparameters_extra={
+          'config.seed': 1,
+      })
 
   # Variational SMI across multiple etas via Meta-posterior
-  send_experiment_to_sm(experiment_names=[
-      '8_items_flow_nsf_vmp_flow',
-      'all_items_flow_nsf_vmp_flow',
-  ])
-
-  # SMI via MCMC, measure timing
-  for num_profiles_floating_keep in [10, 20, 40, 80]:
-    for num_items_keep in [8, 16, 32, 64]:
-      send_experiment_to_sm(
-          experiment_names=[
-              'all_items_mcmc',
-          ],
-          hyperparameters_extra={
-              'config.num_lp_floating_train': num_profiles_floating_keep,
-              'config.num_items_keep': num_items_keep,
-          },
-      )
+  send_experiment_to_sm(
+      experiment_names=[
+          '8_items_flow_nsf_vmp_flow',
+          'all_items_flow_nsf_vmp_flow',
+          'lalme_vmp_hparam_select',
+      ],
+      hyperparameters_extra={
+          'config.seed': 1,
+          'config.training_steps': 500_000,
+      })
 
 
 if __name__ == "__main__":
