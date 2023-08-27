@@ -1,0 +1,10 @@
+absl-py
+chex
+distrax>=0.1.2
+dm-haiku
+flax
+jax
+matplotlib
+ml-collections
+numpy
+optax

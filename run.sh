@@ -6,78 +6,79 @@ set -x
 REPO_DIR=$PWD
 
 # Directory to save all outputs
-WORK_DIR=$HOME/spatial-smi-output
+WORK_DIR=$HOME/spatial-smi-output-integrated
 
 # Create output directory and install missing dependencies
 mkdir -p $WORK_DIR
-pip install -Ur $REPO_DIR/requirements.txt
+# pip install -Ur $REPO_DIR/requirements.txt
 
-all_eta=('0.001' '0.250' '0.500' '0.750' '1.000')
+all_eta=('0.500' '0.750' '1.000')
+# '0.001' '0.250' 
+# ### 8 ITEMS ###
 
-### 8 ITEMS ###
+# ## Variational inference
 
-## Variational inference
-## Single eta, Mean field (MFVI)
-for eta in "${all_eta[@]}"
-do
-  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_mf.py \
-                            --workdir $WORK_DIR/8_items/mf/eta_floating_$eta \
-                            --config.eta_profiles_floating $eta \
-                            --log_dir $WORK_DIR/8_items/mf/eta_floating_$eta/log_dir \
-                            --alsologtostderr
-done
+# ## Single eta, Mean field (MFVI)
+# for eta in "${all_eta[@]}"
+# do
+#   python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_mf.py \
+#                             --workdir $WORK_DIR/8_items/mf/eta_floating_$eta \
+#                             --config.eta_profiles_floating $eta \
+#                             --log_dir $WORK_DIR/8_items/mf/eta_floating_$eta/log_dir \
+#                             --alsologtostderr
+# done
 
-## Variational inference
-## Single eta, Neural Spline Flow
-for eta in "${all_eta[@]}"
-do
-  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_nsf.py \
-                            --workdir $WORK_DIR/8_items/nsf/eta_floating_$eta \
-                            --config.eta_profiles_floating $eta \
-                            --log_dir $WORK_DIR/8_items/nsf/eta_floating_$eta/log_dir \
-                            --alsologtostderr
-done
+# ## Variational inference
+# ## Single eta, Neural Spline Flow
+# for eta in "${all_eta[@]}"
+# do
+#   python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_nsf.py \
+#                             --workdir $WORK_DIR/8_items/nsf/eta_floating_$eta \
+#                             --config.eta_profiles_floating $eta \
+#                             --log_dir $WORK_DIR/8_items/nsf/eta_floating_$eta/log_dir \
+#                             --alsologtostderr
+# done
 
-## Variational Meta-Posterior via VMP-flow
-### Neural Spline Flow
-python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_nsf_vmp_flow.py \
-                          --workdir $WORK_DIR/8_items/nsf/vmp_flow \
-                          --log_dir $WORK_DIR/8_items/nsf/vmp_flow/log_dir \
-                          --alsologtostderr
+# ## Variational Meta-Posterior via VMP-flow
+# ### Neural Spline Flow
+# python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_nsf_vmp_flow.py \
+#                           --workdir $WORK_DIR/8_items/nsf/vmp_flow \
+#                           --log_dir $WORK_DIR/8_items/nsf/vmp_flow/log_dir \
+#                           --alsologtostderr
 
-## MCMC
-## Single eta
-for eta in "${all_eta[@]}"
-do
-  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_mcmc.py \
-                            --workdir $WORK_DIR/8_items/mcmc/eta_floating_$eta \
-                            --config.eta_profiles_floating $eta \
-                            --config.path_variational_samples $WORK_DIR/8_items/nsf/eta_floating_${eta}/posterior_sample_dict.npz \
-                            --log_dir $WORK_DIR/8_items/mcmc/eta_floating_$eta/log_dir \
-                            --alsologtostderr
-done
+# ## MCMC
+# ## Single eta
+# for eta in "${all_eta[@]}"
+# do
+#   python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_mcmc.py \
+#                             --workdir $WORK_DIR/8_items/mcmc/eta_floating_$eta \
+#                             --config.eta_profiles_floating $eta \
+#                             --config.path_variational_samples $WORK_DIR/8_items/nsf/eta_floating_${eta}/posterior_sample_dict.npz \
+#                             --log_dir $WORK_DIR/8_items/mcmc/eta_floating_$eta/log_dir \
+#                             --alsologtostderr
+# done
 
-### ALL ITEMS ###
+# ### ALL ITEMS ###
 
-## Single eta, Mean field
-for eta in "${all_eta[@]}"
-do
-  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_mf.py \
-                            --workdir $WORK_DIR/all_items/mf/eta_floating_$eta \
-                            --config.eta_profiles_floating $eta \
-                            --log_dir $WORK_DIR/all_items/mf/eta_floating_$eta/log_dir \
-                            --alsologtostderr
-done
+# ## Single eta, Mean field
+# for eta in "${all_eta[@]}"
+# do
+#   python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_mf.py \
+#                             --workdir $WORK_DIR/all_items/mf/eta_floating_$eta \
+#                             --config.eta_profiles_floating $eta \
+#                             --log_dir $WORK_DIR/all_items/mf/eta_floating_$eta/log_dir \
+#                             --alsologtostderr
+# done
 
-## Single eta, Neural Spline Flow
-for eta in "${all_eta[@]}"
-do
-  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf.py \
-                            --workdir $WORK_DIR/all_items/nsf/eta_floating_$eta \
-                            --config.eta_profiles_floating $eta \
-                            --log_dir $WORK_DIR/all_items/nsf/eta_floating_$eta/log_dir \
-                            --alsologtostderr
-done
+# ## Single eta, Neural Spline Flow
+# for eta in "${all_eta[@]}"
+# do
+#   python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf.py \
+#                             --workdir $WORK_DIR/all_items/nsf/eta_floating_$eta \
+#                             --config.eta_profiles_floating $eta \
+#                             --log_dir $WORK_DIR/all_items/nsf/eta_floating_$eta/log_dir \
+#                             --alsologtostderr
+# done
 
 ## Variational Meta-Posterior via VMP-flow
 ### Neural Spline Flow
