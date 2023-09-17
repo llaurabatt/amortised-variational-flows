@@ -42,6 +42,14 @@ def get_config():
   config.prior_hparams.zeta_prior_b = 1.
   config.prior_hparams.w_prior_scale = 5.
   config.prior_hparams.a_prior_scale = 10.
+  config.prior_hparams_hparams.w_sampling_scale_alpha = 3.
+  config.prior_hparams_hparams.w_sampling_scale_beta = 1.
+  config.prior_hparams_hparams.a_sampling_scale_alpha = 3.
+  config.prior_hparams_hparams.a_sampling_scale_beta = 1.
+  config.prior_hparams_hparams.kernel_sampling_amplitude_alpha = 3.
+  config.prior_hparams_hparams.kernel_sampling_amplitude_beta = 1.
+  config.prior_hparams_hparams.kernel_sampling_lengthscale_alpha = 2.
+  config.prior_hparams_hparams.kernel_sampling_lengthscale_beta = 2.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
   config.kernel_kwargs.amplitude = 0.2

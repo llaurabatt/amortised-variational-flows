@@ -21,7 +21,7 @@ import optax
 from tensorflow_probability.substrates import jax as tfp
 
 import log_prob_fun_hp
-from log_prob_fun_hp import ModelParamsGlobal, ModelParamsLocations
+from log_prob_fun_hp import ModelParamsGlobal, ModelParamsLocations, sample_priorhparams_values
 import flows
 import plot
 from train_flow_hp import (load_data, make_optimizer, get_inducing_points,
@@ -45,7 +45,8 @@ np.set_printoptions(suppress=True, precision=4)
 def q_distr_global(
     flow_name: str,
     flow_kwargs: Dict[str, Any],
-    eta: Array,
+    cond_values: Array,
+    # eta: Array,
 ) -> Dict[str, Any]:
   """Sample from the posterior of the LALME model.
 
@@ -79,14 +80,16 @@ def q_distr_global(
   # Define normalizing flow
   q_distr = getattr(flows, flow_name + '_global_params')(**flow_kwargs)
 
-  num_samples = eta.shape[0]
+#   num_samples = eta.shape[0]
+  num_samples = cond_values.shape
 
   # Sample from flow
   (sample_flow_concat, sample_logprob,
    sample_base) = q_distr.sample_and_log_prob_with_base(
        seed=hk.next_rng_key(),
        sample_shape=(num_samples,),
-       context=[eta, None],
+       context=[cond_values, None],
+    #    context=[eta, None],
    )
 
   # Split flow into model parameters
@@ -109,7 +112,8 @@ def q_distr_loc_floating(
     flow_name: str,
     flow_kwargs: Dict[str, Any],
     global_params_base_sample: Array,
-    eta: Array,
+    cond_values: Array,
+    # eta: Array,
     name: str = 'loc_floating',
 ) -> Dict[str, Any]:
   """Sample from the posterior of floating locations
@@ -152,7 +156,8 @@ def q_distr_loc_floating(
   sample_flow_concat, sample_logprob = q_distr.sample_and_log_prob(
       seed=hk.next_rng_key(),
       sample_shape=(num_samples,),
-      context=[eta, global_params_base_sample],
+      context=[cond_values, global_params_base_sample],
+    #   context=[eta, global_params_base_sample],
   )
 
   # Split flow into model parameters
@@ -172,7 +177,8 @@ def q_distr_loc_random_anchor(
     flow_name: str,
     flow_kwargs: Dict[str, Any],
     global_params_base_sample: Array,
-    eta: Array,
+    cond_values: Array,
+    # eta: Array,
 ) -> Dict[str, Any]:
   """Sample from the posterior of floating locations
 
@@ -209,7 +215,8 @@ def q_distr_loc_random_anchor(
   (sample_flow_concat, sample_logprob) = q_distr.sample_and_log_prob(
       seed=hk.next_rng_key(),
       sample_shape=(num_samples,),
-      context=[eta, global_params_base_sample],
+      context=[cond_values, global_params_base_sample],
+    #   context=[eta, global_params_base_sample],
   )
 
   # Split flow into model parameters
@@ -231,8 +238,11 @@ def sample_all_flows(
     prng_key: PRNGKey,
     flow_name: str,
     flow_kwargs: Dict[str, Any],
-    smi_eta: SmiEta,
+    # smi_eta: SmiEta,
     include_random_anchor: bool,
+    cond_values: Array,
+    profile_n: float,
+    item_n: float,
 ) -> Dict[str, Any]:
   """Generate a sample from the entire flow posterior."""
 
@@ -246,7 +256,8 @@ def sample_all_flows(
       next(prng_seq),
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
-      eta=smi_eta['profiles'],
+      cond_values=cond_values,
+    #   eta=smi_eta['profiles'],
   )
   q_distr_out.update({f"global_{k}": v for k, v in q_distr_out_global.items()})
 
@@ -257,7 +268,8 @@ def sample_all_flows(
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
       global_params_base_sample=q_distr_out_global['sample_base'],
-      eta=smi_eta['profiles'],
+      cond_values=cond_values,
+    #   eta=smi_eta['profiles'],
       name='loc_floating',
   )
   q_distr_out['loc_floating_logprob'] = q_distr_out_loc_floating[
@@ -270,7 +282,8 @@ def sample_all_flows(
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
       global_params_base_sample=q_distr_out_global['sample_base'],
-      eta=smi_eta['profiles'],
+      cond_values=cond_values,
+    #   eta=smi_eta['profiles'],
       name='loc_floating_aux',
   )
   q_distr_out['locations_sample'] = ModelParamsLocations(
@@ -289,7 +302,8 @@ def sample_all_flows(
             flow_name=flow_name,
             flow_kwargs=flow_kwargs,
             global_params_base_sample=q_distr_out_global['sample_base'],
-            eta=smi_eta['profiles'],
+            cond_values=cond_values,
+            #   eta=smi_eta['profiles'],
         )
     q_distr_out['locations_sample'] = ModelParamsLocations(
         loc_floating=q_distr_out_loc_floating['sample'].loc_floating,
@@ -421,6 +435,13 @@ def elbo_estimate_along_eta(
 
   prng_seq = hk.PRNGSequence(prng_key)
 
+  # Sample hparams
+  prior_hparams = sample_priorhparams_fn(
+      prng_key=next(prng_seq),
+      num_samples=num_samples,
+      **sample_priorhparams_kwargs,
+  )
+
   # Sample eta values
   etas_profiles_floating = jax.random.beta(
       key=next(prng_seq),
@@ -429,23 +450,20 @@ def elbo_estimate_along_eta(
       shape=(num_samples,),
   )
 
-  # Sample hparams
-  prior_hparams = sample_priorhparams_fn(
-      prng_key=next(prng_seq),
-      num_samples=num_samples,
-      **sample_priorhparams_kwargs,
-  )
-
+  eta_profiles = jax.vmap(lambda eta_: jnp.where(profile_is_anchor,
+              1., eta_,))(etas_profiles_floating)
+  profile_n = eta_profiles.shape[1]
+  eta_items = jnp.ones((num_samples, len(batch['num_forms_tuple'])))
+  item_n = eta_items.shape[1]
+  
   smi_eta_elbo = {
-      'profiles':
-          jax.vmap(lambda eta_: jnp.where(
-              profile_is_anchor,
-              1.,
-              eta_,
-          ))(etas_profiles_floating),
-      'items':
-          jnp.ones((num_samples, len(batch['num_forms_tuple']))),
+      'profiles':eta_profiles,
+      'items':eta_items,    
   }
+  cond_values = jnp.hstack([jnp.stack(prior_hparams, axis=-1),
+                            jnp.stack(eta_profiles, axis=-1), 
+                            jnp.stack(eta_items, axis=-1),
+                            ])
 
   # Sample from flow
   q_distr_out = sample_all_flows(
@@ -453,7 +471,10 @@ def elbo_estimate_along_eta(
       prng_key=next(prng_seq),
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
-      smi_eta=smi_eta_elbo,
+      cond_values=cond_values,
+      profile_n=profile_n,
+      item_n=item_n,
+    #   smi_eta=smi_eta_elbo,
       include_random_anchor=include_random_anchor,
   )
 
@@ -1132,7 +1153,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             # 'prior_hparams': config.prior_hparams,
             'profile_is_anchor': profile_is_anchor,
             'kernel_name': config.kernel_name,
-            'kernel_kwargs': config.kernel_kwargs,
+            # 'kernel_kwargs': config.kernel_kwargs,
+            'sample_priorhparams_fn': sample_priorhparams_values,
+            'sample_priorhparams_kwargs': config.prior_hparams_hparams,
             'num_samples_gamma_profiles': config.num_samples_gamma_profiles,
             'gp_jitter': config.gp_jitter,
         },
