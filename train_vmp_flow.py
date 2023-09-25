@@ -1380,10 +1380,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         batch=train_ds,
         show_mu=True,
         show_zeta=True,
-        show_basis_fields=True,
+        show_basis_fields=False,
         # show_W_items=lalme_dataset['items'],
         # show_a_items=lalme_dataset['items'],
-        lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
+        # lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
         # lp_floating_traces=config.lp_floating_grid10,
         # lp_floating_grid10=config.lp_floating_grid10,
         lp_random_anchor=(

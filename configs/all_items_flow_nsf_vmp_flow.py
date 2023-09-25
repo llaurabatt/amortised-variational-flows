@@ -7,7 +7,7 @@ def get_config():
   """Get the hyperparameter configuration."""
   config = ml_collections.ConfigDict()
 
-  config.method = 'vmp_flow'
+  config.method = 'vmp_flow_allhp'
 
   # Dataset to use
   config.dataset_id = 'coarsen_all_items'
@@ -42,6 +42,8 @@ def get_config():
   config.prior_hparams.zeta_prior_b = 1.
   config.prior_hparams.w_prior_scale = 5.
   config.prior_hparams.a_prior_scale = 10.
+
+  config.prior_hparams_hparams = ml_collections.ConfigDict()
   config.prior_hparams_hparams.w_sampling_scale_alpha = 3.
   config.prior_hparams_hparams.w_sampling_scale_beta = 1.
   config.prior_hparams_hparams.a_sampling_scale_alpha = 3.
@@ -57,7 +59,7 @@ def get_config():
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 100_000
+  config.training_steps = 180 #100_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -96,7 +98,7 @@ def get_config():
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5
   config.log_img_at_end = True
-  config.save_samples = True
+  config.save_samples = False #True
 
   # Number of samples used in the plots.
   config.num_samples_plot = 10_000

@@ -6,7 +6,7 @@ set -x
 REPO_DIR=$PWD
 
 # Directory to save all outputs
-WORK_DIR=$HOME/spatial-smi-output-integrated
+WORK_DIR=$HOME/spatial-smi-output-ALLHP
 
 # Create output directory and install missing dependencies
 mkdir -p $WORK_DIR

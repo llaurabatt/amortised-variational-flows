@@ -1,5 +1,12 @@
 """Main script for running the LALME model."""
-
+#%%
+import debugpy
+#%%
+debugpy.listen(5678)
+print('Waiting for debugger')
+debugpy.wait_for_client()
+print('Debugger attached')
+#%%
 import os
 import warnings
 
@@ -13,6 +20,9 @@ import tensorflow as tf
 
 import train_flow
 import train_vmp_flow
+import train_vmp_flow_hp
+import train_vmp_flow_test
+import train_vmp_flow_allhp
 # import sample_mcmc_blackjax as sample_mcmc
 # import sample_mcmc_tfp as sample_mcmc
 
@@ -47,6 +57,12 @@ def main(_):
     train_flow.train_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
   elif FLAGS.config.method == 'vmp_flow':
     train_vmp_flow.train_and_evaluate(FLAGS.config, FLAGS.workdir)
+  elif FLAGS.config.method == 'vmp_flow_hp':
+    train_vmp_flow_hp.train_and_evaluate(FLAGS.config, FLAGS.workdir)
+  elif FLAGS.config.method == 'vmp_flow_test':
+    train_vmp_flow_test.train_and_evaluate(FLAGS.config, FLAGS.workdir)
+  elif FLAGS.config.method == 'vmp_flow_allhp':
+    train_vmp_flow_allhp.train_and_evaluate(FLAGS.config, FLAGS.workdir)
   elif FLAGS.config.method == 'mcmc':
     sample_mcmc.sample_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
   else:

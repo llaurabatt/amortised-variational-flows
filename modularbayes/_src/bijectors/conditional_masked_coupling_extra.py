@@ -15,7 +15,9 @@ class EtaConditionalMaskedCoupling(ConditionalBijector, distrax.MaskedCoupling):
   and can input an additional context variable
   """
 
-  def __init__(self, conditioner_eta: Callable[[Array], BijectorParams],
+  def __init__(self, 
+               conditioner_eta: Callable[[Array], 
+                                         BijectorParams],
                **kwargs):
     self._conditioner_eta = conditioner_eta
     super().__init__(**kwargs)
@@ -37,43 +39,43 @@ class EtaConditionalMaskedCoupling(ConditionalBijector, distrax.MaskedCoupling):
     masked_x = jnp.where(self._event_mask, x, 0.)
 
     ######### 
-    # if context[1] is None:
+    if context[1] is None:
+      conditioner_input = masked_x
+    else:
+      conditioner_input = jnp.concatenate([
+          masked_x,
+          jnp.broadcast_to(context[1], x.shape[:-1] + (context[1].shape[-1],)),
+      ],
+                                          axis=-1)
+
+    params = self._conditioner(conditioner_input) + self._conditioner_eta(
+        context[0])
+
+    #########  
+    # if ((context[0] is None) and(context[1] is None)):
     #   conditioner_input = masked_x
-    # else:
+
+    # elif context[0] is None:
     #   conditioner_input = jnp.concatenate([
     #       masked_x,
     #       jnp.broadcast_to(context[1], x.shape[:-1] + (context[1].shape[-1],)),
     #   ],
     #                                       axis=-1)
+    # elif context[1] is None:
+    #   conditioner_input = jnp.concatenate([
+    #       masked_x,
+    #       jnp.broadcast_to(context[0], x.shape[:-1] + (context[0].shape[-1],)),
+    #   ],
+    #                                       axis=-1)
+    # else:
+    #   conditioner_input = jnp.concatenate([
+    #       masked_x,
+    #       jnp.broadcast_to(context[1], x.shape[:-1] + (context[1].shape[-1],)),
+    #       jnp.broadcast_to(context[0], x.shape[:-1] + (context[0].shape[-1],)),
+    #   ],
+    #                                       axis=-1)
 
-    # params = self._conditioner(conditioner_input) + self._conditioner_eta(
-    #     context[0])
-
-    #########  
-    if ((context[0] is None) and(context[-1] is None)):
-      conditioner_input = masked_x
-
-    elif context[0] is None:
-      conditioner_input = jnp.concatenate([
-          masked_x,
-          jnp.broadcast_to(context[-1], x.shape[:-1] + (context[-1].shape[-1],)),
-      ],
-                                          axis=-1)
-    elif context[-1] is None:
-      conditioner_input = jnp.concatenate([
-          masked_x,
-          jnp.broadcast_to(context[0], x.shape[:-1] + (context[0].shape[-1],)),
-      ],
-                                          axis=-1)
-    else:
-      conditioner_input = jnp.concatenate([
-          masked_x,
-          jnp.broadcast_to(context[-1], x.shape[:-1] + (context[-1].shape[-1],)),
-          jnp.broadcast_to(context[0], x.shape[:-1] + (context[0].shape[-1],)),
-      ],
-                                          axis=-1)
-
-    params = self._conditioner(conditioner_input) 
+    # params = self._conditioner(conditioner_input) 
     ######### 
 
     y0, log_d = self._inner_bijector(params).forward_and_log_det(x)
@@ -93,40 +95,40 @@ class EtaConditionalMaskedCoupling(ConditionalBijector, distrax.MaskedCoupling):
     masked_y = jnp.where(self._event_mask, y, 0.)
 
     ######### 
-    # conditioner_input = jnp.concatenate([
-    #     masked_y,
-    #     jnp.broadcast_to(context[0], y.shape[:-1] + (context[0].shape[-1],)),
-    # ],
-    #                                     axis=-1)
+    conditioner_input = jnp.concatenate([
+        masked_y,
+        jnp.broadcast_to(context[0], y.shape[:-1] + (context[0].shape[-1],)),
+    ],
+                                        axis=-1)
 
-    # params = self._conditioner(conditioner_input) + self._conditioner_eta(
-    #     context[1])
+    params = self._conditioner(conditioner_input) + self._conditioner_eta(
+        context[1])
     
     ######### 
-    if ((context[0] is None) and(context[-1] is None)):
-      conditioner_input = masked_y
+    # if ((context[0] is None) and(context[1] is None)):
+    #   conditioner_input = masked_y
 
-    elif context[0] is None:
-      conditioner_input = jnp.concatenate([
-          masked_y,
-          jnp.broadcast_to(context[-1], x.shape[:-1] + (context[-1].shape[-1],)),
-      ],
-                                          axis=-1)
-    elif context[-1] is None:
-      conditioner_input = jnp.concatenate([
-          masked_y,
-          jnp.broadcast_to(context[0], x.shape[:-1] + (context[0].shape[-1],)),
-      ],
-                                          axis=-1)
-    else:
-      conditioner_input = jnp.concatenate([
-          masked_y,
-          jnp.broadcast_to(context[-1], x.shape[:-1] + (context[-1].shape[-1],)),
-          jnp.broadcast_to(context[0], x.shape[:-1] + (context[0].shape[-1],)),
-      ],
-                                          axis=-1)
+    # elif context[0] is None:
+    #   conditioner_input = jnp.concatenate([
+    #       masked_y,
+    #       jnp.broadcast_to(context[1], x.shape[:-1] + (context[1].shape[-1],)),
+    #   ],
+    #                                       axis=-1)
+    # elif context[-1] is None:
+    #   conditioner_input = jnp.concatenate([
+    #       masked_y,
+    #       jnp.broadcast_to(context[0], x.shape[:-1] + (context[0].shape[-1],)),
+    #   ],
+    #                                       axis=-1)
+    # else:
+    #   conditioner_input = jnp.concatenate([
+    #       masked_y,
+    #       jnp.broadcast_to(context[1], x.shape[:-1] + (context[1].shape[-1],)),
+    #       jnp.broadcast_to(context[0], x.shape[:-1] + (context[0].shape[-1],)),
+    #   ],
+    #                                       axis=-1)
 
-    params = self._conditioner(conditioner_input) 
+    # params = self._conditioner(conditioner_input) 
     ######### 
     
 

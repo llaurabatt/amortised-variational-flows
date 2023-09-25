@@ -27,8 +27,8 @@ from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
                                       IntLike, List, Optional, PRNGKey,
                                       Sequence, SmiEta, Tuple, Union)
 
-import log_prob_fun_hp
-from log_prob_fun_hp import ModelParamsGlobal, ModelParamsLocations
+import log_prob_fun_allhp
+from log_prob_fun_allhp import ModelParamsGlobal, ModelParamsLocations, PriorHparams
 import data
 import flows
 import plot
@@ -153,18 +153,18 @@ def make_optimizer(
   ])
   return optimizer
 
+
 def get_inducing_points(
     dataset: Batch,
     inducing_grid_shape: Tuple[int, int],
-    # kernel_name: str,
-    # kernel_kwargs: Dict[str, Any],
+    kernel_name: str,
+    kernel_kwargs: Dict[str, Any],
     gp_jitter: float,
 ) -> Dict[str, Array]:
   """Define grid of inducing point for GPs."""
   dataset = dataset.copy()
 
   num_inducing_points = math.prod(inducing_grid_shape)
-  dataset['num_inducing_points'] = num_inducing_points
 
   # Inducing points are defined as a grid on the unit square
   loc_inducing = jnp.meshgrid(
@@ -173,67 +173,45 @@ def get_inducing_points(
   loc_inducing = jnp.stack(loc_inducing, axis=-1).reshape(-1, 2)
   dataset['loc_inducing'] = loc_inducing
   # Compute GP covariance between inducing values
+  dataset['cov_inducing'] = getattr(kernels,
+                                    kernel_name)(**kernel_kwargs).matrix(
+                                        x1=dataset['loc_inducing'],
+                                        x2=dataset['loc_inducing'],
+                                    )
+
+  # Add jitter
+  dataset['cov_inducing'] = dataset['cov_inducing'] + gp_jitter * jnp.eye(
+      num_inducing_points)
+  # Check that the covarince is symmetric
+  assert issymmetric(
+      dataset['cov_inducing']), 'Covariance Matrix is not symmetric'
+
+  # Cholesky factor of covariance
+  dataset['cov_inducing_chol'] = jnp.linalg.cholesky(dataset['cov_inducing'])
+
+  # Inverse of covariance of inducing values
+  # dataset['cov_inducing_inv'] = jnp.linalg.inv(dataset['cov_inducing'])
+  cov_inducing_chol_inv = jax.scipy.linalg.solve_triangular(
+      a=dataset['cov_inducing_chol'],
+      b=jnp.eye(num_inducing_points),
+      lower=True,
+  )
+  dataset['cov_inducing_inv'] = jnp.matmul(
+      cov_inducing_chol_inv.T, cov_inducing_chol_inv, precision='highest')
+
+  # Check that the inverse is symmetric
+  assert issymmetric(
+      dataset['cov_inducing_inv']), 'Covariance Matrix is not symmetric'
+  # Check that there are no NaNs
+  assert ~jnp.any(jnp.isnan(dataset['cov_inducing_inv']))
+  # Cross covariance between anchor and inducing values
+  dataset['cov_anchor_inducing'] = getattr(
+      kernels, kernel_name)(**kernel_kwargs).matrix(
+          x1=dataset['loc'][:dataset['num_profiles_anchor'], :],
+          x2=dataset['loc_inducing'],
+      )
 
   return dataset
-
-# def get_inducing_points(
-#     dataset: Batch,
-#     inducing_grid_shape: Tuple[int, int],
-#     kernel_name: str,
-#     kernel_kwargs: Dict[str, Any],
-#     gp_jitter: float,
-# ) -> Dict[str, Array]:
-#   """Define grid of inducing point for GPs."""
-#   dataset = dataset.copy()
-
-#   num_inducing_points = math.prod(inducing_grid_shape)
-
-#   # Inducing points are defined as a grid on the unit square
-#   loc_inducing = jnp.meshgrid(
-#       jnp.linspace(0, 1, inducing_grid_shape[0]),
-#       jnp.linspace(0, 1, inducing_grid_shape[1]))
-#   loc_inducing = jnp.stack(loc_inducing, axis=-1).reshape(-1, 2)
-#   dataset['loc_inducing'] = loc_inducing
-#   # Compute GP covariance between inducing values
-#   dataset['cov_inducing'] = getattr(kernels,
-#                                     kernel_name)(**kernel_kwargs).matrix(
-#                                         x1=dataset['loc_inducing'],
-#                                         x2=dataset['loc_inducing'],
-#                                     )
-
-#   # Add jitter
-#   dataset['cov_inducing'] = dataset['cov_inducing'] + gp_jitter * jnp.eye(
-#       num_inducing_points)
-#   # Check that the covarince is symmetric
-#   assert issymmetric(
-#       dataset['cov_inducing']), 'Covariance Matrix is not symmetric'
-
-#   # Cholesky factor of covariance
-#   dataset['cov_inducing_chol'] = jnp.linalg.cholesky(dataset['cov_inducing'])
-
-#   # Inverse of covariance of inducing values
-#   # dataset['cov_inducing_inv'] = jnp.linalg.inv(dataset['cov_inducing'])
-#   cov_inducing_chol_inv = jax.scipy.linalg.solve_triangular(
-#       a=dataset['cov_inducing_chol'],
-#       b=jnp.eye(num_inducing_points),
-#       lower=True,
-#   )
-#   dataset['cov_inducing_inv'] = jnp.matmul(
-#       cov_inducing_chol_inv.T, cov_inducing_chol_inv, precision='highest')
-
-#   # Check that the inverse is symmetric
-#   assert issymmetric(
-#       dataset['cov_inducing_inv']), 'Covariance Matrix is not symmetric'
-#   # Check that there are no NaNs
-#   assert ~jnp.any(jnp.isnan(dataset['cov_inducing_inv']))
-#   # Cross covariance between anchor and inducing values
-#   dataset['cov_anchor_inducing'] = getattr(
-#       kernels, kernel_name)(**kernel_kwargs).matrix(
-#           x1=dataset['loc'][:dataset['num_profiles_anchor'], :],
-#           x2=dataset['loc_inducing'],
-#       )
-
-#   return dataset
 
 
 def q_distr_global(
@@ -527,7 +505,7 @@ def sample_lalme_az(
       # Get a sample of the basis GPs on profiles locations
       # conditional on values at the inducing locations.
       gamma_sample_, _ = jax.vmap(
-          lambda key_, global_, locations_: log_prob_fun_hp.
+          lambda key_, global_, locations_: log_prob_fun_allhp.
           sample_gamma_profiles_given_gamma_inducing(
               batch=batch,
               model_params_global=global_,
@@ -577,11 +555,9 @@ def logprob_lalme(
     model_params_locations: ModelParamsLocations,
     prior_hparams: Dict[str, Any],
     kernel_name: str,
-    # kernel_kwargs: Dict[str, Any],
+    kernel_kwargs: Dict[str, Any],
     num_samples_gamma_profiles: int,
-    is_smi:bool,
-    smi_eta:Optional[Dict[str, Any]],
-    # smi_eta_profiles: Optional[Array],
+    smi_eta_profiles: Optional[Array],
     gp_jitter: float = 1e-5,
     random_anchor: bool = False,
 ):
@@ -590,27 +566,24 @@ def logprob_lalme(
   """
 
   # Put Smi eta values into a dictionary.
-#   if smi_eta_profiles is not None:
-#     smi_eta = {
-#         'profiles': smi_eta_profiles,
-#         'items': jnp.ones(len(batch['num_forms_tuple']))
-#     }
-#   else:
-#     smi_eta = None
-  if is_smi is False:
-    smi_eta=None
+  if smi_eta_profiles is not None:
+    smi_eta = {
+        'profiles': smi_eta_profiles,
+        'items': jnp.ones(len(batch['num_forms_tuple']))
+    }
+  else:
+    smi_eta = None
 
   # Sample the basis GPs on profiles locations conditional on GP values on the
   # inducing points.
   model_params_gamma_profiles_sample, gamma_profiles_logprob_sample = jax.vmap(
-      lambda key_: log_prob_fun_hp.sample_gamma_profiles_given_gamma_inducing(
+      lambda key_: log_prob_fun_allhp.sample_gamma_profiles_given_gamma_inducing(
           batch=batch,
-          prior_hparams=prior_hparams,
           model_params_global=model_params_global,
           model_params_locations=model_params_locations,
           prng_key=key_,
           kernel_name=kernel_name,
-        #   kernel_kwargs=kernel_kwargs,
+          kernel_kwargs=kernel_kwargs,
           gp_jitter=gp_jitter,
           include_random_anchor=random_anchor,
       ))(
@@ -618,13 +591,12 @@ def logprob_lalme(
 
   # Average joint logprob across samples of gamma_profiles
   log_prob = jax.vmap(lambda gamma_profiles_, gamma_profiles_logprob_:
-                      log_prob_fun_hp.logprob_joint(
+                      log_prob_fun_allhp.logprob_joint(
                           batch=batch,
                           model_params_global=model_params_global,
                           model_params_locations=model_params_locations,
                           model_params_gamma_profiles=gamma_profiles_,
                           gamma_profiles_logprob=gamma_profiles_logprob_,
-                          is_smi=is_smi,
                           smi_eta=smi_eta,
                           random_anchor=random_anchor,
                           prior_hparams=prior_hparams,
@@ -923,8 +895,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   train_ds = get_inducing_points(
       dataset=train_ds,
       inducing_grid_shape=config.flow_kwargs.inducing_grid_shape,
-    #   kernel_name=config.kernel_name,
-    #   kernel_kwargs=config.kernel_kwargs,
+      kernel_name=config.kernel_name,
+      kernel_kwargs=config.kernel_kwargs,
       gp_jitter=config.gp_jitter,
   )
 
