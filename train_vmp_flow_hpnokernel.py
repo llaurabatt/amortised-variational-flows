@@ -20,11 +20,11 @@ import optax
 
 from tensorflow_probability.substrates import jax as tfp
 
-import log_prob_fun_test
-from log_prob_fun_test import ModelParamsGlobal, ModelParamsLocations, PriorHparams, sample_priorhparams_values
+import log_prob_fun_hpnokernel
+from log_prob_fun_hpnokernel import ModelParamsGlobal, ModelParamsLocations, PriorHparams, sample_priorhparams_values
 import flows
 import plot
-from train_flow_test import (load_data, make_optimizer, get_inducing_points,
+from train_flow_hpnokernel import (load_data, make_optimizer, get_inducing_points,
                         error_locations_estimate, logprob_lalme)
 
 from modularbayes._src.utils.training import TrainState
@@ -368,7 +368,7 @@ def sample_lalme_az(
       # Get a sample of the basis GPs on profiles locations
       # conditional on values at the inducing locations.
       gamma_sample_, _ = jax.vmap(
-          lambda key_, global_, locations_: log_prob_fun_test.
+          lambda key_, global_, locations_: log_prob_fun_hpnokernel.
           sample_gamma_profiles_given_gamma_inducing(
               batch=batch,
               model_params_global=global_,
