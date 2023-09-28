@@ -13,7 +13,7 @@ import haiku as hk
 from modularbayes._src.typing import (Any, Array, Batch, Dict, List, Optional,
                                       PRNGKey, SmiEta, Union, Tuple)
 
-from misc import log1mexpm, force_symmetric
+from misc import log1mexpm, force_symmetric, issymmetric
 
 tfd = tfp.distributions
 kernels = tfp.math.psd_kernels
@@ -48,8 +48,9 @@ PriorHparams = namedtuple(
     "prior_hparams",
     field_names=('w_prior_scale', 'a_prior_scale', 
                  'mu_prior_concentration', 'mu_prior_rate', 
-                 'zeta_prior_a', 'zeta_prior_b'),
-    defaults=(5., 10., 1., 0.5, 1., 1.),
+                 'zeta_prior_a', 'zeta_prior_b', 
+                 'kernel_amplitude', 'kernel_length_scale'),
+    defaults=(5., 10., 1., 0.5, 1., 1., 0.2, 0.3),
 )
 
 
@@ -148,9 +149,12 @@ def sample_gamma_profiles_given_gamma_inducing(
     model_params_locations: ModelParamsLocations,
     prng_key: PRNGKey,
     kernel_name: str,
-    kernel_kwargs: Dict[str, Any],
+    # kernel_kwargs: Dict[str, Any],
+    prior_hparams:PriorHparams,
     gp_jitter: float,
     include_random_anchor: bool,
+    num_profiles_anchor:int,
+    num_inducing_points:int,
 ) -> Tuple[ModelParamsGammaProfiles, Dict[str, Array]]:
   """Sample from the conditional distribution p(gamma_p|gamma_u).
 
@@ -186,9 +190,53 @@ def sample_gamma_profiles_given_gamma_inducing(
   ### Sample Gamma on Anchor profiles
   ##########################################################################################
   gamma_anchor_cov = getattr(
-      kernels, kernel_name)(**kernel_kwargs).matrix(
-          x1=batch['loc'][:batch['num_profiles_anchor'], :],
-          x2=batch['loc'][:batch['num_profiles_anchor'], :],
+      kernels, kernel_name)(amplitude=prior_hparams.kernel_amplitude,
+                        length_scale=prior_hparams.kernel_length_scale).matrix(
+          x1=batch['loc'][:num_profiles_anchor, :],#[:batch['num_profiles_anchor'], :],
+          x2=batch['loc'][:num_profiles_anchor, :],#[:batch['num_profiles_anchor'], :],
+      )
+  ##########################################################################################
+  # Compute GP covariance between inducing values
+  gamma_inducing_cov = getattr(kernels,
+                                    kernel_name)(amplitude=prior_hparams.kernel_amplitude,
+                        length_scale=prior_hparams.kernel_length_scale).matrix(
+                                        x1=batch['loc_inducing'],
+                                        x2=batch['loc_inducing'],
+                                    )
+
+  # Add jitter
+  gamma_inducing_cov = gamma_inducing_cov + gp_jitter * jnp.eye(
+       num_inducing_points)
+  # Check that the covarince is symmetric
+#   assert issymmetric(
+#       gamma_inducing_cov), 'Covariance Matrix is not symmetric'
+
+  # Cholesky factor of covariance
+  gamma_inducing_cov_chol = jnp.linalg.cholesky(gamma_inducing_cov)
+
+  # Inverse of covariance of inducing values
+  # dataset['cov_inducing_inv'] = jnp.linalg.inv(dataset['cov_inducing'])
+  cov_inducing_chol_inv = jax.scipy.linalg.solve_triangular(
+      a=gamma_inducing_cov_chol,
+      b=jnp.eye(num_inducing_points),
+      lower=True,
+  )
+  gamma_inducing_cov_inv = jnp.matmul(
+      cov_inducing_chol_inv.T, cov_inducing_chol_inv, precision='highest')
+
+  # Check that the inverse is symmetric
+#   assert issymmetric(
+#       gamma_inducing_cov_inv), 'Covariance Matrix is not symmetric'
+
+  # Check that there are no NaNs
+#   assert ~jnp.any(jnp.isnan(gamma_inducing_cov_inv))
+
+  # Cross covariance between anchor and inducing values
+  gamma_anchor_inducing_cov = getattr(
+      kernels, kernel_name)(amplitude=prior_hparams.kernel_amplitude,
+                        length_scale=prior_hparams.kernel_length_scale).matrix(
+          x1=batch['loc'][:num_profiles_anchor, :],
+          x2=batch['loc_inducing'],
       )
   ##########################################################################################
 
@@ -198,8 +246,8 @@ def sample_gamma_profiles_given_gamma_inducing(
       lambda gamma_inducing: conditional_gaussian_x_given_y(
           y=gamma_inducing,
           cov_x=gamma_anchor_cov, #batch['cov_anchor'],
-          cov_xy=batch['cov_anchor_inducing'],
-          cov_y_inv=batch['cov_inducing_inv'],
+          cov_xy=gamma_anchor_inducing_cov,
+          cov_y_inv=gamma_inducing_cov_inv,
       ))(
           model_params_global.gamma_inducing)
 
@@ -225,12 +273,14 @@ def sample_gamma_profiles_given_gamma_inducing(
   kernel = getattr(kernels, kernel_name)
 
   # Compute covariance (kernel) between floating locations.
-  cov_floating = kernel(**kernel_kwargs).matrix(
+  cov_floating = kernel(amplitude=prior_hparams.kernel_amplitude,
+                        length_scale=prior_hparams.kernel_length_scale).matrix(
       model_params_locations.loc_floating,
       model_params_locations.loc_floating,
   )
   # Compute covariance (kernel) between floating and inducing locations.
-  cov_floating_inducing = kernel(**kernel_kwargs).matrix(
+  cov_floating_inducing = kernel(amplitude=prior_hparams.kernel_amplitude,
+                        length_scale=prior_hparams.kernel_length_scale).matrix(
       model_params_locations.loc_floating,
       batch['loc_inducing'],
   )
@@ -242,7 +292,7 @@ def sample_gamma_profiles_given_gamma_inducing(
           y=gamma_inducing,
           cov_x=cov_floating,
           cov_xy=cov_floating_inducing,
-          cov_y_inv=batch['cov_inducing_inv'],
+          cov_y_inv=gamma_inducing_cov_inv,
       ))(
           model_params_global.gamma_inducing)
 
@@ -266,11 +316,13 @@ def sample_gamma_profiles_given_gamma_inducing(
   ### Sample Gamma on (random) Anchor locations
   if include_random_anchor:
     # Compute covariance (kernel) on random anchor locations.
-    cov_random_anchor = kernel(**kernel_kwargs).matrix(
+    cov_random_anchor = kernel(amplitude=prior_hparams.kernel_amplitude,
+                        length_scale=prior_hparams.kernel_length_scale).matrix(
         model_params_locations.loc_random_anchor,
         model_params_locations.loc_random_anchor,
     )
-    cov_random_anchor_inducing = kernel(**kernel_kwargs).matrix(
+    cov_random_anchor_inducing = kernel(amplitude=prior_hparams.kernel_amplitude,
+                        length_scale=prior_hparams.kernel_length_scale).matrix(
         model_params_locations.loc_random_anchor,
         batch['loc_inducing'],
     )
@@ -282,7 +334,7 @@ def sample_gamma_profiles_given_gamma_inducing(
             y=gamma_inducing,
             cov_x=cov_random_anchor,
             cov_xy=cov_random_anchor_inducing,
-            cov_y_inv=batch['cov_inducing_inv'],
+            cov_y_inv=gamma_inducing_cov_inv,
         ))(
             model_params_global.gamma_inducing)
 
@@ -305,7 +357,7 @@ def sample_gamma_profiles_given_gamma_inducing(
 
   model_params_gamma = ModelParamsGammaProfiles(**gamma_sample_dict)
 
-  return model_params_gamma, gamma_logprob_dict
+  return model_params_gamma, gamma_logprob_dict, gamma_inducing_cov_chol
 
 
 def logprob_joint(
@@ -315,6 +367,7 @@ def logprob_joint(
     model_params_gamma_profiles: ModelParamsGammaProfiles,
     gamma_profiles_logprob: Dict[str, Array],
     prior_hparams:PriorHparams,
+    gamma_inducing_cov_chol:Array,
     smi_eta: Optional[SmiEta] = None,
     # w_prior_scale: float = 5.,
     # a_prior_scale: float = 10.,
@@ -379,7 +432,7 @@ def logprob_joint(
   log_prob_gamma_inducing = distrax.Independent(
       distrax.MultivariateNormalTri(
           loc=jnp.zeros((1, num_inducing_points)),
-          scale_tri=batch['cov_inducing_chol']),
+          scale_tri=gamma_inducing_cov_chol), #batch['cov_inducing_chol']),
       reinterpreted_batch_ndims=1).log_prob
 
   # P(loc_floating) : Prior on the floating locations
@@ -514,6 +567,15 @@ def sample_priorhparams_values(
       concentration=a_sampling_scale_alpha, 
       scale=a_sampling_scale_beta).sample(
       sample_shape=(num_samples,), seed=prng_keys[1]),
+    kernel_amplitude=tfd.InverseGamma(
+      concentration=kernel_sampling_amplitude_alpha, 
+      scale=kernel_sampling_amplitude_beta).sample(
+      sample_shape=(num_samples,), seed=prng_keys[3]),
+     kernel_length_scale=jax.random.gamma(
+      key=prng_keys[3],
+      a=kernel_sampling_lengthscale_alpha, 
+      shape=(num_samples,),
+      )/kernel_sampling_lengthscale_beta,
      mu_prior_concentration=jnp.ones((num_samples,))*1.,
      mu_prior_rate=jnp.ones((num_samples,))*0.5,
      zeta_prior_a=jnp.ones((num_samples,))*1.,

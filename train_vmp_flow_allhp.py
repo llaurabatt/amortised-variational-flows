@@ -316,6 +316,7 @@ def sample_lalme_az(
     state_list: List[TrainState],
     batch: Batch,
     cond_values: Array,
+    prior_hparams:PriorHparams,
     # smi_eta: SmiEta,
     prng_key: PRNGKey,
     config: ConfigDict,
@@ -338,6 +339,8 @@ def sample_lalme_az(
   split_idx_ = np.arange(num_samples_chunk, cond_values.shape[0],
                          num_samples_chunk).tolist()
   cond_values_chunked_ = jnp.split(cond_values, split_idx_, axis=0)
+  prior_hparams_chunked_ = jax.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
+                                   prior_hparams)
 
 #   split_idx_ = np.arange(num_samples_chunk, smi_eta['profiles'].shape[0],
 #                          num_samples_chunk).tolist() # list of idxs multiple of num_samples_chunk up to tot samples
@@ -349,7 +352,7 @@ def sample_lalme_az(
 #   ]
 
 
-  for cond_val_ in cond_values_chunked_:
+  for cond_val_, prior_hparams_ in zip(cond_values_chunked_,prior_hparams_chunked_):
     # Sample from variational posterior
     q_distr_out = sample_all_flows(
         params_tuple=[state.params for state in state_list],
@@ -367,16 +370,19 @@ def sample_lalme_az(
     if include_gamma:
       # Get a sample of the basis GPs on profiles locations
       # conditional on values at the inducing locations.
-      gamma_sample_, _ = jax.vmap(
+      gamma_sample_, _, _ = jax.vmap(
           lambda key_, global_, locations_: log_prob_fun_allhp.
           sample_gamma_profiles_given_gamma_inducing(
               batch=batch,
               model_params_global=global_,
               model_params_locations=locations_,
               prng_key=key_,
+              prior_hparams=prior_hparams_,
               kernel_name=config.kernel_name,
-              kernel_kwargs=config.kernel_kwargs,
+              # kernel_kwargs=config.kernel_kwargs,
               gp_jitter=config.gp_jitter,
+              num_profiles_anchor=config.num_profiles_anchor,
+              num_inducing_points=config.num_inducing_points,
               include_random_anchor=config.include_random_anchor,
           ))(
               jax.random.split(next(prng_seq), cond_val_.shape[0]),
@@ -425,9 +431,11 @@ def elbo_estimate_along_eta(
     sample_priorhparams_kwargs: Dict[str, Any],
     include_random_anchor: bool,
     profile_is_anchor: Array,
+    num_profiles_anchor:int,
+    num_inducing_points:int,
     # prior_hparams: Dict[str, Any],
     kernel_name: Optional[str] = None,
-    kernel_kwargs: Optional[Dict[str, Any]] = None,
+    # kernel_kwargs: Optional[Dict[str, Any]] = None,
     num_samples_gamma_profiles: int = 0,
     gp_jitter: Optional[float] = None,
 ) -> Dict[str, Array]:
@@ -490,10 +498,12 @@ def elbo_estimate_along_eta(
           model_params_locations=locations_,
           prior_hparams=prior_hparams_i,
           kernel_name=kernel_name,
-          kernel_kwargs=kernel_kwargs,
+          # kernel_kwargs=kernel_kwargs,
           num_samples_gamma_profiles=num_samples_gamma_profiles,
           smi_eta_profiles=smi_eta_,
           gp_jitter=gp_jitter,
+          num_profiles_anchor=num_profiles_anchor,
+          num_inducing_points=num_inducing_points,
           random_anchor=False,
       ))(
           jax.random.split(next(prng_seq), num_samples),
@@ -523,10 +533,12 @@ def elbo_estimate_along_eta(
           model_params_locations=locations_,
           prior_hparams=prior_hparams_i,
           kernel_name=kernel_name,
-          kernel_kwargs=kernel_kwargs,
+          # kernel_kwargs=kernel_kwargs,
           num_samples_gamma_profiles=num_samples_gamma_profiles,
           smi_eta_profiles=None,
           gp_jitter=gp_jitter,
+          num_profiles_anchor=num_profiles_anchor,
+          num_inducing_points=num_inducing_points,
           random_anchor=False,
       ))(
           jax.random.split(next(prng_seq), num_samples),
@@ -557,10 +569,12 @@ def elbo_estimate_along_eta(
             model_params_locations=locations_,
             prior_hparams=prior_hparams_i,
             kernel_name=kernel_name,
-            kernel_kwargs=kernel_kwargs,
+            # kernel_kwargs=kernel_kwargs,
             num_samples_gamma_profiles=num_samples_gamma_profiles,
             smi_eta_profiles=None,
             gp_jitter=gp_jitter,
+            num_profiles_anchor=num_profiles_anchor,
+            num_inducing_points=num_inducing_points,
             random_anchor=True,
         ))(
             jax.random.split(next(prng_seq), num_samples),
@@ -727,6 +741,7 @@ def log_images(
         state_list=state_list,
         batch=batch,
         cond_values=cond_values,
+        prior_hparams=prior_hparams,
         # smi_eta=smi_eta_,
         prng_key=next(prng_seq),
         config=config,
@@ -950,9 +965,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   train_ds = get_inducing_points(
       dataset=train_ds,
       inducing_grid_shape=config.flow_kwargs.inducing_grid_shape,
-      kernel_name=config.kernel_name,
-      kernel_kwargs=config.kernel_kwargs,
-      gp_jitter=config.gp_jitter,
+      # kernel_name=config.kernel_name,
+      # kernel_kwargs=config.kernel_kwargs,
+      # gp_jitter=config.gp_jitter,
   )
 
   # These parameters affect the dimension of the flow
@@ -1178,11 +1193,13 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             # 'prior_hparams': config.prior_hparams,
             'profile_is_anchor': profile_is_anchor,
             'kernel_name': config.kernel_name,
-            'kernel_kwargs': config.kernel_kwargs,
+            # 'kernel_kwargs': config.kernel_kwargs,
             'sample_priorhparams_fn': sample_priorhparams_values,
             'sample_priorhparams_kwargs': config.prior_hparams_hparams,
             'num_samples_gamma_profiles': config.num_samples_gamma_profiles,
             'gp_jitter': config.gp_jitter,
+            'num_profiles_anchor':config.num_profiles_anchor,
+            'num_inducing_points':config.num_inducing_points,
         },
     )
 
@@ -1420,6 +1437,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           state_list=state_list,
           batch=train_ds,
           cond_values=cond_values,
+          prior_hparams=prior_hparams,
         #   smi_eta=smi_eta_,
           prng_key=next(prng_seq),
           config=config,

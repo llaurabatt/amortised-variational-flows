@@ -157,14 +157,15 @@ def make_optimizer(
 def get_inducing_points(
     dataset: Batch,
     inducing_grid_shape: Tuple[int, int],
-    kernel_name: str,
-    kernel_kwargs: Dict[str, Any],
-    gp_jitter: float,
+    # kernel_name: str,
+    # kernel_kwargs: Dict[str, Any],
+    # gp_jitter: float,
 ) -> Dict[str, Array]:
   """Define grid of inducing point for GPs."""
   dataset = dataset.copy()
 
   num_inducing_points = math.prod(inducing_grid_shape)
+  dataset['num_inducing_points'] = num_inducing_points
 
   # Inducing points are defined as a grid on the unit square
   loc_inducing = jnp.meshgrid(
@@ -172,44 +173,45 @@ def get_inducing_points(
       jnp.linspace(0, 1, inducing_grid_shape[1]))
   loc_inducing = jnp.stack(loc_inducing, axis=-1).reshape(-1, 2)
   dataset['loc_inducing'] = loc_inducing
-  # Compute GP covariance between inducing values
-  dataset['cov_inducing'] = getattr(kernels,
-                                    kernel_name)(**kernel_kwargs).matrix(
-                                        x1=dataset['loc_inducing'],
-                                        x2=dataset['loc_inducing'],
-                                    )
 
-  # Add jitter
-  dataset['cov_inducing'] = dataset['cov_inducing'] + gp_jitter * jnp.eye(
-      num_inducing_points)
-  # Check that the covarince is symmetric
-  assert issymmetric(
-      dataset['cov_inducing']), 'Covariance Matrix is not symmetric'
+#   # Compute GP covariance between inducing values
+#   dataset['cov_inducing'] = getattr(kernels,
+#                                     kernel_name)(**kernel_kwargs).matrix(
+#                                         x1=dataset['loc_inducing'],
+#                                         x2=dataset['loc_inducing'],
+#                                     )
 
-  # Cholesky factor of covariance
-  dataset['cov_inducing_chol'] = jnp.linalg.cholesky(dataset['cov_inducing'])
+#   # Add jitter
+#   dataset['cov_inducing'] = dataset['cov_inducing'] + gp_jitter * jnp.eye(
+#       num_inducing_points)
+#   # Check that the covarince is symmetric
+#   assert issymmetric(
+#       dataset['cov_inducing']), 'Covariance Matrix is not symmetric'
 
-  # Inverse of covariance of inducing values
-  # dataset['cov_inducing_inv'] = jnp.linalg.inv(dataset['cov_inducing'])
-  cov_inducing_chol_inv = jax.scipy.linalg.solve_triangular(
-      a=dataset['cov_inducing_chol'],
-      b=jnp.eye(num_inducing_points),
-      lower=True,
-  )
-  dataset['cov_inducing_inv'] = jnp.matmul(
-      cov_inducing_chol_inv.T, cov_inducing_chol_inv, precision='highest')
+#   # Cholesky factor of covariance
+#   dataset['cov_inducing_chol'] = jnp.linalg.cholesky(dataset['cov_inducing'])
 
-  # Check that the inverse is symmetric
-  assert issymmetric(
-      dataset['cov_inducing_inv']), 'Covariance Matrix is not symmetric'
-  # Check that there are no NaNs
-  assert ~jnp.any(jnp.isnan(dataset['cov_inducing_inv']))
-  # Cross covariance between anchor and inducing values
-  dataset['cov_anchor_inducing'] = getattr(
-      kernels, kernel_name)(**kernel_kwargs).matrix(
-          x1=dataset['loc'][:dataset['num_profiles_anchor'], :],
-          x2=dataset['loc_inducing'],
-      )
+#   # Inverse of covariance of inducing values
+#   # dataset['cov_inducing_inv'] = jnp.linalg.inv(dataset['cov_inducing'])
+#   cov_inducing_chol_inv = jax.scipy.linalg.solve_triangular(
+#       a=dataset['cov_inducing_chol'],
+#       b=jnp.eye(num_inducing_points),
+#       lower=True,
+#   )
+#   dataset['cov_inducing_inv'] = jnp.matmul(
+#       cov_inducing_chol_inv.T, cov_inducing_chol_inv, precision='highest')
+
+#   # Check that the inverse is symmetric
+#   assert issymmetric(
+#       dataset['cov_inducing_inv']), 'Covariance Matrix is not symmetric'
+#   # Check that there are no NaNs
+#   assert ~jnp.any(jnp.isnan(dataset['cov_inducing_inv']))
+#   # Cross covariance between anchor and inducing values
+#   dataset['cov_anchor_inducing'] = getattr(
+#       kernels, kernel_name)(**kernel_kwargs).matrix(
+#           x1=dataset['loc'][:dataset['num_profiles_anchor'], :],
+#           x2=dataset['loc_inducing'],
+#       )
 
   return dataset
 
@@ -504,7 +506,7 @@ def sample_lalme_az(
     if include_gamma:
       # Get a sample of the basis GPs on profiles locations
       # conditional on values at the inducing locations.
-      gamma_sample_, _ = jax.vmap(
+      gamma_sample_, _, _ = jax.vmap(
           lambda key_, global_, locations_: log_prob_fun_allhp.
           sample_gamma_profiles_given_gamma_inducing(
               batch=batch,
@@ -555,8 +557,10 @@ def logprob_lalme(
     model_params_locations: ModelParamsLocations,
     prior_hparams: Dict[str, Any],
     kernel_name: str,
-    kernel_kwargs: Dict[str, Any],
+    # kernel_kwargs: Dict[str, Any],
     num_samples_gamma_profiles: int,
+    num_profiles_anchor: int,
+    num_inducing_points:int,
     smi_eta_profiles: Optional[Array],
     gp_jitter: float = 1e-5,
     random_anchor: bool = False,
@@ -576,15 +580,18 @@ def logprob_lalme(
 
   # Sample the basis GPs on profiles locations conditional on GP values on the
   # inducing points.
-  model_params_gamma_profiles_sample, gamma_profiles_logprob_sample = jax.vmap(
+  model_params_gamma_profiles_sample, gamma_profiles_logprob_sample, gamma_inducing_cov_chol = jax.vmap(
       lambda key_: log_prob_fun_allhp.sample_gamma_profiles_given_gamma_inducing(
           batch=batch,
           model_params_global=model_params_global,
           model_params_locations=model_params_locations,
           prng_key=key_,
           kernel_name=kernel_name,
-          kernel_kwargs=kernel_kwargs,
+        #   kernel_kwargs=kernel_kwargs,
+          prior_hparams=prior_hparams,
           gp_jitter=gp_jitter,
+          num_profiles_anchor=num_profiles_anchor,
+          num_inducing_points=num_inducing_points,
           include_random_anchor=random_anchor,
       ))(
           jax.random.split(prng_key, num_samples_gamma_profiles))
@@ -600,6 +607,7 @@ def logprob_lalme(
                           smi_eta=smi_eta,
                           random_anchor=random_anchor,
                           prior_hparams=prior_hparams,
+                          gamma_inducing_cov_chol=gamma_inducing_cov_chol[0], #they should be all the same right?
                         #   **prior_hparams,
                       ))(model_params_gamma_profiles_sample,
                          gamma_profiles_logprob_sample)
