@@ -781,7 +781,9 @@ def loss(params_tuple: Tuple[hk.Params], *args, **kwargs) -> Array:
 
 def error_locations_estimate(
     locations_sample: Dict[str, Any],
-    batch: Optional[Batch],
+    num_profiles_split:int,
+    loc: Array,
+    # batch: Optional[Batch],
 ) -> Dict[str, Array]:
   """Compute average distance error."""
 
@@ -790,8 +792,8 @@ def error_locations_estimate(
   # Locations of LPs
   # (anchor, anchor_val, anchor_test, floating)
   targets_all = np.split(
-      batch['loc'],
-      np.cumsum(batch['num_profiles_split']),
+      loc, #batch['loc'],
+      np.cumsum(num_profiles_split), #np.cumsum(batch['num_profiles_split']),
       axis=0,
   )[:-1]  # Last element is empty
   assert len(targets_all) == 4
@@ -800,13 +802,13 @@ def error_locations_estimate(
   # (anchor_val, anchor_test, floating)
   pred_floating = np.split(
       locations_sample.loc_floating,
-      np.cumsum(batch['num_profiles_split'][1:]),
+      np.cumsum(num_profiles_split[1:]),#np.cumsum(batch['num_profiles_split'][1:]),
       axis=1,
   )[:-1]  # Last element is empty
   assert len(pred_floating) == 3
 
   ## Anchor validation profiles
-  if batch['num_profiles_split'][1] > 0:
+  if num_profiles_split[1] > 0: #if batch['num_profiles_split'][1] > 0:
     # Average of Mean posterior distance to true locations
     distances = jnp.linalg.norm(
         pred_floating[0] - targets_all[1][None, ...], ord=2, axis=-1)
@@ -818,7 +820,7 @@ def error_locations_estimate(
     error_loc_out['dist_mean_anchor_val'] = distances.mean()
 
   # Anchor test profiles
-  if batch['num_profiles_split'][2] > 0:
+  if num_profiles_split[2] > 0:#if batch['num_profiles_split'][2] > 0:
     # Average of Mean posterior distance to true locations
     distances = jnp.linalg.norm(
         pred_floating[1] - targets_all[2][None, ...], ord=2, axis=-1)
@@ -850,7 +852,7 @@ def error_locations_estimate(
         locations_sample.loc_random_anchor.mean(axis=0) - targets_all[0],
         ord=2,
         axis=-1)
-    error_loc_out['dist_mean_random_anchor'] = distances.mean()
+    error_loc_out['dist_mean_random_anchor'] = distances.mean() #duplicate??
 
   return error_loc_out
 
@@ -1230,7 +1232,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
       error_loc_dict = error_locations_estimate(
           locations_sample=locations_sample_eval,
-          batch=train_ds,
+          num_profiles_split=train_ds['num_profiles_split'],
+          loc=train_ds['loc'],
+        #   batch=train_ds,
       )
       for k, v in error_loc_dict.items():
         summary_writer.scalar(

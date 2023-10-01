@@ -77,6 +77,11 @@ def get_config():
       'end_value': None,
   }
 
+  # Optimizer for searching hp
+  config.optim_kwargs_hp = ml_collections.ConfigDict()
+  config.optim_kwargs_hp.learning_rate = 1e-4
+  config.hp_star_steps = 1_000
+
   config.num_lp_anchor_train = 120
   config.num_lp_floating_train = 247
   config.num_items_keep = 71
@@ -91,14 +96,15 @@ def get_config():
   # How often to evaluate the model.
   config.eval_steps = config.training_steps // 5
   config.num_samples_eval = 500
-  config.eval_last = True
+  config.num_samples_mse = 1_000
+  config.eval_last = False # FLIPPED
 
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5
-  config.log_img_at_end = True
-  config.save_samples = False #True
+  config.log_img_at_end = False # FLIPPED
+  config.save_samples = False # FLIPPED
 
   # Number of samples used in the plots.
   config.num_samples_plot = 10_000

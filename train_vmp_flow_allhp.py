@@ -17,6 +17,7 @@ from jax import numpy as jnp
 
 import haiku as hk
 import optax
+import pickle
 
 from tensorflow_probability.substrates import jax as tfp
 
@@ -28,7 +29,7 @@ from train_flow_allhp import (load_data, make_optimizer, get_inducing_points,
                         error_locations_estimate, logprob_lalme)
 
 from modularbayes._src.utils.training import TrainState
-from modularbayes import (flatten_dict, initial_state_ckpt, update_states,
+from modularbayes import (flatten_dict, initial_state_ckpt, update_states, update_state,
                           save_checkpoint, plot_to_image, normalize_images)
 from modularbayes._src.typing import (Any, Array, Batch, Callable, ConfigDict, Dict, List,
                                       Optional, PRNGKey, SmiEta, SummaryWriter,
@@ -41,6 +42,9 @@ jax.config.update('jax_default_matmul_precision', 'float32')
 
 np.set_printoptions(suppress=True, precision=4)
 
+def make_optimizer_hparams(learning_rate: float) -> optax.GradientTransformation:
+  optimizer = optax.adabelief(learning_rate=learning_rate)
+  return optimizer
 
 def q_distr_global(
     flow_name: str,
@@ -665,7 +669,9 @@ def error_locations_vector_estimate(
     error_grid.append(
         error_locations_estimate(
             locations_sample=q_distr_out['locations_sample'],
-            batch=batch,
+            num_profiles_split=batch['num_profiles_split'],
+            loc=batch['loc'],
+            # batch=batch,
         ))
 
   error_loc_dict = jax.tree_map(lambda *x: jnp.stack(x, axis=0), *error_grid)  # pylint: disable=no-value-for-parameter
@@ -917,6 +923,47 @@ def log_images(
           step=state_list[0].step,
           max_outputs=len(images),
       )
+
+error_locations_estimate_jit = jax.jit(error_locations_estimate)
+
+def mse_fixedhp(
+    hp_params:Array,
+    state_list: List[TrainState],
+    batch: Optional[Batch],
+    prng_key: PRNGKey,
+    flow_name: str,
+    flow_kwargs: Dict[str, Any],
+    include_random_anchor:bool,
+    num_samples: int,
+    profile_is_anchor:Array,
+) -> Dict[str, Array]:
+
+    # Sample eta values
+
+    eta_profiles = jnp.where(
+                profile_is_anchor,1.,hp_params[-1])#(367)
+    eta_items = jnp.ones(len(batch['num_forms_tuple'])) #(71)
+
+    cond_values = jnp.hstack([hp_params[:-1],
+                              eta_profiles, eta_items,
+                              ]) #(n_samples, n_hps+367+71)
+    
+    q_distr_out = sample_all_flows(
+        params_tuple=[state.params for state in state_list],
+        prng_key=prng_key,
+        flow_name=flow_name,
+        flow_kwargs=flow_kwargs,
+        cond_values=jnp.broadcast_to(cond_values, (num_samples, len(cond_values))),
+        # smi_eta=smi_eta_,
+        include_random_anchor=include_random_anchor,
+    )
+
+    error_loc_dict = error_locations_estimate_jit(
+            locations_sample=q_distr_out['locations_sample'],
+            batch=batch,
+        )
+    return error_loc_dict
+
 
 
 def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
@@ -1224,7 +1271,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   #       num_samples_gamma_profiles=config.num_samples_gamma_profiles,
   #       gp_jitter=config.gp_jitter,
   #   )
-
+    
   # error_locations_estimate_jit = lambda state_list, batch, prng_key: error_locations_estimate(
   #     params_tuple=[state.params for state in state_list],
   #     batch=batch,
@@ -1240,6 +1287,35 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   # )
   # # TODO: This doesn't work after jitting.
   # # error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
+  
+  mse_jit = lambda hp_params, batch, prng_key, state_list_vmp: mse_fixedhp(
+      hp_params=hp_params,
+      state_list=state_list_vmp,
+      batch=batch,
+      prng_key=prng_key,
+      num_samples=config.num_samples_mse,
+      flow_name=config.flow_name,
+      flow_kwargs=config.flow_kwargs,
+      include_random_anchor=config.include_random_anchor,
+      profile_is_anchor=profile_is_anchor,
+  )['dist_mean_anchor_test']
+  mse_jit = jax.jit(mse_jit)
+
+
+  # Jit optimization of eta
+  update_hp_star_state = lambda hp_star_state, batch, prng_key: update_state(
+        state=hp_star_state,
+        batch=batch,
+        prng_key=prng_key,
+        optimizer=make_optimizer_hparams(**config.optim_kwargs_hp),
+        loss_fn=mse_jit,
+        loss_fn_kwargs={
+            'state_list_vmp': state_list,
+        },
+    )
+  update_hp_star_state = jax.jit(update_hp_star_state)
+
+
 
   save_last_checkpoint = False
   if state_list[0].step < config.training_steps:
@@ -1484,6 +1560,98 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     logging.info("...done!")
 
 
+#####################################################################################
+  # Find best eta ###
+
+  logging.info('Finding best hyperparameters...')
+
+  
+
+  # Reset random key sequence
+  prng_seq = hk.PRNGSequence(config.seed)
+
+  # PriorHparams = namedtuple(
+  #     "prior_hparams",
+  #     field_names=('w_prior_scale', 'a_prior_scale', 
+  #                 'mu_prior_concentration', 'mu_prior_rate', 
+  #                 'zeta_prior_a', 'zeta_prior_b', 
+  #                 'kernel_amplitude', 'kernel_length_scale'),
+  #     defaults=(5., 10., 1., 0.5, 1., 1., 0.2, 0.3),
+  # )
+
+  # Initialize search with Bayes
+  prior_hparams_init = jnp.array([5., 10., 1., 0.5, 1., 1., 0.2, 0.3])
+
+  hp_star_init = jnp.hstack([prior_hparams_init, 1.
+                            ]) #(n_samples, n_hps+367+71)
+  info_dict = {'init':hp_star_init,
+  'loss':[], 'params':[], 'step':[]}
+
+  # key_search = next(prng_seq)
+
+  # SGD over elpd #
+  hp_star_state = TrainState(
+      params=hp_star_init,
+      opt_state=make_optimizer_hparams(**config.optim_kwargs_hp).init(hp_star_init),
+      step=0,
+  )
+  for _ in range(config.hp_star_steps):
+    hp_star_state, mse = update_hp_star_state(
+        hp_star_state,
+        batch=train_ds,
+        prng_key=next(prng_seq),
+    )
+
+    # if state_list[0].step % config.hp_star_steps == 0:
+    #   logging.info("STEP: %5d; training loss: %.3f", state_list[0].step,
+    #                neg_elpd["train_loss"])
+    info_dict['loss'].append(mse["train_loss"])
+    info_dict['params'].append(hp_star_state.params)
+    info_dict['step'].append(hp_star_state.step)
+
+    field_names=('w_prior_scale', 'a_prior_scale', 
+                'mu_prior_concentration', 'mu_prior_rate', 
+                'zeta_prior_a', 'zeta_prior_b', 
+                'kernel_amplitude', 'kernel_length_scale')
+  
+    
+    if hp_star_state.step % 100 == 0:
+      logging.info(f"STEP: %5d; training loss:" + ' '.join([hp + ':%.3f' for hp in field_names]), hp_star_state.step,
+                  mse["train_loss"], *[hp_star_state.params[i] for i in range(len(field_names))],
+                  hp_star_state.params[len(field_names):train_ds['num_profiles']].mean(),
+                  hp_star_state.params[len(field_names):train_ds['num_forms_tuple']].mean(),)
+
+    # if hp_star_state.step % 100 == 0:
+    #   logging.info("STEP: %5d; training loss: %.3f; eta0:%.3f; eta1: %.3f; conc1: %.3f, conc2:%.3f", hp_star_state.step,
+    #               mse["train_loss"], hp_star_state.params[0], hp_star_state.params[1],
+    #               hp_star_state.params[2], hp_star_state.params[3])
+
+    # Clip eta_star to [0,1] hypercube and hp_star to [0.000001,..]
+    hp_star_state = TrainState(
+        params=jnp.hstack([jnp.clip(hp_star_state.params[:2],0, 1),
+                          jnp.clip(hp_star_state.params[2:],0.000001)]),
+        opt_state=hp_star_state.opt_state,
+        step=hp_star_state.step,
+    )
+
+    # summary_writer.scalar(
+    #     tag='rnd_eff_hp_star_neg_elpd',
+    #     value=neg_elpd['train_loss'],
+    #     step=hp_star_state.step - 1,
+    # )
+    # for i, hp_star_i in enumerate(hp_star_state.params):
+    #   summary_writer.scalar(
+    #       tag=f'rnd_eff_eta_star_{i}',
+    #       value=hp_star_i,
+    #       step=hp_star_state.step - 1,
+    #   )
+  with open(workdir + f"/hp_info_eta{hp_star_init[-1]:.6f}.sav", 'wb') as f:
+    pickle.dump(info_dict, f)
+
+
+
+
+#####################################################################################
 # # For debugging
 # config = get_config()
 # workdir = str(pathlib.Path.home() / 'spatial-smi-output-exp/all_items/nsf/vmp_flow')
