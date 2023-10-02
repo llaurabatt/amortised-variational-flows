@@ -936,6 +936,7 @@ def mse_fixedhp(
     include_random_anchor:bool,
     num_samples: int,
     profile_is_anchor:Array,
+    num_profiles_split:int,
 ) -> Dict[str, Array]:
 
     # Sample eta values
@@ -960,7 +961,9 @@ def mse_fixedhp(
 
     error_loc_dict = error_locations_estimate_jit(
             locations_sample=q_distr_out['locations_sample'],
-            batch=batch,
+            loc=batch['loc'],
+            num_profiles_split=num_profiles_split,
+            # batch=batch,
         )
     return error_loc_dict
 
@@ -1287,7 +1290,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   # )
   # # TODO: This doesn't work after jitting.
   # # error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
-  
+  num_profiles_split = train_ds['num_profiles_split']
+
   mse_jit = lambda hp_params, batch, prng_key, state_list_vmp: mse_fixedhp(
       hp_params=hp_params,
       state_list=state_list_vmp,
@@ -1298,6 +1302,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       flow_kwargs=config.flow_kwargs,
       include_random_anchor=config.include_random_anchor,
       profile_is_anchor=profile_is_anchor,
+      num_profiles_split=num_profiles_split,
   )['dist_mean_anchor_test']
   mse_jit = jax.jit(mse_jit)
 
