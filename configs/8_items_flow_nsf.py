@@ -50,7 +50,7 @@ def get_config():
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 200_000
+  config.training_steps = 50_000 #200_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -82,12 +82,12 @@ def get_config():
   config.num_samples_gamma_profiles = 10
 
   # How often to evaluate the model.
-  config.eval_steps = config.training_steps // 20
+  config.eval_steps = config.training_steps // 2
 
   config.num_samples_eval = 100
 
   # How often to generate posterior plots.
-  config.log_img_steps = config.training_steps // 5
+  config.log_img_steps = config.training_steps // 2
   config.log_img_at_end = True
   config.show_basis_fields_during_training = False
   config.show_linguistic_fields_during_training = False

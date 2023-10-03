@@ -22,7 +22,7 @@ import distrax
 import blackjax
 from blackjax.mcmc.hmc import HMCState
 from blackjax.mcmc.nuts import NUTSInfo
-from blackjax.types import PyTree
+# from blackjax.types import PyTree
 
 from tensorflow_probability.substrates import jax as tfp
 
@@ -62,14 +62,14 @@ np.set_printoptions(suppress=True, precision=4)
 def call_warmup(
     prng_key: PRNGKey,
     logdensity_fn: Callable,
-    model_params: PyTree,
+    model_params, #: PyTree,
     num_steps: int,
 ) -> Tuple:
   warmup = blackjax.window_adaptation(
       algorithm=blackjax.nuts,
       logdensity_fn=logdensity_fn,
   )
-  initial_states, _, hmc_params = warmup.run(
+  initial_states, hmc_params = warmup.run( #they were in.., _, hmc.. before
       rng_key=prng_key,
       position=model_params,
       num_steps=num_steps,
@@ -86,7 +86,7 @@ def inference_loop_one_chain(
 ) -> Tuple[HMCState, NUTSInfo]:
 
   def one_step(state, rng_key):
-    kernel_fn = lambda state_, key_, hmc_param_: blackjax.nuts.kernel()(
+    kernel_fn = lambda state_, key_, hmc_param_: blackjax.nuts.build_kernel()(
         rng_key=key_,
         state=state_,
         logdensity_fn=logdensity_fn,
@@ -113,7 +113,7 @@ def inference_loop_stg1(
 
   def one_step(states, rng_keys):
     kernel_fn_multichain = jax.vmap(
-        lambda state_, hmc_param_, key_nuts_, key_gamma_: blackjax.nuts.kernel(
+        lambda state_, hmc_param_, key_nuts_, key_gamma_: blackjax.nuts.build_kernel(
         )(
             rng_key=key_nuts_,
             state=state_,
@@ -155,7 +155,7 @@ def inference_loop_stg2(
   def one_step(states, rng_keys):
     kernel_fn_multichain = jax.vmap(
         lambda state, cond, hmc_param, key_nuts_, key_gamma_: blackjax.nuts.
-        kernel()(
+        build_kernel()(
             rng_key=key_nuts_,
             state=state,
             logdensity_fn=lambda param_: logdensity_fn_conditional(

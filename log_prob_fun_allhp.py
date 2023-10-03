@@ -559,23 +559,31 @@ def sample_priorhparams_values(
   """Generate a sample of the prior hyperparameters values applicable to the model."""
   prng_keys = jax.random.split(prng_key, num=4)
   priorhps_sample = PriorHparams(
-     w_prior_scale=tfd.InverseGamma(
+     w_prior_scale=tfd.Gamma(
       concentration=w_sampling_scale_alpha, 
-      scale=w_sampling_scale_beta).sample(
+      rate=w_sampling_scale_beta).sample(
       sample_shape=(num_samples,), seed=prng_keys[0]),
-     a_prior_scale=tfd.InverseGamma(
+     a_prior_scale=tfd.Gamma(
       concentration=a_sampling_scale_alpha, 
-      scale=a_sampling_scale_beta).sample(
+      rate=a_sampling_scale_beta).sample(
       sample_shape=(num_samples,), seed=prng_keys[1]),
-    kernel_amplitude=tfd.InverseGamma(
-      concentration=kernel_sampling_amplitude_alpha, 
-      scale=kernel_sampling_amplitude_beta).sample(
+     kernel_amplitude=tfd.Uniform(
+      low=kernel_sampling_amplitude_alpha, 
+      high=kernel_sampling_amplitude_beta).sample(
       sample_shape=(num_samples,), seed=prng_keys[3]),
-     kernel_length_scale=jax.random.gamma(
-      key=prng_keys[3],
-      a=kernel_sampling_lengthscale_alpha, 
-      shape=(num_samples,),
-      )/kernel_sampling_lengthscale_beta,
+     kernel_length_scale=tfd.Uniform(
+      low=kernel_sampling_lengthscale_alpha, 
+      high=kernel_sampling_lengthscale_beta).sample(
+      sample_shape=(num_samples,), seed=prng_keys[3]),
+    # kernel_amplitude=tfd.Gamma(
+    #   concentration=kernel_sampling_amplitude_alpha, 
+    #   scale=kernel_sampling_amplitude_beta).sample(
+    #   sample_shape=(num_samples,), seed=prng_keys[3]),
+    #  kernel_length_scale=jax.random.gamma(
+    #   key=prng_keys[3],
+    #   a=kernel_sampling_lengthscale_alpha, 
+    #   shape=(num_samples,),
+    #   )/kernel_sampling_lengthscale_beta,
      mu_prior_concentration=jnp.ones((num_samples,))*1.,
      mu_prior_rate=jnp.ones((num_samples,))*0.5,
      zeta_prior_a=jnp.ones((num_samples,))*1.,

@@ -2,10 +2,10 @@
 #%%
 import debugpy
 #%%
-debugpy.listen(5678)
-print('Waiting for debugger')
-debugpy.wait_for_client()
-print('Debugger attached')
+# debugpy.listen(5678)
+# print('Waiting for debugger')
+# debugpy.wait_for_client()
+# print('Debugger attached')
 #%%
 import os
 import warnings
@@ -24,7 +24,7 @@ import train_vmp_flow_hp
 import train_vmp_flow_hpnokernel
 import train_vmp_flow_allhp
 # import sample_mcmc_blackjax as sample_mcmc
-# import sample_mcmc_tfp as sample_mcmc
+import sample_mcmc_tfp as sample_mcmc
 
 FLAGS = flags.FLAGS
 

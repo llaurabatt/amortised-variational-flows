@@ -787,6 +787,7 @@ def error_locations_estimate(
 ) -> Dict[str, Array]:
   """Compute average distance error."""
 
+
   error_loc_out = {}
 
   # Locations of LPs
