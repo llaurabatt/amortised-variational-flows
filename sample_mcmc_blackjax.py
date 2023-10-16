@@ -65,6 +65,53 @@ def call_warmup(
     model_params, #: PyTree,
     num_steps: int,
 ) -> Tuple:
+  """
+    Run a warm-up phase for Hamiltonian Monte Carlo (HMC) sampling.
+    Parameters:
+    -----------
+    prng_key : jax.random.PRNGKey
+        A pseudo-random number generator key for reproducible random number generation.
+
+    logdensity_fn : callable
+        A function that computes the log-density of the target distribution. This function guides the sampling process.
+
+    model_params : jax.numpy.ndarray
+        The model parameters, representing the current state of the probabilistic model.
+
+    num_steps : int
+        The number of warm-up steps to perform in the HMC algorithm. More steps may lead to better adaptation but can be computationally expensive.
+
+    Returns:
+    --------
+    Tuple[jax.numpy.ndarray, dict]
+        A tuple containing the results of the warm-up phase:
+        - initial_states : jax.numpy.ndarray
+            The initial states of the HMC algorithm after warm-up. These represent samples from the posterior distribution.
+        - hmc_params : dict
+            Parameters of the HMC algorithm after adaptation, including information about step size and mass matrix.
+    
+    Notes:
+    ------
+    - Warm-up is a crucial step in Bayesian sampling to adapt the HMC algorithm for efficient posterior exploration.
+    - This function uses the `window_adaptation` and `warmup.run` functions from a HMC library to perform warm-up.
+    - `window_adaptation` is responsible for adapting the step size and mass matrix of the HMC algorithm.
+    - `warmup.run` executes the warm-up phase of HMC sampling with adaptive parameters.
+    
+    Example:
+    --------
+    # Define the log-density function and model parameters
+    def log_density(x):
+        # Compute the log-density of the target distribution
+        ...
+
+    initial_params = ...
+
+    # Run warm-up with 1000 steps
+    initial_states, hmc_params = call_warmup(rng_key, log_density, initial_params, num_steps=1000)
+
+    # Use initial_states and hmc_params for posterior sampling
+    ...
+    """
   warmup = blackjax.window_adaptation(
       algorithm=blackjax.nuts,
       logdensity_fn=logdensity_fn,

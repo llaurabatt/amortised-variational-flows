@@ -7,7 +7,7 @@ def get_config():
   """Get the hyperparameter configuration."""
   config = ml_collections.ConfigDict()
 
-  config.method = 'vmp_flow_allhp'
+  config.method = 'vmp_flow_mse'
 
   # Dataset to use
   config.dataset_id = 'coarsen_all_items'
@@ -59,7 +59,7 @@ def get_config():
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 100_000 #100_000
+  config.training_steps = 100_000 
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -80,7 +80,7 @@ def get_config():
   # Optimizer for searching hp
   config.optim_kwargs_hp = ml_collections.ConfigDict()
   config.optim_kwargs_hp.learning_rate = 1e-4
-  config.hp_star_steps = 10_000
+  config.hp_star_steps = 1_000
 
   config.num_lp_anchor_train = 80
   config.num_lp_floating_train = 247
@@ -94,15 +94,14 @@ def get_config():
   config.num_samples_gamma_profiles = 3
 
   # How often to evaluate the model.
-  config.eval_steps = config.training_steps // 2 #5 CHANGED
+  config.eval_steps = config.training_steps // 5 
   config.num_samples_eval = 500
   config.num_samples_mse = 1_000
   config.eval_last = False # FLIPPED
-
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
-  config.log_img_steps = config.training_steps // 2 #5 CHANGED
+  config.log_img_steps = config.training_steps // 5 
   config.log_img_at_end = False # FLIPPED
   config.save_samples = False # FLIPPED
 
@@ -121,7 +120,7 @@ def get_config():
   config.eta_plot = [0.001, 0.25, 0.5, 0.75, 1.0]
 
   # How often to save model checkpoints.
-  config.checkpoint_steps = config.training_steps // 4
+  config.checkpoint_steps = config.training_steps // 5
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
 

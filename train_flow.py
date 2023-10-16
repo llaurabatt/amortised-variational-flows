@@ -1135,33 +1135,36 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   while state_list[0].step < config.training_steps:
 
     # Plots to monitor training
-    if config.log_img_steps > 0:
-      if (state_list[0].step % config.log_img_steps == 0):
-        logging.info("Logging plots...")
-        # Sample from posterior with final state
-        lalme_az = sample_lalme_az(
-            state_list=state_list,
-            batch=train_ds,
-            prng_key=next(prng_seq),
-            config=config,
-            lalme_dataset=lalme_dataset,
-            include_gamma=False,
-            num_samples_chunk=config.num_samples_chunk_plot,
-        )
-        plot.lalme_plots_arviz(
-            lalme_az=lalme_az,
-            lalme_dataset=lalme_dataset,
-            step=state_list[0].step,
-            show_mu=True,
-            show_zeta=True,
-            lp_floating_grid10=config.lp_floating_grid10,
-            lp_random_anchor_grid10=config.lp_random_anchor_10,
-            workdir_png=workdir,
-            summary_writer=summary_writer,
-            suffix=f"_eta_floating_{config.eta_profiles_floating:.3f}",
-            scatter_kwargs={"alpha": 0.05},
-        )
-        logging.info("...done.")
+    # if config.log_img_steps > 0:
+    #   if (state_list[0].step % config.log_img_steps == 0):
+    #     logging.info("Logging plots...")
+    #     # Sample from posterior with final state
+    #     try:
+    #         lalme_az = sample_lalme_az(
+    #             state_list=state_list,
+    #             batch=train_ds,
+    #             prng_key=next(prng_seq),
+    #             config=config,
+    #             lalme_dataset=lalme_dataset,
+    #             include_gamma=False,
+    #             num_samples_chunk=config.num_samples_chunk_plot,
+    #         )
+    #         plot.lalme_plots_arviz(
+    #             lalme_az=lalme_az,
+    #             lalme_dataset=lalme_dataset,
+    #             step=state_list[0].step,
+    #             show_mu=True,
+    #             show_zeta=True,
+    #             lp_floating_grid10=config.lp_floating_grid10,
+    #             lp_random_anchor_grid10=config.lp_random_anchor_10,
+    #             workdir_png=workdir,
+    #             summary_writer=summary_writer,
+    #             suffix=f"_eta_floating_{config.eta_profiles_floating:.3f}",
+    #             scatter_kwargs={"alpha": 0.05},
+    #         )
+    #         logging.info("...done.")
+    #     except:
+    #       logging.info("Image error")
 
     # Log learning rate
     summary_writer.scalar(

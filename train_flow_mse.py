@@ -27,8 +27,8 @@ from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict,
                                       IntLike, List, Optional, PRNGKey,
                                       Sequence, SmiEta, Tuple, Union)
 
-import log_prob_fun_allhp
-from log_prob_fun_allhp import ModelParamsGlobal, ModelParamsLocations, PriorHparams
+import log_prob_fun
+from log_prob_fun import ModelParamsGlobal, ModelParamsLocations
 import data
 import flows
 import plot
@@ -157,15 +157,14 @@ def make_optimizer(
 def get_inducing_points(
     dataset: Batch,
     inducing_grid_shape: Tuple[int, int],
-    # kernel_name: str,
-    # kernel_kwargs: Dict[str, Any],
-    # gp_jitter: float,
+    kernel_name: str,
+    kernel_kwargs: Dict[str, Any],
+    gp_jitter: float,
 ) -> Dict[str, Array]:
   """Define grid of inducing point for GPs."""
   dataset = dataset.copy()
 
   num_inducing_points = math.prod(inducing_grid_shape)
-  dataset['num_inducing_points'] = num_inducing_points
 
   # Inducing points are defined as a grid on the unit square
   loc_inducing = jnp.meshgrid(
@@ -173,45 +172,44 @@ def get_inducing_points(
       jnp.linspace(0, 1, inducing_grid_shape[1]))
   loc_inducing = jnp.stack(loc_inducing, axis=-1).reshape(-1, 2)
   dataset['loc_inducing'] = loc_inducing
+  # Compute GP covariance between inducing values
+  dataset['cov_inducing'] = getattr(kernels,
+                                    kernel_name)(**kernel_kwargs).matrix(
+                                        x1=dataset['loc_inducing'],
+                                        x2=dataset['loc_inducing'],
+                                    )
 
-#   # Compute GP covariance between inducing values
-#   dataset['cov_inducing'] = getattr(kernels,
-#                                     kernel_name)(**kernel_kwargs).matrix(
-#                                         x1=dataset['loc_inducing'],
-#                                         x2=dataset['loc_inducing'],
-#                                     )
+  # Add jitter
+  dataset['cov_inducing'] = dataset['cov_inducing'] + gp_jitter * jnp.eye(
+      num_inducing_points)
+  # Check that the covarince is symmetric
+  assert issymmetric(
+      dataset['cov_inducing']), 'Covariance Matrix is not symmetric'
 
-#   # Add jitter
-#   dataset['cov_inducing'] = dataset['cov_inducing'] + gp_jitter * jnp.eye(
-#       num_inducing_points)
-#   # Check that the covarince is symmetric
-#   assert issymmetric(
-#       dataset['cov_inducing']), 'Covariance Matrix is not symmetric'
+  # Cholesky factor of covariance
+  dataset['cov_inducing_chol'] = jnp.linalg.cholesky(dataset['cov_inducing'])
 
-#   # Cholesky factor of covariance
-#   dataset['cov_inducing_chol'] = jnp.linalg.cholesky(dataset['cov_inducing'])
+  # Inverse of covariance of inducing values
+  # dataset['cov_inducing_inv'] = jnp.linalg.inv(dataset['cov_inducing'])
+  cov_inducing_chol_inv = jax.scipy.linalg.solve_triangular(
+      a=dataset['cov_inducing_chol'],
+      b=jnp.eye(num_inducing_points),
+      lower=True,
+  )
+  dataset['cov_inducing_inv'] = jnp.matmul(
+      cov_inducing_chol_inv.T, cov_inducing_chol_inv, precision='highest')
 
-#   # Inverse of covariance of inducing values
-#   # dataset['cov_inducing_inv'] = jnp.linalg.inv(dataset['cov_inducing'])
-#   cov_inducing_chol_inv = jax.scipy.linalg.solve_triangular(
-#       a=dataset['cov_inducing_chol'],
-#       b=jnp.eye(num_inducing_points),
-#       lower=True,
-#   )
-#   dataset['cov_inducing_inv'] = jnp.matmul(
-#       cov_inducing_chol_inv.T, cov_inducing_chol_inv, precision='highest')
-
-#   # Check that the inverse is symmetric
-#   assert issymmetric(
-#       dataset['cov_inducing_inv']), 'Covariance Matrix is not symmetric'
-#   # Check that there are no NaNs
-#   assert ~jnp.any(jnp.isnan(dataset['cov_inducing_inv']))
-#   # Cross covariance between anchor and inducing values
-#   dataset['cov_anchor_inducing'] = getattr(
-#       kernels, kernel_name)(**kernel_kwargs).matrix(
-#           x1=dataset['loc'][:dataset['num_profiles_anchor'], :],
-#           x2=dataset['loc_inducing'],
-#       )
+  # Check that the inverse is symmetric
+  assert issymmetric(
+      dataset['cov_inducing_inv']), 'Covariance Matrix is not symmetric'
+  # Check that there are no NaNs
+  assert ~jnp.any(jnp.isnan(dataset['cov_inducing_inv']))
+  # Cross covariance between anchor and inducing values
+  dataset['cov_anchor_inducing'] = getattr(
+      kernels, kernel_name)(**kernel_kwargs).matrix(
+          x1=dataset['loc'][:dataset['num_profiles_anchor'], :],
+          x2=dataset['loc_inducing'],
+      )
 
   return dataset
 
@@ -506,8 +504,8 @@ def sample_lalme_az(
     if include_gamma:
       # Get a sample of the basis GPs on profiles locations
       # conditional on values at the inducing locations.
-      gamma_sample_, _, _ = jax.vmap(
-          lambda key_, global_, locations_: log_prob_fun_allhp.
+      gamma_sample_, _ = jax.vmap(
+          lambda key_, global_, locations_: log_prob_fun.
           sample_gamma_profiles_given_gamma_inducing(
               batch=batch,
               model_params_global=global_,
@@ -557,10 +555,8 @@ def logprob_lalme(
     model_params_locations: ModelParamsLocations,
     prior_hparams: Dict[str, Any],
     kernel_name: str,
-    # kernel_kwargs: Dict[str, Any],
+    kernel_kwargs: Dict[str, Any],
     num_samples_gamma_profiles: int,
-    num_profiles_anchor: int,
-    num_inducing_points:int,
     smi_eta_profiles: Optional[Array],
     gp_jitter: float = 1e-5,
     random_anchor: bool = False,
@@ -580,25 +576,22 @@ def logprob_lalme(
 
   # Sample the basis GPs on profiles locations conditional on GP values on the
   # inducing points.
-  model_params_gamma_profiles_sample, gamma_profiles_logprob_sample, gamma_inducing_cov_chol = jax.vmap(
-      lambda key_: log_prob_fun_allhp.sample_gamma_profiles_given_gamma_inducing(
+  model_params_gamma_profiles_sample, gamma_profiles_logprob_sample = jax.vmap(
+      lambda key_: log_prob_fun.sample_gamma_profiles_given_gamma_inducing(
           batch=batch,
           model_params_global=model_params_global,
           model_params_locations=model_params_locations,
           prng_key=key_,
           kernel_name=kernel_name,
-        #   kernel_kwargs=kernel_kwargs,
-          prior_hparams=prior_hparams,
+          kernel_kwargs=kernel_kwargs,
           gp_jitter=gp_jitter,
-          num_profiles_anchor=num_profiles_anchor,
-          num_inducing_points=num_inducing_points,
           include_random_anchor=random_anchor,
       ))(
           jax.random.split(prng_key, num_samples_gamma_profiles))
 
   # Average joint logprob across samples of gamma_profiles
   log_prob = jax.vmap(lambda gamma_profiles_, gamma_profiles_logprob_:
-                      log_prob_fun_allhp.logprob_joint(
+                      log_prob_fun.logprob_joint(
                           batch=batch,
                           model_params_global=model_params_global,
                           model_params_locations=model_params_locations,
@@ -606,9 +599,7 @@ def logprob_lalme(
                           gamma_profiles_logprob=gamma_profiles_logprob_,
                           smi_eta=smi_eta,
                           random_anchor=random_anchor,
-                          prior_hparams=prior_hparams,
-                          gamma_inducing_cov_chol=gamma_inducing_cov_chol[0], #they should be all the same right?
-                        #   **prior_hparams,
+                          **prior_hparams,
                       ))(model_params_gamma_profiles_sample,
                          gamma_profiles_logprob_sample)
   log_prob = jnp.mean(log_prob)
@@ -787,14 +778,13 @@ def error_locations_estimate(
 ) -> Dict[str, Array]:
   """Compute average distance error."""
 
-
   error_loc_out = {}
 
   # Locations of LPs
   # (anchor, anchor_val, anchor_test, floating)
   targets_all = np.split(
-      loc, #batch['loc'],
-      np.cumsum(num_profiles_split), #np.cumsum(batch['num_profiles_split']),
+      loc,
+      np.cumsum(num_profiles_split),
       axis=0,
   )[:-1]  # Last element is empty
   assert len(targets_all) == 4
@@ -803,13 +793,13 @@ def error_locations_estimate(
   # (anchor_val, anchor_test, floating)
   pred_floating = np.split(
       locations_sample.loc_floating,
-      np.cumsum(num_profiles_split[1:]),#np.cumsum(batch['num_profiles_split'][1:]),
+      np.cumsum(num_profiles_split[1:]),
       axis=1,
   )[:-1]  # Last element is empty
   assert len(pred_floating) == 3
 
   ## Anchor validation profiles
-  if num_profiles_split[1] > 0: #if batch['num_profiles_split'][1] > 0:
+  if num_profiles_split[1] > 0:
     # Average of Mean posterior distance to true locations
     distances = jnp.linalg.norm(
         pred_floating[0] - targets_all[1][None, ...], ord=2, axis=-1)
@@ -821,7 +811,7 @@ def error_locations_estimate(
     error_loc_out['dist_mean_anchor_val'] = distances.mean()
 
   # Anchor test profiles
-  if num_profiles_split[2] > 0:#if batch['num_profiles_split'][2] > 0:
+  if num_profiles_split[2] > 0:
     # Average of Mean posterior distance to true locations
     distances = jnp.linalg.norm(
         pred_floating[1] - targets_all[2][None, ...], ord=2, axis=-1)
@@ -853,7 +843,7 @@ def error_locations_estimate(
         locations_sample.loc_random_anchor.mean(axis=0) - targets_all[0],
         ord=2,
         axis=-1)
-    error_loc_out['dist_mean_random_anchor'] = distances.mean() #duplicate??
+    error_loc_out['dist_mean_random_anchor'] = distances.mean()
 
   return error_loc_out
 
@@ -1147,36 +1137,36 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   while state_list[0].step < config.training_steps:
 
     # Plots to monitor training
-    if config.log_img_steps > 0:
-      if (state_list[0].step % config.log_img_steps == 0):
-        logging.info("Logging plots...")
-        # Sample from posterior with final state
-        try:
-            lalme_az = sample_lalme_az(
-                state_list=state_list,
-                batch=train_ds,
-                prng_key=next(prng_seq),
-                config=config,
-                lalme_dataset=lalme_dataset,
-                include_gamma=False,
-                num_samples_chunk=config.num_samples_chunk_plot,
-            )
-            plot.lalme_plots_arviz(
-                lalme_az=lalme_az,
-                lalme_dataset=lalme_dataset,
-                step=state_list[0].step,
-                show_mu=True,
-                show_zeta=True,
-                lp_floating_grid10=config.lp_floating_grid10,
-                lp_random_anchor_grid10=config.lp_random_anchor_10,
-                workdir_png=workdir,
-                summary_writer=summary_writer,
-                suffix=f"_eta_floating_{config.eta_profiles_floating:.3f}",
-                scatter_kwargs={"alpha": 0.05},
-            )
-            logging.info("...done.")
-        except:
-          print("Image error")
+    # if config.log_img_steps > 0:
+    #   if (state_list[0].step % config.log_img_steps == 0):
+    #     logging.info("Logging plots...")
+    #     # Sample from posterior with final state
+    #     try:
+    #         lalme_az = sample_lalme_az(
+    #             state_list=state_list,
+    #             batch=train_ds,
+    #             prng_key=next(prng_seq),
+    #             config=config,
+    #             lalme_dataset=lalme_dataset,
+    #             include_gamma=False,
+    #             num_samples_chunk=config.num_samples_chunk_plot,
+    #         )
+    #         plot.lalme_plots_arviz(
+    #             lalme_az=lalme_az,
+    #             lalme_dataset=lalme_dataset,
+    #             step=state_list[0].step,
+    #             show_mu=True,
+    #             show_zeta=True,
+    #             lp_floating_grid10=config.lp_floating_grid10,
+    #             lp_random_anchor_grid10=config.lp_random_anchor_10,
+    #             workdir_png=workdir,
+    #             summary_writer=summary_writer,
+    #             suffix=f"_eta_floating_{config.eta_profiles_floating:.3f}",
+    #             scatter_kwargs={"alpha": 0.05},
+    #         )
+    #         logging.info("...done.")
+    #     except:
+    #       logging.info("Image error")
 
     # Log learning rate
     summary_writer.scalar(
@@ -1236,9 +1226,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
       error_loc_dict = error_locations_estimate(
           locations_sample=locations_sample_eval,
-          num_profiles_split=train_ds['num_profiles_split'],
-          loc=train_ds['loc'],
-        #   batch=train_ds,
+          batch=train_ds,
       )
       for k, v in error_loc_dict.items():
         summary_writer.scalar(
