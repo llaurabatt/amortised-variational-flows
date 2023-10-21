@@ -116,7 +116,7 @@ def call_warmup(
       algorithm=blackjax.nuts,
       logdensity_fn=logdensity_fn,
   )
-  initial_states, hmc_params = warmup.run( #they were in.., _, hmc.. before
+  (initial_states, hmc_params), _ = warmup.run( #they were in.., _, hmc.. before
       rng_key=prng_key,
       position=model_params,
       num_steps=num_steps,
@@ -148,8 +148,7 @@ def inference_loop_one_chain(
 
   return states, infos
 
-
-def inference_loop_stg1(
+def inference_loop_stg1_init(
     prng_key: PRNGKey,
     initial_states: HMCState,
     hmc_params: Dict[str, Array],
@@ -168,6 +167,7 @@ def inference_loop_stg1(
             step_size=hmc_param_['step_size'],
             inverse_mass_matrix=hmc_param_['inverse_mass_matrix'],
         ))
+    
     keys_nuts_, key_gamma_ = jnp.split(rng_keys, 2, axis=-2)
     states_new, infos_new = kernel_fn_multichain(
         states,
@@ -182,6 +182,59 @@ def inference_loop_stg1(
 
   # one_step(initial_states, keys[0])
 
+  _, (states, infos) = jax.lax.scan(one_step, initial_states, keys)
+
+  return states, infos
+
+def inference_loop_stg1(
+    prng_key: PRNGKey,
+    initial_states: HMCState,
+    hmc_params: Dict[str, Array],
+    logdensity_fn: Callable,
+    num_samples: int,
+    num_chains: int,
+) -> Tuple[HMCState, NUTSInfo]:
+
+  def one_step(states, rng_keys):
+    # loop over chains
+    kernel_fn_multichain1 = jax.vmap(
+        lambda state_, hmc_param_, key_nuts_, key_gamma_: blackjax.nuts.build_kernel(
+        )(
+            rng_key=key_nuts_,
+            state=state_,
+            logdensity_fn=lambda x: logdensity_fn(x, key_gamma_),
+            step_size=hmc_param_['step_size'],
+            inverse_mass_matrix=hmc_param_['inverse_mass_matrix'],
+        ))
+    ######################################
+
+    # loop over inner samples (here 1?)
+    keys_nuts_, keys_gamma_ = jnp.split(rng_keys, 2, axis=-2)
+
+    kernel_fn_multichain2 = jax.vmap(
+        lambda states_: kernel_fn_multichain1(
+            states_,
+            hmc_params,
+            keys_nuts_.squeeze(-2), # get rid of the 1 dim in pos -2
+            keys_gamma_.squeeze(-2),
+        ))
+    ######################################
+    
+    states_new, infos_new = kernel_fn_multichain2(
+        states,
+        # hmc_params,
+        # keys_nuts_.squeeze(-2),
+        # key_gamma_.squeeze(-2),
+    )
+    return states_new, (states_new, infos_new)
+
+  keys = jax.random.split(
+    prng_key, num_samples * num_chains * 2).reshape(
+      (num_samples, num_chains, 2, 2))
+
+  # one_step(initial_states, keys[0])
+
+  # scan will apply f starting from init state and looping over first dimension of keys, so n_samples
   _, (states, infos) = jax.lax.scan(one_step, initial_states, keys)
 
   return states, infos
@@ -528,9 +581,10 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
           jax.random.split(next(prng_seq), config.num_chains))
 
       # Tune HMC parameters automatically
+      #initial_states_stg1 will have shape (n_chains, ....)
       logging.info('\t tuning HMC parameters stg1...')
       key_gamma_ = next(prng_seq)
-      initial_states_stg1, hmc_params_stg1 = jax.vmap(
+      initial_states_stg1, hmc_params_stg1 = jax.vmap( 
           lambda prng_key, model_params: call_warmup(
               prng_key=prng_key,
               logdensity_fn=lambda x: logdensity_fn_stg1(x, key_gamma_),
@@ -541,9 +595,118 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
               model_params_stg1_unb_init,
           )
 
-      # Sampling loop stage 1
+####################################################################################################
+    #  # Sampling loop stage 1 (with chunks)
+    #  # The number of samples is large and often it does not fit into GPU memory
+    #   # we split the sampling of stage 1 into chunks
+    #   assert config.num_samples % config.num_samples_perchunk_stg1 == 0
+    #   num_chunks_stg1 = config.num_samples // config.num_samples_perchunk_stg1
+
+    #   # Initialize stage 1 using loc_floating_aux
+    #   # we use the tuned HMC parameters from above
+    #   # Note: vmap is first applied to the chains, then to samples from
+    #   #   conditioner this requires swap axes 0 and 1 in a few places
+
+    #   # multichain1 seems to imply that also hmc_params is of shape (n_chains, ...)
+    #   # and that multichain1 expects to vmap param over chains too (but wasn't first dim of params n_samples?)
+    #   # also n_samples is n MCMC samples and logdensity_fn_stg1 wants one sample one chain at a time I think
+    #   init_fn_multichain1 = jax.vmap(lambda param, hmc_param: blackjax.nuts(
+    #       logdensity_fn=lambda param_: logdensity_fn_stg1(
+    #           model_params=param_,
+    #           prng_key_gamma=key_gamma_,
+    #       ),
+    #       step_size=hmc_param['step_size'],
+    #       inverse_mass_matrix=hmc_param['inverse_mass_matrix'],
+    #   ).init(position=param))
+
+    #   # ok so this acts first, and loops over (n_samples,...) of params, and then above loops over n_chains of both?
+    #   init_fn_multichain2 = jax.vmap(
+    #       lambda param_: init_fn_multichain1(
+    #           param=param_,
+    #           hmc_param=hmc_params_stg1,
+    #       ))
+
+    #   # The initial position for loc_floating in the first chunk is the location
+    #   # of loc_floating_aux from stage 1
+    # #   initial_model_params_i = ModelParamsStg1(
+    # #         gamma_inducing=(initial_states_stg1.position.gamma_inducing)[:, :config.num_samples_perchunk_stg1,
+    # #        ...].swapaxes(0,
+    # #                      1),
+    # #         mixing_weights_list=[(w)[:, :config.num_samples_perchunk_stg1,
+    # #        ...].swapaxes(0,
+    # #                      1) for w in initial_states_stg1.position.mixing_weights_list],
+    # #         mixing_offset_list=[(o)[:, :config.num_samples_perchunk_stg1,
+    # #        ...].swapaxes(0,
+    # #                      1) for o in initial_states_stg1.position.mixing_offset_list],
+    # #         mu=(initial_states_stg1.position.mu)[:, :config.num_samples_perchunk_stg1,
+    # #        ...].swapaxes(0,
+    # #                      1),
+    # #         zeta=(initial_states_stg1.position.zeta)[:, :config.num_samples_perchunk_stg1,
+    # #        ...].swapaxes(0,
+    # #                      1),
+    # #         loc_floating_aux=(initial_states_stg1.position.loc_floating_aux)[:, :config.num_samples_perchunk_stg1,
+    # #        ...].swapaxes(0,
+    # #                      1),
+    # #     )
+    #   initial_model_params_i = ModelParamsStg1(
+    #         gamma_inducing=initial_states_stg1.position.gamma_inducing,
+    #         mixing_weights_list=initial_states_stg1.position.mixing_weights_list,
+    #         mixing_offset_list=initial_states_stg1.position.mixing_offset_list,
+    #         mu=initial_states_stg1.position.mu,
+    #         zeta=initial_states_stg1.position.zeta,
+    #         loc_floating_aux=initial_states_stg1.position.loc_floating_aux,
+    #     )
+
+    #   logging.info('\t sampling stage 1...')
+
+    #   #initial_states_stg1 will have shape (n_chains, ....)
+    #   initial_state_i = initial_states_stg1 #
+    #   chunks_positions = []
+    #   for i in range(num_chunks_stg1):
+    #     print(i)
+    #     if i!=0:
+    #         initial_state_i = init_fn_multichain2(initial_model_params_i) #, hmc_param=hmc_params_stg1)
+
+    #         # Sampling loop stage 2 after first round
+    #         # I think states_stg1_i will have shape (n_samples, n_chains, ....)
+    #         states_stg1_i, _ = inference_loop_stg1(
+    #             prng_key=next(prng_seq),
+    #             initial_states=initial_state_i,
+    #             hmc_params=hmc_params_stg1,
+    #             logdensity_fn=logdensity_fn_stg1,
+    #             num_samples=config.num_samples_perchunk_stg1,
+    #             num_chains=config.num_chains,
+    #         )
+    #     else:
+    #         # Sampling loop stage 2 init
+    #         # I think states_stg1_i will have shape (n_samples, n_chains, ....)
+    #         states_stg1_i, _ = inference_loop_stg1_init(
+    #             prng_key=next(prng_seq),
+    #             initial_states=initial_state_i,
+    #             hmc_params=hmc_params_stg1,
+    #             logdensity_fn=logdensity_fn_stg1,
+    #             num_samples=config.num_samples_perchunk_stg1,
+    #             num_chains=config.num_chains,
+    #         )
+
+    #     chunks_positions.append(states_stg1_i.position)
+
+    #     # Subsequent chunks initialise in last position of the previous chunk
+    #     initial_model_params_i = states_stg1_i.position
+
+    #   times_data['end_mcmc_stg_1'] = time.perf_counter()
+
+    #   # Concatenate samples from each chunk, across samples dimension
+    #   model_params_stg1_unb_samples = jax.tree_map(  # pylint: disable=no-value-for-parameter
+    #       lambda *x: jnp.concatenate(x, axis=0), *chunks_positions)
+    #   # swap axes to have shape (num_chains, num_samples, ...)
+    #   model_params_stg1_unb_samples = jax.tree_map(lambda x: x.swapaxes(0, 1),
+    #                                                model_params_stg1_unb_samples)
+
+####################################################################################################
+      #Sampling loop stage 1 (no chunks)
       logging.info('\t sampling stage 1...')
-      states_stg1, _ = inference_loop_stg1(
+      states_stg1, _ = inference_loop_stg1_init(
           prng_key=next(prng_seq),
           initial_states=initial_states_stg1,
           hmc_params=hmc_params_stg1,
@@ -556,6 +719,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       # swap position axes to have shape (num_chains, num_samples, ...)
       model_params_stg1_unb_samples = jax.tree_map(lambda x: x.swapaxes(0, 1),
                                                    states_stg1.position)
+####################################################################################################
 
       # Create InferenceData object
       lalme_stg1_unb_az = plot.lalme_az_from_samples(

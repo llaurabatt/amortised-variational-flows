@@ -7,7 +7,7 @@ def get_config():
   """Get the hyperparameter configuration."""
   config = ml_collections.ConfigDict()
 
-  config.method = 'vmp_flow_mse'
+  config.method = 'vmp_flow_allhp'
 
   # Dataset to use
   config.dataset_id = 'coarsen_all_items'
@@ -48,10 +48,10 @@ def get_config():
   config.prior_hparams_hparams.w_sampling_scale_beta = 1.
   config.prior_hparams_hparams.a_sampling_scale_alpha = 10.
   config.prior_hparams_hparams.a_sampling_scale_beta = 1.
-  config.prior_hparams_hparams.kernel_sampling_amplitude_alpha = 0.03
-  config.prior_hparams_hparams.kernel_sampling_amplitude_beta = 1.
-  config.prior_hparams_hparams.kernel_sampling_lengthscale_alpha = 0.03
-  config.prior_hparams_hparams.kernel_sampling_lengthscale_beta = 1.
+  config.prior_hparams_hparams.kernel_sampling_amplitude_alpha = 0.1
+  config.prior_hparams_hparams.kernel_sampling_amplitude_beta = 0.4
+  config.prior_hparams_hparams.kernel_sampling_lengthscale_alpha = 0.2
+  config.prior_hparams_hparams.kernel_sampling_lengthscale_beta = 0.5
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
   config.kernel_kwargs.amplitude = 0.2
@@ -80,7 +80,7 @@ def get_config():
   # Optimizer for searching hp
   config.optim_kwargs_hp = ml_collections.ConfigDict()
   config.optim_kwargs_hp.learning_rate = 1e-4
-  config.hp_star_steps = 1_000
+  config.hp_star_steps = 10_000
 
   config.num_lp_anchor_train = 80
   config.num_lp_floating_train = 247
@@ -96,13 +96,13 @@ def get_config():
   # How often to evaluate the model.
   config.eval_steps = config.training_steps // 5 
   config.num_samples_eval = 500
-  config.num_samples_mse = 1_000
-  config.eval_last = False # FLIPPED
+  config.num_samples_mse = 2_000
+  config.eval_last = False  # FLIPPED
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5 
-  config.log_img_at_end = False # FLIPPED
+  config.log_img_at_end = False  # FLIPPED
   config.save_samples = False # FLIPPED
 
   # Number of samples used in the plots.

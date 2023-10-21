@@ -570,7 +570,7 @@ def sample_priorhparams_values(
      kernel_amplitude=tfd.Uniform(
       low=kernel_sampling_amplitude_alpha, 
       high=kernel_sampling_amplitude_beta).sample(
-      sample_shape=(num_samples,), seed=prng_keys[3]),
+      sample_shape=(num_samples,), seed=prng_keys[2]),
      kernel_length_scale=tfd.Uniform(
       low=kernel_sampling_lengthscale_alpha, 
       high=kernel_sampling_lengthscale_beta).sample(

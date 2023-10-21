@@ -6,7 +6,7 @@ set -x
 REPO_DIR=$PWD
 
 # Directory to save all outputs
-WORK_DIR=$HOME/spatial-smi-output-original-mse
+WORK_DIR=$HOME/spatial-smi-output-integrated-allhps-mse
 
 # Create output directory and install missing dependencies
 mkdir -p $WORK_DIR
@@ -47,7 +47,7 @@ all_eta=('0.001' '1.000')
 #                           --alsologtostderr
 
 # ## MCMC
-# ## Single eta
+## Single eta
 for eta in "${all_eta[@]}"
 do
   python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_mcmc.py \

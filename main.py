@@ -59,7 +59,7 @@ def main(_):
     train_vmp_flow.train_and_evaluate(FLAGS.config, FLAGS.workdir)
   elif FLAGS.config.method == 'vmp_flow_mse':
     train_vmp_flow_mse.train_and_evaluate(FLAGS.config, FLAGS.workdir)
-  elif FLAGS.config.method == 'vmp_flow_test':
+  elif FLAGS.config.method == 'vmp_flow_hpnokernel':
     train_vmp_flow_hpnokernel.train_and_evaluate(FLAGS.config, FLAGS.workdir)
   elif FLAGS.config.method == 'vmp_flow_allhp':
     train_vmp_flow_allhp.train_and_evaluate(FLAGS.config, FLAGS.workdir)

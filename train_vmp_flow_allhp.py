@@ -1618,56 +1618,46 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   # Reset random key sequence
   prng_seq = hk.PRNGSequence(config.seed)
 
-  # PriorHparams = namedtuple(
-  #     "prior_hparams",
-  #     field_names=('w_prior_scale', 'a_prior_scale', 
-  #                 'mu_prior_concentration', 'mu_prior_rate', 
-  #                 'zeta_prior_a', 'zeta_prior_b', 
-  #                 'kernel_amplitude', 'kernel_length_scale'),
-  #     defaults=(5., 10., 1., 0.5, 1., 1., 0.2, 0.3),
-  # )
 
-
-  
   info_dict = {'init':hp_star_init,
   'loss':[], 'params':[], 'step':[]}
 
   # key_search = next(prng_seq)
 
   # # SGD over elpd for all hparams 
-  # hp_star_state = TrainState(
-  #     params=hp_star_init,
-  #     opt_state=make_optimizer_hparams(**config.optim_kwargs_hp).init(hp_star_init),
-  #     step=0,
-  # )
-  # for _ in range(config.hp_star_steps):
-  #   hp_star_state, mse = update_hp_star_state(
-  #       hp_star_state,
-  #       batch=train_ds,
-  #       prng_key=next(prng_seq),
-  #   )
-  
-  # SGD over elpd for eta only
-  eta_star_state = TrainState(
-      params=eta_star_init,
-      opt_state=make_optimizer_hparams(**config.optim_kwargs_hp).init(eta_star_init),
+  hp_star_state = TrainState(
+      params=hp_star_init,
+      opt_state=make_optimizer_hparams(**config.optim_kwargs_hp).init(hp_star_init),
       step=0,
   )
   for _ in range(config.hp_star_steps):
-    eta_star_state, mse = update_eta_star_state(
-        eta_star_state,
+    hp_star_state, mse = update_hp_star_state(
+        hp_star_state,
         batch=train_ds,
         prng_key=next(prng_seq),
     )
+  
+  # SGD over elpd for eta only
+  # eta_star_state = TrainState(
+  #     params=eta_star_init,
+  #     opt_state=make_optimizer_hparams(**config.optim_kwargs_hp).init(eta_star_init),
+  #     step=0,
+  # )
+  # for _ in range(config.hp_star_steps):
+  #   eta_star_state, mse = update_eta_star_state(
+  #       eta_star_state,
+  #       batch=train_ds,
+  #       prng_key=next(prng_seq),
+  #   )
 
     # if state_list[0].step % config.hp_star_steps == 0:
     #   logging.info("STEP: %5d; training loss: %.3f", state_list[0].step,
     #                neg_elpd["train_loss"])
     info_dict['loss'].append(mse["train_loss"])
-    # info_dict['params'].append(hp_star_state.params)
-    # info_dict['step'].append(hp_star_state.step)
-    info_dict['params'].append(eta_star_state.params)
-    info_dict['step'].append(eta_star_state.step)
+    info_dict['params'].append(hp_star_state.params)
+    info_dict['step'].append(hp_star_state.step)
+    # info_dict['params'].append(eta_star_state.params)
+    # info_dict['step'].append(eta_star_state.step)
 
 
     field_names=('w_prior_scale', 'a_prior_scale', 
@@ -1676,15 +1666,15 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                 'kernel_amplitude', 'kernel_length_scale')
   
     
-    if eta_star_state.step % 100 == 0:
+    if hp_star_state.step % 100 == 0:
       # labs = "STEP: %5d; training loss: %.3f " + ' '.join([hp + ':%.3f' for hp in field_names]) + "eta:%.3f"
-      # logging.info("STEP: %5d; training loss: %.3f w_prior_scale:%.3f a_prior_scale:%.3f mu_prior_concentration:%.3f mu_prior_rate:%.3f zeta_prior_a:%.3f zeta_prior_b:%.3f kernel_amplitude:%.3f kernel_length_scale:%.3f eta:%.3f",
-      #               float(hp_star_state.step),
-      #             float(mse["train_loss"]), *[float(hp_star_state.params[i]) for i in range(len(field_names)+1)])
+      logging.info("STEP: %5d; training loss: %.3f w_prior_scale:%.3f a_prior_scale:%.3f mu_prior_concentration:%.3f mu_prior_rate:%.3f zeta_prior_a:%.3f zeta_prior_b:%.3f kernel_amplitude:%.3f kernel_length_scale:%.3f eta:%.3f",
+                    float(hp_star_state.step),
+                  float(mse["train_loss"]), *[float(hp_star_state.params[i]) for i in range(len(field_names)+1)])
       
-      logging.info("STEP: %5d;  training loss: %.3f eta:%.3f",
-                    float(eta_star_state.step),
-                  float(mse["train_loss"]), float(eta_star_state.params))
+      # logging.info("STEP: %5d;  training loss: %.3f eta:%.3f",
+      #               float(eta_star_state.step),
+      #             float(mse["train_loss"]), float(eta_star_state.params))
 
       # logging.info(f"STEP: %5d; training loss:" + ' '.join([hp + ':%.3f' for hp in field_names]), hp_star_state.step,
       #             mse["train_loss"], *[hp_star_state.params[i] for i in range(len(field_names)+1)])
@@ -1692,17 +1682,17 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   
 
     # Clip eta_star to [0,1] hypercube and hp_star to [0.000001,..]
-    # hp_star_state = TrainState(
-    #     params=jnp.hstack([jnp.clip(hp_star_state.params[:8],0.),
-    #                       jnp.clip(hp_star_state.params[-1], 0., 1.)]),
-    #     opt_state=hp_star_state.opt_state,
-    #     step=hp_star_state.step,
-    # )
-    eta_star_state = TrainState(
-        params=jnp.clip(eta_star_state.params, 0., 1.),
-        opt_state=eta_star_state.opt_state,
-        step=eta_star_state.step,
+    hp_star_state = TrainState(
+        params=jnp.hstack([jnp.clip(hp_star_state.params[:8],0.),
+                          jnp.clip(hp_star_state.params[-1], 0., 1.)]),
+        opt_state=hp_star_state.opt_state,
+        step=hp_star_state.step,
     )
+    # eta_star_state = TrainState(
+    #     params=jnp.clip(eta_star_state.params, 0., 1.),
+    #     opt_state=eta_star_state.opt_state,
+    #     step=eta_star_state.step,
+    # )
 
     # summary_writer.scalar(
     #     tag='rnd_eff_hp_star_neg_elpd',
@@ -1715,7 +1705,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     #       value=hp_star_i,
     #       step=hp_star_state.step - 1,
     #   )
-  with open(workdir + f"/hp_info_eta{hp_star_init[-1]:.6f}.sav", 'wb') as f:
+  with open(workdir + f"/hp_info_priordefaults_eta{hp_star_init[-1]:.6f}.sav", 'wb') as f:
     pickle.dump(info_dict, f)
 
 
