@@ -1,6 +1,8 @@
 """MCMC sampling for the LALME model."""
 
 import os
+os.environ["TP_CPP_MIN_LOG_LEVEL"]="0" #TP_CPP_MIN_LOG_LEVEL=0 TF_CPP_VMODULE=bfc_allocator=1
+os.environ["TF_CPP_VMODULE"]="bfc_allocator=1"
 
 import time
 import math
@@ -23,7 +25,7 @@ import blackjax
 from blackjax.mcmc.hmc import HMCState
 from blackjax.mcmc.nuts import NUTSInfo
 # from blackjax.types import PyTree
-
+from jax.experimental import host_callback
 from tensorflow_probability.substrates import jax as tfp
 
 from flax.metrics import tensorboard
@@ -148,6 +150,38 @@ def inference_loop_one_chain(
 
   return states, infos
 
+
+
+def _print_consumer(arg, transforms):
+    i, n_iter = arg
+    print(f"Iteration {i}/{n_iter}")
+
+@jax.jit
+def progress_bar(arg, result):
+    "Print progress of loop only if iteration number is a multiple of the print_rate"
+    i, n_iter, print_rate = arg
+    result = jax.lax.cond(
+        i%print_rate==0,
+        lambda _: host_callback.id_tap(_print_consumer, (i, n_iter), result=result), 
+        lambda _: result,
+        operand=None)
+    return result
+
+# @jax.jit
+# def jax_loop(a):
+#     """
+#     Jax loop that increments `a` 100 times
+#     """
+#     n_iter, print_rate = 100, 10
+#     def body(carry, x):
+#         carry = progress_bar((x, n_iter, print_rate), carry)
+#         carry += 1
+#         return carry, None
+#     carry, _ = jax.lax.scan(body, a, jax.numpy.arange(n_iter))
+#     return carry
+
+
+# @jax.jit
 def inference_loop_stg1_init(
     prng_key: PRNGKey,
     initial_states: HMCState,
@@ -156,9 +190,9 @@ def inference_loop_stg1_init(
     num_samples: int,
     num_chains: int,
 ) -> Tuple[HMCState, NUTSInfo]:
-
-  def one_step(states, rng_keys):
-    kernel_fn_multichain = jax.vmap(
+  jax.debug.print("Inference loop stage 1 started")
+  logging.info("Inference loop stage 1 started")
+  kernel_fn_multichain = jax.vmap(
         lambda state_, hmc_param_, key_nuts_, key_gamma_: blackjax.nuts.build_kernel(
         )(
             rng_key=key_nuts_,
@@ -167,22 +201,30 @@ def inference_loop_stg1_init(
             step_size=hmc_param_['step_size'],
             inverse_mass_matrix=hmc_param_['inverse_mass_matrix'],
         ))
-    
+  
+  def one_step(states, i):#rng_keys):
+    # if i%5==0:
+    jax.debug.print(f"{i} Step starting")
+    logging.info(f"{i} Step starting!") # prints at compiling stage
+    rng_keys = jax.random.split(jax.random.PRNGKey(i), num_chains * 2).reshape(
+      (num_chains, 2, 2))
     keys_nuts_, key_gamma_ = jnp.split(rng_keys, 2, axis=-2)
+    # states = progress_bar((i, num_samples, 5), states)
     states_new, infos_new = kernel_fn_multichain(
         states,
         hmc_params,
         keys_nuts_.squeeze(-2),
         key_gamma_.squeeze(-2),
     )
-    return states_new, (states_new, infos_new)
+    return states_new, (states_new, None) # infos_new
 
+  # Not using this for being able to use progress bar
   keys = jax.random.split(prng_key, num_samples * num_chains * 2).reshape(
       (num_samples, num_chains, 2, 2))
 
   # one_step(initial_states, keys[0])
 
-  _, (states, infos) = jax.lax.scan(one_step, initial_states, keys)
+  _, (states, infos) = jax.lax.scan(one_step, initial_states, jnp.arange(num_samples)) # keys)
 
   return states, infos
 
@@ -250,10 +292,7 @@ def inference_loop_stg2(
     num_samples_stg2: int,
     num_chains: int,
 ):
-
-  # We only need to keep the last sample of the subchains
-  def one_step(states, rng_keys):
-    kernel_fn_multichain = jax.vmap(
+  kernel_fn_multichain = jax.vmap(
         lambda state, cond, hmc_param, key_nuts_, key_gamma_: blackjax.nuts.
         build_kernel()(
             rng_key=key_nuts_,
@@ -266,7 +305,7 @@ def inference_loop_stg2(
             step_size=hmc_param['step_size'],
             inverse_mass_matrix=hmc_param['inverse_mass_matrix'],
         ))
-    kernel_fn_multicond_multichain = jax.vmap(
+  kernel_fn_multicond_multichain = jax.vmap(
         lambda states_, conds_, keys_nuts_, keys_gamma_: kernel_fn_multichain(
             states_,
             conds_,
@@ -274,6 +313,10 @@ def inference_loop_stg2(
             keys_nuts_,
             keys_gamma_,
         ))
+  # We only need to keep the last sample of the subchains
+  def one_step(states, rng_keys):
+    jax.debug.print(f"Step starting")
+
     keys_nuts_, key_gamma_ = jnp.split(rng_keys, 2, axis=-2)
 
     states_new, _ = kernel_fn_multicond_multichain(
@@ -720,7 +763,8 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       model_params_stg1_unb_samples = jax.tree_map(lambda x: x.swapaxes(0, 1),
                                                    states_stg1.position)
 ####################################################################################################
-
+      jax.debug.print("Create InferenceData object") # {x}",x=var_name)
+      logging.info("Create InferenceData object")
       # Create InferenceData object
       lalme_stg1_unb_az = plot.lalme_az_from_samples(
           lalme_dataset=lalme_dataset,
@@ -1013,6 +1057,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         data_labels=["MCMC", "VI"],
     )
     logging.info("...done!")
+
 
 
 # # For debugging

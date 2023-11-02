@@ -7,7 +7,7 @@ def get_config():
   """Get the hyperparameter configuration."""
   config = ml_collections.ConfigDict()
 
-  config.method = 'vmp_flow_allhp'
+  config.method = 'vmp_flow_allhp_randomanchors'
 
   # Dataset to use
   config.dataset_id = 'coarsen_all_items'
@@ -82,10 +82,10 @@ def get_config():
   config.optim_kwargs_hp.learning_rate = 1e-4
   config.hp_star_steps = 10_000
 
-  config.num_lp_anchor_train = 80
+  config.num_lp_anchor_train = 100
   config.num_lp_floating_train = 247
   config.num_items_keep = 71
-  config.num_lp_anchor_val = 20
+  config.num_lp_anchor_val = 0
   config.num_lp_anchor_test = 20
   config.remove_empty_forms = True
 
@@ -97,12 +97,12 @@ def get_config():
   config.eval_steps = config.training_steps // 5 
   config.num_samples_eval = 500
   config.num_samples_mse = 2_000
-  config.eval_last = False  # FLIPPED
+  config.eval_last = False # FLIPPED 
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5 
-  config.log_img_at_end = False  # FLIPPED
+  config.log_img_at_end = False  # FLIPPED 
   config.save_samples = False # FLIPPED
 
   # Number of samples used in the plots.
@@ -114,7 +114,18 @@ def get_config():
       136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
   ]
   # config.lp_floating_grid10 = None
-  config.lp_random_anchor_10 = None
+#   lalme_dataset['LP'][:lalme_dataset['num_profiles_anchor']]
+# array([  81,   82,   83,   85,   87,   88,   89,   90,   91,   94,   96,
+#          97,  104,  105,  113,  133,  138,  145,  162,  195,  211,  233,
+#         251,  307,  308,  311,  313,  317,  318,  349,  360,  366,  373,
+#         378,  380,  415,  417,  418,  441,  445,  448,  451,  472,  542,
+#         544,  585,  586,  612,  731,  732,  777, 1001, 1012, 1102, 1122,
+#        1126, 1127, 1128, 1132, 1133, 1135, 1136, 1140, 1141, 1142, 1198,
+#        1199, 1200, 1201, 1202, 1203, 1205, 1245, 1257, 1259, 1284, 1285,
+#        1286, 1287, 1301, 1306, 1307, 1308, 1321, 1323, 1324, 1325, 1326,
+#        1331, 1334, 1335, 1337, 1338, 1339, 1340, 1341, 1342, 1343, 1348,
+#        1355])
+  config.lp_random_anchor_10 = [83, 104, 138, 251, 307, 349, 378, 441, 732, 1132]
 
   # eta shown in figures
   config.eta_plot = [0.001, 0.25, 0.5, 0.75, 1.0]
@@ -129,7 +140,7 @@ def get_config():
   config.eta_sampling_b = 0.5
 
   # Use random location for anchor profiles for evaluation
-  config.include_random_anchor = False
+  config.include_random_anchor = True
   # Metric for Hyperparameter Optimization
   config.synetune_metric = "mean_dist_anchor_val_min"
 

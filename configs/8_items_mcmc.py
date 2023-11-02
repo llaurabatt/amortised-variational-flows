@@ -49,10 +49,10 @@ def get_config():
 
   config.num_samples_gamma_profiles = 100
 
-  config.num_samples = 5_000 # 100
-  config.num_samples_perchunk_stg1 = 100 # 20
-  config.num_samples_subchain_stg2 = 100 # 10
-  config.num_samples_perchunk_stg2 = 100 # 20
+  config.num_samples = 5_000 # 5_000, 100
+  config.num_samples_perchunk_stg1 = 100 # 100, 20
+  config.num_samples_subchain_stg2 = 100 # 100, 10
+  config.num_samples_perchunk_stg2 = 100 # 100, 20
   config.num_burnin_steps_stg1 = 1_000
   config.num_steps_call_warmup = 200
 

@@ -2,10 +2,10 @@
 #%%
 import debugpy
 #%%
-debugpy.listen(5678)
-print('Waiting for debugger')
-debugpy.wait_for_client()
-print('Debugger attached')
+# debugpy.listen(5678)
+# print('Waiting for debugger')
+# debugpy.wait_for_client()
+# print('Debugger attached')
 #%%
 import os
 import warnings
@@ -23,6 +23,7 @@ import train_vmp_flow
 import train_vmp_flow_mse
 import train_vmp_flow_hpnokernel
 import train_vmp_flow_allhp
+import train_vmp_flow_allhp_randomanchors
 import sample_mcmc_blackjax as sample_mcmc
 # import sample_mcmc_tfp as sample_mcmc
 
@@ -63,8 +64,11 @@ def main(_):
     train_vmp_flow_hpnokernel.train_and_evaluate(FLAGS.config, FLAGS.workdir)
   elif FLAGS.config.method == 'vmp_flow_allhp':
     train_vmp_flow_allhp.train_and_evaluate(FLAGS.config, FLAGS.workdir)
+  elif FLAGS.config.method == 'vmp_flow_allhp_randomanchors':
+    train_vmp_flow_allhp_randomanchors.train_and_evaluate(FLAGS.config, FLAGS.workdir)
   elif FLAGS.config.method == 'mcmc':
-    sample_mcmc.sample_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
+    with jax.profiler.trace("/home/llaurabat/tmp/jax-trace"):
+        sample_mcmc.sample_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
   else:
     raise ValueError(f'Unknown method {FLAGS.config.method}')
 
