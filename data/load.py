@@ -10,6 +10,7 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 from jax import numpy as jnp
+import jax
 from tensorflow_probability.substrates import jax as tfp
 
 from modularbayes._src.typing import Any, Dict, List, Optional
@@ -29,7 +30,8 @@ LpSplit = namedtuple("lp_split", [
 ])
 
 
-def load_lalme(dataset_id: str = 'coarsen_8_items') -> Dict[str, Any]:
+def load_lalme(dataset_id: str = 'coarsen_8_items',
+               floating_anchor_copies:bool = False) -> Dict[str, Any]:
   """Load data from the Linguistic Atlas of Late Mediaeval English.
 
     Args:
@@ -74,6 +76,30 @@ def load_lalme(dataset_id: str = 'coarsen_8_items') -> Dict[str, Any]:
        np.where(loc_df['floating'])[0]])
   loc_df = loc_df.iloc[anchor_first_indices, :]
   y_concat_df = y_concat_df.iloc[:, anchor_first_indices]
+  # jax.debug.breakpoint()
+
+  if floating_anchor_copies:
+    num_profiles_anchor = np.where(~loc_df['floating'])[0].shape[0]
+
+    loc_df = pd.concat([loc_df.iloc[ :num_profiles_anchor, :],
+                        loc_df.iloc[ :num_profiles_anchor, :]], axis=0).reset_index(drop=True).copy()
+    
+    y_concat_df = pd.concat([y_concat_df.iloc[:, :num_profiles_anchor],
+                        y_concat_df.iloc[:, :num_profiles_anchor]], axis=1).reset_index(drop=True).copy()
+    
+    assert all(
+      y_concat_df.columns.astype(int).to_numpy() == loc_df['LP'].to_numpy())
+    
+    # assign anchor copy to floating
+    assert int(loc_df['floating'].sum()) == 0
+    loc_df['floating'] = pd.concat([loc_df['floating'].iloc[:num_profiles_anchor], 
+                                    pd.Series([True]*num_profiles_anchor)]).reset_index(drop=True)
+    assert  (loc_df['floating'].values == pd.concat([pd.Series([False]*num_profiles_anchor), 
+                                    pd.Series([True]*num_profiles_anchor)]).reset_index(drop=True).values).sum() == num_profiles_anchor*2
+    
+    loc_df['LP'][loc_df.floating == True] = loc_df['LP'][loc_df.floating == True].apply(lambda x: str(x) + '_c')
+
+
 
   assert all(
       y_concat_df.columns.astype(int).to_numpy() == loc_df['LP'].to_numpy())

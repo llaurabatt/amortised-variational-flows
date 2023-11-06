@@ -1533,10 +1533,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     # Sample eta values
     hp_fixed_values = jnp.array(hp_fixed_values)
     hp_params_all = jnp.zeros(optim_mask.shape)
-    # hp_params_all = jax.ops.index_update(hp_params_all, jax.ops.index[optim_mask_indices[1]], hp_params)
     hp_params_all = hp_params_all.at[(hp_optim_mask_indices[1],)].set(hp_params)
 
-    # hp_params_all = jax.ops.index_update(hp_params_all, jax.ops.index[optim_mask_indices[0]], hp_fixed_values)
     hp_params_all = hp_params_all.at[(hp_optim_mask_indices[0],)].set(hp_fixed_values)
 
     eta_profiles = jnp.where(

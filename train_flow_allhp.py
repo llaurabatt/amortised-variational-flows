@@ -47,7 +47,8 @@ def load_data(prng_key: PRNGKey, config: ConfigDict) -> Dict[str, Array]:
 
   prng_seq = hk.PRNGSequence(prng_key)
 
-  lalme_dataset = data.load_lalme(dataset_id=config.dataset_id)
+  lalme_dataset = data.load_lalme(dataset_id=config.dataset_id, 
+                                  floating_anchor_copies=config.floating_anchor_copies)
 
   # Get locations bounds
   # loc_bounds = jnp.array([[0., 1.], [0., 1.]])
@@ -853,7 +854,7 @@ def error_locations_estimate(
         locations_sample.loc_random_anchor.mean(axis=0) - targets_all[0],
         ord=2,
         axis=-1)
-    error_loc_out['dist_mean_random_anchor'] = distances.mean() #duplicate??
+    error_loc_out['dist_mean_random_anchor'] = distances.mean() 
 
   return error_loc_out
 

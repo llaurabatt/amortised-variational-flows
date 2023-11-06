@@ -900,6 +900,20 @@ def log_images(
     if summary_writer:
       images.append(plot_to_image(fig))
 
+    plot_name = 'lalme_vmp_dist_mean_floating'
+    fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+    # Plot distance as a function of eta
+    axs.plot(eta_eval_grid, error_loc_dict['dist_mean_floating'])
+    axs.set_xlabel('eta_floating')
+    axs.set_ylabel('Distance to posterior mean')
+    axs.set_title('Error distance for floating profiles\n' +
+                  '(posterior vs. fit-technique)')
+    fig.tight_layout()
+    if workdir_png:
+      fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    if summary_writer:
+      images.append(plot_to_image(fig))
+
     if config.include_random_anchor:
       plot_name = 'lalme_vmp_mean_dist_random_anchor'
       fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
@@ -1494,14 +1508,18 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 #####################################################################################
   # Find best eta ###
   # Initialize search with Bayes
-  prior_hparams_init = jnp.array([5., 10., 1., 0.5, 1., 1., 0.2, 0.3])
+  prior_hparams_default = jnp.array([5., 10., 1., 0.5, 1., 1., 0.2, 0.3])
+  eta_star_default= 1.
+  hp_star_default = jnp.hstack([prior_hparams_default, eta_star_default]) 
 
-  eta_star_init = 1.
-  
-  hp_star_init = jnp.hstack([prior_hparams_init, eta_star_init
-                            ]) #(n_samples, n_hps+367+71)
+  optim_mask = jnp.array([1, 1, 0, 0, 0, 0, 1, 1, 1])
+  optim_mask_indices = (tuple(i for i, x in enumerate(optim_mask) if x == 0),tuple(i for i, x in enumerate(optim_mask) if x == 1))
+  hp_star_init = hp_star_default[optim_mask==1]
+  hp_fixed = hp_star_default[optim_mask==0]
 
   num_profiles_split = train_ds['num_profiles_split']
+  jax.debug.print(train_ds['num_profiles_split'].lp_anchor_val)
+  jax.debug.print(train_ds['num_profiles_split'].lp_anchor_test)
   error_locations_estimate_jit = lambda locations_sample, loc: error_locations_estimate(
     locations_sample=locations_sample,
     num_profiles_split=num_profiles_split,
@@ -1513,6 +1531,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
   def mse_fixedhp(
     hp_params:Array,
+    hp_optim_mask_indices:Tuple,
+    hp_fixed_values:Array,
     state_list: List[TrainState],
     batch: Optional[Batch],
     prng_key: PRNGKey,
@@ -1525,12 +1545,17 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 ) -> Dict[str, Array]:
 
     # Sample eta values
+    hp_fixed_values = jnp.array(hp_fixed_values)
+    hp_params_all = jnp.zeros(len(hp_optim_mask_indices[0])+ len(hp_optim_mask_indices[1]))#jnp.zeros(optim_mask.shape)
+    hp_params_all = hp_params_all.at[(hp_optim_mask_indices[1],)].set(hp_params)
+    hp_params_all = hp_params_all.at[(hp_optim_mask_indices[0],)].set(hp_fixed_values)
+
 
     eta_profiles = jnp.where(
-                profile_is_anchor,1.,hp_params[-1])#(367)
+                profile_is_anchor,1.,hp_params_all[-1])#(367)
     eta_items = jnp.ones(len(batch['num_forms_tuple'])) #(71)
 
-    cond_values = jnp.hstack([hp_params[:-1],
+    cond_values = jnp.hstack([hp_params_all[:-1],
                               eta_profiles, eta_items,
                               ]) #(n_samples, n_hps+367+71)
     
@@ -1554,8 +1579,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   
   # Jit optimization of hparams 
      
-  mse_jit = lambda hp_params, batch, prng_key, state_list_vmp: mse_fixedhp(
+  mse_jit = lambda hp_params, batch, prng_key, state_list_vmp,  hp_optim_mask_indices, hp_fixed_values: mse_fixedhp(
       hp_params=hp_params,
+      hp_optim_mask_indices=hp_optim_mask_indices,
+      hp_fixed_values=hp_fixed_values,
       state_list=state_list_vmp,
       batch=batch,
       prng_key=prng_key,
@@ -1567,7 +1594,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       num_profiles_split=num_profiles_split,
   )['mean_dist_anchor_val']
 
-  mse_jit = jax.jit(mse_jit)
+  mse_jit = jax.jit(mse_jit, static_argnames=('hp_optim_mask_indices'))
 
   update_hp_star_state = lambda hp_star_state, batch, prng_key: update_state(
         state=hp_star_state,
@@ -1577,39 +1604,41 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         loss_fn=mse_jit,
         loss_fn_kwargs={
             'state_list_vmp': state_list,
+            'hp_optim_mask_indices':optim_mask_indices,
+            'hp_fixed_values':hp_fixed,
         },
     )
   update_hp_star_state = jax.jit(update_hp_star_state)
 
   # Jit optimization of eta only
 
-  mse_jit_eta = lambda eta, prior_hparams, batch, prng_key, state_list_vmp: mse_fixedhp(
-      hp_params=jnp.hstack([prior_hparams, eta]),
-      state_list=state_list_vmp,
-      batch=batch,
-      prng_key=prng_key,
-      num_samples=config.num_samples_mse,
-      flow_name=config.flow_name,
-      flow_kwargs=config.flow_kwargs,
-      include_random_anchor=config.include_random_anchor,
-      profile_is_anchor=profile_is_anchor,
-      num_profiles_split=num_profiles_split,
-  )['mean_dist_anchor_val']
+  # mse_jit_eta = lambda eta, prior_hparams, batch, prng_key, state_list_vmp: mse_fixedhp(
+  #     hp_params=jnp.hstack([prior_hparams, eta]),
+  #     state_list=state_list_vmp,
+  #     batch=batch,
+  #     prng_key=prng_key,
+  #     num_samples=config.num_samples_mse,
+  #     flow_name=config.flow_name,
+  #     flow_kwargs=config.flow_kwargs,
+  #     include_random_anchor=config.include_random_anchor,
+  #     profile_is_anchor=profile_is_anchor,
+  #     num_profiles_split=num_profiles_split,
+  # )['mean_dist_anchor_val']
 
-  mse_jit_eta = jax.jit(mse_jit_eta)
+  # mse_jit_eta = jax.jit(mse_jit_eta)
 
-  update_eta_star_state = lambda eta_star_state, batch, prng_key: update_state(
-        state=eta_star_state,
-        batch=batch,
-        prng_key=prng_key,
-        optimizer=make_optimizer_hparams(**config.optim_kwargs_hp), #make_optimizer(**config.optim_kwargs), 
-        loss_fn=mse_jit_eta,
-        loss_fn_kwargs={
-            'state_list_vmp': state_list,
-            'prior_hparams':prior_hparams_init,
-        },
-    )
-  update_eta_star_state = jax.jit(update_eta_star_state)
+  # update_eta_star_state = lambda eta_star_state, batch, prng_key: update_state(
+  #       state=eta_star_state,
+  #       batch=batch,
+  #       prng_key=prng_key,
+  #       optimizer=make_optimizer_hparams(**config.optim_kwargs_hp), #make_optimizer(**config.optim_kwargs), 
+  #       loss_fn=mse_jit_eta,
+  #       loss_fn_kwargs={
+  #           'state_list_vmp': state_list,
+  #           'prior_hparams':prior_hparams_init,
+  #       },
+  #   )
+  # update_eta_star_state = jax.jit(update_eta_star_state)
 
   logging.info('Finding best hyperparameters...')
 
@@ -1667,10 +1696,14 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   
     
     if hp_star_state.step % 100 == 0:
-      # labs = "STEP: %5d; training loss: %.3f " + ' '.join([hp + ':%.3f' for hp in field_names]) + "eta:%.3f"
-      logging.info("STEP: %5d; training loss: %.3f w_prior_scale:%.3f a_prior_scale:%.3f mu_prior_concentration:%.3f mu_prior_rate:%.3f zeta_prior_a:%.3f zeta_prior_b:%.3f kernel_amplitude:%.3f kernel_length_scale:%.3f eta:%.3f",
-                    float(hp_star_state.step),
-                  float(mse["train_loss"]), *[float(hp_star_state.params[i]) for i in range(len(field_names)+1)])
+      logging.info("STEP: %5d; training loss: %.3f w_prior_scale:%.3f a_prior_scale:%.3f kernel_amplitude:%.3f kernel_length_scale:%.3f eta:%.3f",
+        float(hp_star_state.step),
+      float(mse["train_loss"]), *[float(hp_star_state.params[i]) for i in range(len(field_names)+1)])
+
+      # # labs = "STEP: %5d; training loss: %.3f " + ' '.join([hp + ':%.3f' for hp in field_names]) + "eta:%.3f"
+      # logging.info("STEP: %5d; training loss: %.3f w_prior_scale:%.3f a_prior_scale:%.3f mu_prior_concentration:%.3f mu_prior_rate:%.3f zeta_prior_a:%.3f zeta_prior_b:%.3f kernel_amplitude:%.3f kernel_length_scale:%.3f eta:%.3f",
+      #               float(hp_star_state.step),
+      #             float(mse["train_loss"]), *[float(hp_star_state.params[i]) for i in range(len(field_names)+1)])
       
       # logging.info("STEP: %5d;  training loss: %.3f eta:%.3f",
       #               float(eta_star_state.step),
@@ -1683,11 +1716,20 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
     # Clip eta_star to [0,1] hypercube and hp_star to [0.000001,..]
     hp_star_state = TrainState(
-        params=jnp.hstack([jnp.clip(hp_star_state.params[:8],0.),
+        params=jnp.hstack([jnp.clip(hp_star_state.params[0],0., 10.),# w_prior_scale
+                          jnp.clip(hp_star_state.params[1],3., 19.),# a_prior_scale
+                          jnp.clip(hp_star_state.params[6],0.1, 0.4),# kernel_amplitude
+                          jnp.clip(hp_star_state.params[7],0.2, 0.5),# kernel_length_scale
                           jnp.clip(hp_star_state.params[-1], 0., 1.)]),
         opt_state=hp_star_state.opt_state,
         step=hp_star_state.step,
     )
+    # hp_star_state = TrainState(
+    #     params=jnp.hstack([jnp.clip(hp_star_state.params[:8],0.),
+    #                       jnp.clip(hp_star_state.params[-1], 0., 1.)]),
+    #     opt_state=hp_star_state.opt_state,
+    #     step=hp_star_state.step,
+    # )
     # eta_star_state = TrainState(
     #     params=jnp.clip(eta_star_state.params, 0., 1.),
     #     opt_state=eta_star_state.opt_state,

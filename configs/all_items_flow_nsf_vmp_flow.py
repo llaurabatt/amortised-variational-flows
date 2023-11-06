@@ -7,7 +7,7 @@ def get_config():
   """Get the hyperparameter configuration."""
   config = ml_collections.ConfigDict()
 
-  config.method = 'vmp_flow_allhp_randomanchors'
+  config.method = 'vmp_flow_allhp'
 
   # Dataset to use
   config.dataset_id = 'coarsen_all_items'
@@ -82,11 +82,12 @@ def get_config():
   config.optim_kwargs_hp.learning_rate = 1e-4
   config.hp_star_steps = 10_000
 
-  config.num_lp_anchor_train = 100
+  config.floating_anchor_copies = False # CHECK ALWAYS!!!
+  config.num_lp_anchor_train = 80
   config.num_lp_floating_train = 247
   config.num_items_keep = 71
-  config.num_lp_anchor_val = 0
-  config.num_lp_anchor_test = 20
+  config.num_lp_anchor_val = 40
+  config.num_lp_anchor_test = 0
   config.remove_empty_forms = True
 
   # Number of posteriors samples to approximate the variational loss (ELBO).
@@ -97,12 +98,12 @@ def get_config():
   config.eval_steps = config.training_steps // 5 
   config.num_samples_eval = 500
   config.num_samples_mse = 2_000
-  config.eval_last = False # FLIPPED 
+  config.eval_last = True 
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5 
-  config.log_img_at_end = False  # FLIPPED 
+  config.log_img_at_end = True  
   config.save_samples = False # FLIPPED
 
   # Number of samples used in the plots.
@@ -125,7 +126,8 @@ def get_config():
 #        1286, 1287, 1301, 1306, 1307, 1308, 1321, 1323, 1324, 1325, 1326,
 #        1331, 1334, 1335, 1337, 1338, 1339, 1340, 1341, 1342, 1343, 1348,
 #        1355])
-  config.lp_random_anchor_10 = [83, 104, 138, 251, 307, 349, 378, 441, 732, 1132]
+  # config.lp_random_anchor_10 = [83, 104, 138, 251, 307, 349, 378, 441, 732, 1132]
+  config.lp_random_anchor_10 = None
 
   # eta shown in figures
   config.eta_plot = [0.001, 0.25, 0.5, 0.75, 1.0]
@@ -140,7 +142,7 @@ def get_config():
   config.eta_sampling_b = 0.5
 
   # Use random location for anchor profiles for evaluation
-  config.include_random_anchor = True
+  config.include_random_anchor = False
   # Metric for Hyperparameter Optimization
   config.synetune_metric = "mean_dist_anchor_val_min"
 
