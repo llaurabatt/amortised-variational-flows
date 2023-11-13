@@ -641,6 +641,12 @@ def error_locations_vector_estimate(
   prior_hparams=jnp.ones((num_samples, 
                                   len(prior_defaults)))*prior_defaults # init params right?
  
+  LPs = batch['LP']
+  LPs_split = np.split(
+  LPs,
+  np.cumsum(batch['num_profiles_split']),
+  )[:-1]
+  train_idxs = jnp.where(jnp.isin(LPs_split[3], LPs_split[0]*1000))[0]
 
   for eta_i in eta_eval_grid:
     # eta_i = eta_eval_grid[0]
@@ -671,6 +677,9 @@ def error_locations_vector_estimate(
             locations_sample=q_distr_out['locations_sample'],
             num_profiles_split=batch['num_profiles_split'],
             loc=batch['loc'],
+            train_idxs=train_idxs,
+            # LPs=batch['LP'],
+            floating_anchor_copies=config.floating_anchor_copies,
             # batch=batch,
         ))
 
@@ -914,6 +923,34 @@ def log_images(
     if summary_writer:
       images.append(plot_to_image(fig))
 
+    plot_name = 'lalme_vmp_mean_dist_floating_copies_only'
+    fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+    # Plot distance as a function of eta
+    axs.plot(eta_eval_grid, error_loc_dict['mean_dist_floating_copies_only'])
+    axs.set_xlabel('eta_floating')
+    axs.set_ylabel('Mean distance')
+    axs.set_title('Error distance for floating profiles\n' +
+                  '(posterior vs. fit-technique)')
+    fig.tight_layout()
+    if workdir_png:
+      fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    if summary_writer:
+      images.append(plot_to_image(fig))
+
+    plot_name = 'lalme_vmp_dist_mean_floating_copies_only'
+    fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+    # Plot distance as a function of eta
+    axs.plot(eta_eval_grid, error_loc_dict['dist_mean_floating_copies_only'])
+    axs.set_xlabel('eta_floating')
+    axs.set_ylabel('Distance to posterior mean')
+    axs.set_title('Error distance for floating profiles\n' +
+                  '(posterior vs. fit-technique)')
+    fig.tight_layout()
+    if workdir_png:
+      fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    if summary_writer:
+      images.append(plot_to_image(fig))
+
     if config.include_random_anchor:
       plot_name = 'lalme_vmp_mean_dist_random_anchor'
       fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
@@ -990,6 +1027,12 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       # kernel_kwargs=config.kernel_kwargs,
       # gp_jitter=config.gp_jitter,
   )
+
+  LPs = np.split(
+      train_ds['LP'],
+      np.cumsum(train_ds['num_profiles_split']),#np.cumsum(batch['num_profiles_split'][1:]),
+  )[:-1]
+  print(f"TRAIN LPs: {LPs[0] if config.num_lp_anchor_train>0 else 'NONE'} \n VAL LPs: {LPs[1] if config.num_lp_anchor_val>0 else 'NONE'} \n TEST LPs: {LPs[2] if config.num_lp_anchor_test>0 else 'NONE'} \n FLOATING LPs: {LPs[3] }")
 
   # These parameters affect the dimension of the flow
   # so they are also part of the flow parameters
@@ -1518,12 +1561,23 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   hp_fixed = hp_star_default[optim_mask==0]
 
   num_profiles_split = train_ds['num_profiles_split']
-  jax.debug.print(train_ds['num_profiles_split'].lp_anchor_val)
-  jax.debug.print(train_ds['num_profiles_split'].lp_anchor_test)
+  LPs = train_ds['LP']
+  floating_anchor_copies = config.floating_anchor_copies
+  LPs_split = np.split(
+  LPs,
+  np.cumsum(num_profiles_split),
+  )[:-1]
+
+  train_idxs = jnp.where(jnp.isin(LPs_split[3], LPs_split[0]*1000))[0]
+  
+  # jax.debug.print(train_ds['num_profiles_split'].lp_anchor_val)
+  # jax.debug.print(train_ds['num_profiles_split'].lp_anchor_test)
   error_locations_estimate_jit = lambda locations_sample, loc: error_locations_estimate(
     locations_sample=locations_sample,
     num_profiles_split=num_profiles_split,
-    loc=loc
+    loc=loc,
+    floating_anchor_copies=floating_anchor_copies,
+    train_idxs=train_idxs,
   )
   error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
 
@@ -1592,7 +1646,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       include_random_anchor=config.include_random_anchor,
       profile_is_anchor=profile_is_anchor,
       num_profiles_split=num_profiles_split,
-  )['mean_dist_anchor_val']
+  )['mean_dist_floating_copies_only']
 
   mse_jit = jax.jit(mse_jit, static_argnames=('hp_optim_mask_indices'))
 
@@ -1690,8 +1744,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
 
     field_names=('w_prior_scale', 'a_prior_scale', 
-                'mu_prior_concentration', 'mu_prior_rate', 
-                'zeta_prior_a', 'zeta_prior_b', 
+                # 'mu_prior_concentration', 'mu_prior_rate', 
+                # 'zeta_prior_a', 'zeta_prior_b', 
                 'kernel_amplitude', 'kernel_length_scale')
   
     

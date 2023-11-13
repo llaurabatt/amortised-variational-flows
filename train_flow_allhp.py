@@ -784,6 +784,9 @@ def error_locations_estimate(
     locations_sample: Dict[str, Any],
     num_profiles_split:int,
     loc: Array,
+    floating_anchor_copies: bool,
+    train_idxs:Array,
+    # LPs:Array,
     # batch: Optional[Batch],
 ) -> Dict[str, Array]:
   """Compute average distance error."""
@@ -842,6 +845,25 @@ def error_locations_estimate(
   distances = jnp.linalg.norm(
       pred_floating[2].mean(axis=0) - targets_all[3], ord=2, axis=-1)
   error_loc_out['dist_mean_floating'] = distances.mean()
+
+  if floating_anchor_copies:
+    # if the floating profiles are anchor copies, I want to make sure to use
+    # only floating that are also training anchors (excl. val or test) for hp tuning
+    # LPs_split = np.split(
+    #   LPs,
+    #   np.cumsum(num_profiles_split),
+    #   )[:-1]
+    
+    # train_idxs = jnp.where(jnp.isin(LPs_split[3], LPs_split[0]*1000))[0]
+    distances = jnp.linalg.norm(
+      pred_floating[2][:,train_idxs,:] - targets_all[3][train_idxs,:][None, ...], ord=2, axis=-1)
+    error_loc_out['mean_dist_floating_copies_only'] = distances.mean()
+    # Average of distance between Fit-technique locations and posterior mean
+    distances = jnp.linalg.norm(
+        pred_floating[2][:,train_idxs,:].mean(axis=0) - targets_all[3][train_idxs,:], ord=2, axis=-1)
+    error_loc_out['dist_mean_floating_copies_only'] = distances.mean()
+
+
 
   # Random Anchor profiles
   if locations_sample.loc_random_anchor is not None:
@@ -1235,10 +1257,20 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           include_random_anchor=config.include_random_anchor,
       )['locations_sample']
 
+      LPs = train_ds['LP']
+      LPs_split = np.split(
+      LPs,
+      np.cumsum(train_ds['num_profiles_split']),
+      )[:-1]
+      train_idxs = jnp.where(jnp.isin(LPs_split[3], LPs_split[0]*1000))[0]
+
       error_loc_dict = error_locations_estimate(
           locations_sample=locations_sample_eval,
           num_profiles_split=train_ds['num_profiles_split'],
           loc=train_ds['loc'],
+          # LPs=train_ds['LP'],
+          floating_anchor_copies=config.floating_anchor_copies,
+          train_idxs=train_idxs,
         #   batch=train_ds,
       )
       for k, v in error_loc_dict.items():

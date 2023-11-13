@@ -97,12 +97,17 @@ def load_lalme(dataset_id: str = 'coarsen_8_items',
     assert  (loc_df['floating'].values == pd.concat([pd.Series([False]*num_profiles_anchor), 
                                     pd.Series([True]*num_profiles_anchor)]).reset_index(drop=True).values).sum() == num_profiles_anchor*2
     
-    loc_df['LP'][loc_df.floating == True] = loc_df['LP'][loc_df.floating == True].apply(lambda x: str(x) + '_c')
-
+    loc_df.loc[loc_df.floating == True, 'LP'] = loc_df.loc[loc_df.floating == True, 'LP'].apply(lambda x: x*1000) #str(x) + '_c'
+    mask = loc_df.floating == True
+    new_columns = [int(col)*1000 if mask[i] else col for i, col in enumerate(y_concat_df.columns)]
+    y_concat_df.columns = new_columns
+    # y_concat_df.columns[loc_df.floating == True] = y_concat_df.columns[loc_df.floating == True].apply(lambda x: str(x) + '_c')
 
 
   assert all(
       y_concat_df.columns.astype(int).to_numpy() == loc_df['LP'].to_numpy())
+  # assert all(
+  #     y_concat_df.columns.values == loc_df['LP'].astype(str))
 
   # Number of profiles
   data['num_profiles'] = loc_df.shape[0]

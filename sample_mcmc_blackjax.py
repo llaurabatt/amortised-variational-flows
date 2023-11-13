@@ -795,6 +795,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     ### Sample Second Stage ###
     logging.info("\t Stage 2...")
+    jax.debug.print("\t Stage 2... jax debug")
 
     # Extract global parameters from stage 1 samples
     model_params_global_unb_samples = ModelParamsGlobal(

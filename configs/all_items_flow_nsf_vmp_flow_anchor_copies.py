@@ -82,9 +82,9 @@ def get_config():
   config.optim_kwargs_hp.learning_rate = 1e-4
   config.hp_star_steps = 10_000
 
-  config.floating_anchor_copies = False # CHECK ALWAYS!!!
+  config.floating_anchor_copies = True # CHECK ALWAYS!!!
   config.num_lp_anchor_train = 80
-  config.num_lp_floating_train = 247
+  config.num_lp_floating_train = 120
   config.num_items_keep = 71
   config.num_lp_anchor_val = 20
   config.num_lp_anchor_test = 20
@@ -98,12 +98,12 @@ def get_config():
   config.eval_steps = config.training_steps // 5 
   config.num_samples_eval = 500
   config.num_samples_mse = 2_000
-  config.eval_last = False # FLIPPED
+  config.eval_last = False # FLIPPED 
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5 
-  config.log_img_at_end = False  # FLIPPED
+  config.log_img_at_end = False # FLIPPED 
   config.save_samples = False # FLIPPED
 
   # Number of samples used in the plots.
@@ -111,9 +111,19 @@ def get_config():
   config.num_samples_chunk_plot = 500
 
   # Floating profiles to plot in grid
-  config.lp_floating_grid10 = [
-      136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
-  ]
+  # when test left out, plot val as floating
+  # config.lp_floating_grid10 = [83000, 104000, 138000, 294000, 301000, 348000, 
+  #                              377000, 441000, 732000, 1132000, 1198000, 1199000, 1204000, 1301000, 
+  #                              1327000, 1329000, 1330000, 1332000, 1345000, 1348000]
+  # when val left out, plot test as floating
+  config.lp_floating_grid10 = [84000, 139000, 294000, 301000, 348000, 363000, 377000, 446000, 617000, 770000, 814000, 
+                               1125000, 1134000, 1204000, 
+                               1302000, 1327000, 1329000, 1330000, 1332000, 1345000, ]
+  # [
+  #     136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
+  # ]
+#    TEST LPs: [  84  139  294  301  348  363  377  446  617  770  814 1125 1134 1204
+#  1302 1327 1329 1330 1332 1345]
   # config.lp_floating_grid10 = None
 #   lalme_dataset['LP'][:lalme_dataset['num_profiles_anchor']]
 # array([  81,   82,   83,   85,   87,   88,   89,   90,   91,   94,   96,
