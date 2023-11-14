@@ -7,6 +7,7 @@ import scipy
 
 import matplotlib
 from matplotlib import pyplot as plt
+from matplotlib.patches import Patch
 from matplotlib import colors
 import seaborn as sns
 
@@ -372,7 +373,6 @@ def plot_profile_location(
 
 
 def profile_locations_grid(
-    lalme_az: InferenceData,
     lalme_dataset: Dict[str, Any],
     profiles_id: List[int],
     var_name: str = 'loc_floating',
@@ -380,9 +380,18 @@ def profile_locations_grid(
     suptitle: Optional[str] = None,
     nrows: Optional[int] = None,
     scatter_kwargs: Optional[Dict[str, Any]] = None,
+    lalme_az: Optional[InferenceData] = None,
     lalme_az_2: Optional[InferenceData] = None,
+    lalme_az_list: Optional[List] = None,
+    prior_hparams_str_list: Optional[List] = None,
 ):
 
+  assert((((lalme_az is not None) or (lalme_az_2 is not None)) and (lalme_az_list is None))
+    or
+    (((lalme_az is None) and (lalme_az_2 is None)) and (lalme_az_list is not None))
+  )
+
+  assert ((((lalme_az_list is not None) and (prior_hparams_str_list is not None)) or ((lalme_az_list is None) and (prior_hparams_str_list is None))))
   # Subplots layout
   if nrows is None:
     nrows = int(np.sqrt(len(profiles_id)))
@@ -398,15 +407,17 @@ def profile_locations_grid(
       sharey=True,
   )
   for i, lp_ in enumerate(profiles_id):
+    
     p_ = np.where(lalme_dataset['LP'] == lp_)[0][0]
-    az.plot_pair(
-        lalme_az,
-        var_names=[var_name],
-        coords={coord: lp_},
-        kind='scatter',
-        scatter_kwargs=scatter_kwargs,
-        ax=axs[i // ncols, i % ncols],
-    )
+    if lalme_az is not None:
+      az.plot_pair(
+          lalme_az,
+          var_names=[var_name],
+          coords={coord: lp_},
+          kind='scatter',
+          scatter_kwargs=scatter_kwargs,
+          ax=axs[i // ncols, i % ncols],
+      )
     if lalme_az_2 is not None:
       az.plot_pair(
           lalme_az_2,
@@ -419,6 +430,19 @@ def profile_locations_grid(
           },
           ax=axs[i // ncols, i % ncols],
       )
+    if lalme_az_list is not None:
+      colors = ['blue', 'orange', 'green', 'black', 'purple']      
+      for j_ix, lalme_az_j in enumerate(lalme_az_list):
+          az.plot_pair(
+          lalme_az_j,
+          var_names=[var_name],
+          coords={coord: lp_},
+          kind='scatter',
+          color=colors[j_ix],
+          scatter_kwargs=scatter_kwargs,
+          ax=axs[i // ncols, i % ncols],
+          )
+
     axs[i // ncols, i % ncols].scatter(
         x=lalme_dataset['loc'][[p_], 0],
         y=lalme_dataset['loc'][[p_], 1],
@@ -431,6 +455,10 @@ def profile_locations_grid(
     axs[i // ncols, i % ncols].set_xlabel("")
     axs[i // ncols, i % ncols].set_ylabel("")
     axs[i // ncols, i % ncols].set_title(f"Profile: {lp_}")
+    if lalme_az_list is not None:
+      legend_patches = [Patch(facecolor=colors[j], label=prior_hparams_str_list[j]) for j in jnp.arange(len(prior_hparams_str_list))]
+      plt.figlegend(handles=legend_patches, loc='upper center')
+
   if suptitle:
     fig.suptitle(suptitle)
   fig.tight_layout()
@@ -951,6 +979,112 @@ def posterior_samples_compare(
       )
 
 
+def posterior_samples_level_curves(
+    # prng_key: PRNGKey,
+    lalme_az_1: Mapping[str, Any],
+    lalme_dataset: Dict[str, Any],
+    step: int,
+    lp_floating_grid10: Optional[List[int]] = None,
+    show_mu: bool = False,
+    show_zeta: bool = False,
+    summary_writer: Optional[SummaryWriter] = None,
+    workdir_png: Optional[str] = None,
+    suffix: str = '',
+    scatter_kwargs={'alpha': 0.07},
+    data_labels=["lalme_az_1", "lalme_az_2"],
+):
+  """Plot level curves from posterior samples.
+  """
+
+  if lp_floating_grid10 is not None:
+    fig, _ = profile_locations_grid(
+        lalme_az=lalme_az_1,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_floating_grid10,
+        var_name='loc_floating',
+        coord="LP_floating",
+        nrows=2,
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_floating_profiles_level_curves"
+      fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_floating_profiles_level_curves"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+  if show_mu:
+    axs = az.plot_density(
+        [lalme_az_1, lalme_az_2],
+        data_labels=data_labels,
+        var_names=['mu'],
+        grid=(1, lalme_dataset['num_items']),
+        figsize=(3 * lalme_dataset['num_items'], 2.5),
+        hdi_prob=1.0,
+        shade=0.2,
+    )
+    max_ = float(
+        max(lalme_az_1.posterior.mu.max(), lalme_az_2.posterior.mu.max()))
+    max_ = 40.
+    for axs_i in axs[0]:
+      axs_i.set_xlim([0, max_])
+    plt.tight_layout()
+    if workdir_png:
+      plot_name = "lalme_mu_level_curves"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      image = plot_to_image(None)
+
+    if summary_writer:
+      plot_name = "lalme_mu_level_curves"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+  if show_zeta:
+    axs = az.plot_density(
+        [lalme_az_1, lalme_az_2],
+        data_labels=data_labels,
+        var_names=['zeta'],
+        grid=(1, lalme_dataset['num_items']),
+        figsize=(3 * lalme_dataset['num_items'], 2.5),
+        hdi_prob=1.0,
+        shade=0.2,
+    )
+    for axs_i in axs[0]:
+      axs_i.set_xlim([0, 1])
+    plt.tight_layout()
+    if workdir_png:
+      plot_name = "lalme_zeta_level_curves"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      image = plot_to_image(None)
+
+    if summary_writer:
+      plot_name = "lalme_zeta_level_curves"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+
+
+
+
+
+
 def lalme_az_from_samples(
     lalme_dataset: Dict[str, Any],
     model_params_global: ModelParamsGlobal,
@@ -1063,3 +1197,201 @@ def lalme_az_from_samples(
   )
 
   return lalme_az
+
+
+
+
+def lalme_priorhparam_compare_plots_arviz(
+    lalme_az_list: List[InferenceData],
+    lalme_dataset: Dict[str, Any],
+    prior_hparams_str_list: List[str],
+    step: Optional[int] = 0,
+    show_basis_fields: bool = False,
+    show_W_items: Optional[List[str]] = None,
+    show_a_items: Optional[List[str]] = None,
+    lp_floating_grid10: Optional[List[int]] = None,
+    lp_random_anchor_grid10: Optional[List[int]] = None,
+    lp_anchor_val: Optional[List[int]] = None,
+    lp_anchor_test: Optional[List[int]] = None,
+    loc_inducing: Optional[Array] = None,
+    workdir_png: Optional[str] = None,
+    summary_writer: Optional[SummaryWriter] = None,
+    suffix: str = 'priorhp_compare',
+    scatter_kwargs={'alpha': 0.07},
+):
+
+  if show_basis_fields:
+    assert loc_inducing is not None, "loc_inducing must be provided to plot basis fields"
+    for lalme_az_j, prior_hparams_j in zip(lalme_az_list,prior_hparams_str_list):
+      fig, _ = plot_basis_fields_az(
+          lalme_az=lalme_az_j,
+          lalme_dataset=lalme_dataset,
+          loc_inducing=loc_inducing,
+      )
+      plot_name = f"lalme_basis_fields_{prior_hparams_j}"
+      plot_name += suffix
+      if workdir_png:
+        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      if summary_writer:
+        summary_writer.image(plot_name, plot_to_image(fig), step=step)
+
+  if show_W_items is not None:
+    idx_ = np.intersect1d(
+        show_W_items, lalme_dataset['items'], return_indices=True)[2]
+    images = []
+    colors = ['blue', 'orange', 'green', 'black', 'purple']
+    for i in idx_:            
+      for j_ix, lalme_az_j in enumerate(lalme_az_list):
+        axs = az.plot_forest(lalme_az_j, var_names=[f"W_{i}"], ess=True, color=colors[j_ix])
+      plt.suptitle(f"LMC weights {lalme_dataset['items'][i]}")
+      legend_patches = [Patch(facecolor=colors[j], label=prior_hparams_str_list[j]) for j in jnp.arange(len(prior_hparams_str_list))]
+      plt.figlegend(handles=legend_patches, loc='upper center')
+      plt.tight_layout()
+      if workdir_png:
+        plot_name = f"lalme_W_{i}"
+        plot_name += suffix
+        plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      images.append(plot_to_image(None))
+
+    if summary_writer:
+      plot_name = "lalme_W"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=normalize_images(images),
+          step=step,
+          max_outputs=len(images),
+      )
+
+  if show_a_items is not None:
+    idx_ = np.intersect1d(
+        show_a_items, lalme_dataset['items'], return_indices=True)[2]
+    images = []
+    for i in idx_:
+      for j_ix, lalme_az_j in enumerate(lalme_az_list):
+        axs = az.plot_forest(lalme_az_j, var_names=[f"a_{i}"], ess=True, color=colors[j_ix])
+      plt.suptitle(f"LMC offsets {lalme_dataset['items'][i]}")
+      legend_patches = [Patch(facecolor=colors[j], label=prior_hparams_str_list[j]) for j in jnp.arange(len(prior_hparams_str_list))]
+      plt.figlegend(handles=legend_patches, loc='upper center')
+      plt.tight_layout()
+      if workdir_png:
+        plot_name = f"lalme_a_{i}"
+        plot_name += suffix
+        plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      images.append(plot_to_image(None))
+
+    if summary_writer:
+      plot_name = "lalme_a"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=normalize_images(images),
+          step=step,
+          max_outputs=len(images),
+      )
+
+  if lp_floating_grid10 is not None:
+    fig, axs = profile_locations_grid(
+        lalme_az_list=lalme_az_list,
+        prior_hparams_str_list=prior_hparams_str_list,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_floating_grid10,
+        var_name='loc_floating',
+        coord="LP_floating",
+        nrows=2,
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_floating_profiles_grid"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_floating_profiles_grid"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+  if lp_random_anchor_grid10 is not None:
+    fig, axs = profile_locations_grid(
+        lalme_az_list=lalme_az_list,
+        prior_hparams_str_list=prior_hparams_str_list,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_random_anchor_grid10,
+        var_name='loc_random_anchor',
+        coord="LP_anchor",
+        nrows=2,
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_random_anchor_profiles_grid"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_random_anchor_profiles_grid"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+  if lp_anchor_val is not None:
+    # lp_anchor_val = np.setdiff1d(lp_anchor_val, [104, 138, 1198, 1301, 1348])
+    fig, axs = profile_locations_grid(
+        lalme_az_list=lalme_az_list,
+        prior_hparams_str_list=prior_hparams_str_list,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_anchor_val,
+        var_name='loc_floating',
+        coord="LP_floating",
+        nrows=(len(lp_anchor_val) // 5 + (1 if len(lp_anchor_val) % 5 else 0)),
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_lp_anchor_val_grid"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_lp_anchor_val_grid"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+  if lp_anchor_test is not None:
+    fig, axs = profile_locations_grid(
+        lalme_az_list=lalme_az_list,
+        prior_hparams_str_list=prior_hparams_str_list,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_anchor_test,
+        var_name='loc_floating',
+        coord="LP_floating",
+        nrows=(len(lp_anchor_test) // 5 +
+               (1 if len(lp_anchor_test) % 5 else 0)),
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_lp_anchor_test_grid"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_lp_anchor_test_grid"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )

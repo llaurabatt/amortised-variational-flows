@@ -83,11 +83,11 @@ def get_config():
   config.hp_star_steps = 10_000
 
   config.floating_anchor_copies = False # CHECK ALWAYS!!!
-  config.num_lp_anchor_train = 80
+  config.num_lp_anchor_train = 100
   config.num_lp_floating_train = 247
   config.num_items_keep = 71
   config.num_lp_anchor_val = 20
-  config.num_lp_anchor_test = 20
+  config.num_lp_anchor_test = 0
   config.remove_empty_forms = True
 
   # Number of posteriors samples to approximate the variational loss (ELBO).
@@ -98,12 +98,12 @@ def get_config():
   config.eval_steps = config.training_steps // 5 
   config.num_samples_eval = 500
   config.num_samples_mse = 2_000
-  config.eval_last = False # FLIPPED
+  config.eval_last = False 
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5 
-  config.log_img_at_end = False  # FLIPPED
+  config.log_img_at_end = True  
   config.save_samples = False # FLIPPED
 
   # Number of samples used in the plots.
@@ -131,6 +131,9 @@ def get_config():
 
   # eta shown in figures
   config.eta_plot = [0.001, 0.25, 0.5, 0.75, 1.0]
+  config.prior_hparams_plot = [[5., 10., 1., 0.5, 1., 1., 0.2, 0.3],
+                               [1., 4., 1., 0.5, 1., 1., 0.5, 0.1],
+                               [8., 15., 1., 0.5, 1., 1., 0.1, 0.8]]
 
   # How often to save model checkpoints.
   config.checkpoint_steps = config.training_steps // 5

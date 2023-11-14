@@ -590,3 +590,43 @@ def sample_priorhparams_values(
      zeta_prior_b=jnp.ones((num_samples,))*1.,
   )
   return priorhps_sample
+
+
+def logprob_rho(hparams:Array,
+    w_sampling_scale_alpha: float,
+    w_sampling_scale_beta: float,
+    a_sampling_scale_alpha: float,
+    a_sampling_scale_beta: float,
+    kernel_sampling_amplitude_alpha: float,
+    kernel_sampling_amplitude_beta: float,
+    kernel_sampling_lengthscale_alpha: float,
+    kernel_sampling_lengthscale_beta: float,
+    eta_sampling_a:float,
+    eta_sampling_b:float):
+
+    logprobs_keys = PriorHparams()._fields
+    # logprobs_dict = {'w_prior_scale':0.,'a_prior_scale':0.,'mu_prior_concentration':0.,'mu_prior_rate':0.,
+    #                  'zeta_prior_a':0.,'zeta_prior_b':0.,'kernel_amplitude':0.,'kernel_length_scale':0.,
+    #                   'eta':0., }
+    logprobs_dict = {k:0. for k in logprobs_keys + ('eta',)}
+
+    logprobs_dict['w_prior_scale']=tfd.Gamma(
+      concentration=w_sampling_scale_alpha, 
+      rate=w_sampling_scale_beta).log_prob(hparams[0])
+    logprobs_dict['a_prior_scale']=tfd.Gamma(
+      concentration=a_sampling_scale_alpha, 
+      rate=a_sampling_scale_beta).log_prob(hparams[1])
+    logprobs_dict['kernel_amplitude']=tfd.Uniform(
+      low=kernel_sampling_amplitude_alpha, 
+      high=kernel_sampling_amplitude_beta).log_prob(hparams[-3])
+    logprobs_dict['kernel_length_scale']=tfd.Uniform(
+      low=kernel_sampling_lengthscale_alpha, 
+      high=kernel_sampling_lengthscale_beta).log_prob(hparams[-2])   
+    logprobs_dict['eta']=tfd.Beta(
+      concentration0=eta_sampling_a,
+      concentration1=eta_sampling_b).log_prob(hparams[-1])
+    
+
+    
+    return logprobs_dict
+

@@ -22,7 +22,7 @@ import pickle
 from tensorflow_probability.substrates import jax as tfp
 
 import log_prob_fun_allhp
-from log_prob_fun_allhp import ModelParamsGlobal, ModelParamsLocations, PriorHparams, sample_priorhparams_values
+from log_prob_fun_allhp import ModelParamsGlobal, ModelParamsLocations, PriorHparams, sample_priorhparams_values, logprob_rho
 import flows
 import plot
 from train_flow_allhp import (load_data, make_optimizer, get_inducing_points,
@@ -381,7 +381,7 @@ def sample_lalme_az(
               model_params_global=global_,
               model_params_locations=locations_,
               prng_key=key_,
-              prior_hparams=prior_hparams_,
+              prior_hparams=PriorHparams(*prior_hparams_[0]),
               kernel_name=config.kernel_name,
               # kernel_kwargs=config.kernel_kwargs,
               gp_jitter=config.gp_jitter,
@@ -455,12 +455,13 @@ def elbo_estimate_along_eta(
   )
 
   # Sample eta values
-  etas_profiles_floating = jax.random.beta(
-      key=next(prng_seq),
-      a=eta_sampling_a,
-      b=eta_sampling_b,
-      shape=(num_samples,),
-  )
+  # etas_profiles_floating = jax.random.beta(
+  #     key=next(prng_seq),
+  #     a=eta_sampling_a,
+  #     b=eta_sampling_b,
+  #     shape=(num_samples,),
+  # )
+  etas_profiles_floating = jnp.ones((num_samples,))
 
   eta_profiles = jax.vmap(lambda eta_: jnp.where(
               profile_is_anchor,1.,eta_, ))(etas_profiles_floating) #(n_samples, 367)
@@ -706,6 +707,7 @@ def log_images(
     lp_random_anchor_grid10: Optional[List[int]] = None,
     show_lp_anchor_val: Optional[bool] = False,
     show_lp_anchor_test: Optional[bool] = False,
+    show_location_priorhp_compare: Optional[bool] = False,
     loc_inducing: Optional[Array] = None,
     show_eval_metric: bool = False,
     eta_eval_grid: Optional[Array] = None,
@@ -788,7 +790,49 @@ def log_images(
         scatter_kwargs={"alpha": 0.10},
     )
 
+    if show_location_priorhp_compare:
+      lalme_az_list = []
+      prior_hparams_str_list = []
+      for prior_hparams_i in config.prior_hparams_plot:
+
+        cond_values = jnp.hstack([prior_hparams_i, eta_i_profiles,eta_i_items])
+
+        lalme_az_ = sample_lalme_az(
+            state_list=state_list,
+            batch=batch,
+            cond_values=cond_values,
+            prior_hparams=jnp.array(prior_hparams_i),
+            # smi_eta=smi_eta_,
+            prng_key=next(prng_seq),
+            config=config,
+            lalme_dataset=lalme_dataset,
+            include_gamma=show_basis_fields,
+            num_samples_chunk=num_samples_chunk,
+        )
+        lalme_az_list.append(lalme_az_)
+        prior_hparams_str_list.append(fr'$\sigma_a$: {prior_hparams_i[0]}, $\sigma_w$: {prior_hparams_i[1]}, $\a_K$: {prior_hparams_i[-2]}, $\ls_K$: {prior_hparams_i[-1]}')
+
+      plot.lalme_priorhparam_compare_plots_arviz(
+          lalme_az_list=lalme_az_list,
+          lalme_dataset=lalme_dataset,
+          prior_hparams_str_list=prior_hparams_str_list,
+          step=state_list[0].step,
+          show_basis_fields=show_basis_fields,
+          show_W_items=show_W_items,
+          show_a_items=show_a_items,
+          lp_floating_grid10=lp_floating_grid10,
+          lp_random_anchor_grid10=lp_random_anchor_grid10,
+          lp_anchor_val=lp_anchor_val,
+          lp_anchor_test=lp_anchor_test,
+          loc_inducing=loc_inducing,
+          workdir_png=workdir_png,
+          summary_writer=summary_writer,
+          suffix=f"_eta_floating_{float(eta_i):.3f}_priorhp_compare",
+          scatter_kwargs={"alpha": 0.10},
+          )
+
   ### Evaluation metrics ###
+  
   if show_eval_metric:
 
     error_loc_dict = error_locations_vector_estimate(
@@ -923,33 +967,34 @@ def log_images(
     if summary_writer:
       images.append(plot_to_image(fig))
 
-    plot_name = 'lalme_vmp_mean_dist_floating_copies_only'
-    fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
-    # Plot distance as a function of eta
-    axs.plot(eta_eval_grid, error_loc_dict['mean_dist_floating_copies_only'])
-    axs.set_xlabel('eta_floating')
-    axs.set_ylabel('Mean distance')
-    axs.set_title('Error distance for floating profiles\n' +
-                  '(posterior vs. fit-technique)')
-    fig.tight_layout()
-    if workdir_png:
-      fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-    if summary_writer:
-      images.append(plot_to_image(fig))
+    if config.floating_anchor_copies:
+      plot_name = 'lalme_vmp_mean_dist_floating_copies_only'
+      fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+      # Plot distance as a function of eta
+      axs.plot(eta_eval_grid, error_loc_dict['mean_dist_floating_copies_only'])
+      axs.set_xlabel('eta_floating')
+      axs.set_ylabel('Mean distance')
+      axs.set_title('Error distance for floating profiles\n' +
+                    '(posterior vs. fit-technique)')
+      fig.tight_layout()
+      if workdir_png:
+        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      if summary_writer:
+        images.append(plot_to_image(fig))
 
-    plot_name = 'lalme_vmp_dist_mean_floating_copies_only'
-    fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
-    # Plot distance as a function of eta
-    axs.plot(eta_eval_grid, error_loc_dict['dist_mean_floating_copies_only'])
-    axs.set_xlabel('eta_floating')
-    axs.set_ylabel('Distance to posterior mean')
-    axs.set_title('Error distance for floating profiles\n' +
-                  '(posterior vs. fit-technique)')
-    fig.tight_layout()
-    if workdir_png:
-      fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-    if summary_writer:
-      images.append(plot_to_image(fig))
+      plot_name = 'lalme_vmp_dist_mean_floating_copies_only'
+      fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
+      # Plot distance as a function of eta
+      axs.plot(eta_eval_grid, error_loc_dict['dist_mean_floating_copies_only'])
+      axs.set_xlabel('eta_floating')
+      axs.set_ylabel('Distance to posterior mean')
+      axs.set_title('Error distance for floating profiles\n' +
+                    '(posterior vs. fit-technique)')
+      fig.tight_layout()
+      if workdir_png:
+        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      if summary_writer:
+        images.append(plot_to_image(fig))
 
     if config.include_random_anchor:
       plot_name = 'lalme_vmp_mean_dist_random_anchor'
@@ -1520,11 +1565,11 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         config=config,
         lalme_dataset=lalme_dataset,
         batch=train_ds,
-        show_mu=True,
-        show_zeta=True,
+        show_mu=False, # True
+        show_zeta=False, # True
         show_basis_fields=False,
-        # show_W_items=lalme_dataset['items'],
-        # show_a_items=lalme_dataset['items'],
+        show_W_items=lalme_dataset['items'],
+        show_a_items=lalme_dataset['items'],
         # lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
         # lp_floating_traces=config.lp_floating_grid10,
         # lp_floating_grid10=config.lp_floating_grid10,
@@ -1539,20 +1584,23 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             True if lalme_dataset['num_profiles_split'].lp_anchor_test > 0 else
             False),
         loc_inducing=train_ds['loc_inducing'],
-        show_eval_metric=True,
+        show_location_priorhp_compare=True,
+        show_eval_metric=False, # True
         eta_eval_grid=jnp.linspace(0, 1, 21),
         num_samples_chunk=config.num_samples_chunk_plot,
         summary_writer=summary_writer,
         workdir_png=workdir,
     )
+
     logging.info("...done!")
 
 
 #####################################################################################
   # Find best eta ###
   # Initialize search with Bayes
+  prior_defaults = jnp.stack(PriorHparams())
   prior_hparams_default = jnp.array([5., 10., 1., 0.5, 1., 1., 0.2, 0.3])
-  eta_star_default= 1.
+  eta_star_default= 1.0
   hp_star_default = jnp.hstack([prior_hparams_default, eta_star_default]) 
 
   optim_mask = jnp.array([1, 1, 0, 0, 0, 0, 1, 1, 1])
@@ -1596,13 +1644,30 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     num_samples: int,
     profile_is_anchor:Array,
     num_profiles_split:int,
+    config:ConfigDict,
 ) -> Dict[str, Array]:
+
+
+
 
     # Sample eta values
     hp_fixed_values = jnp.array(hp_fixed_values)
     hp_params_all = jnp.zeros(len(hp_optim_mask_indices[0])+ len(hp_optim_mask_indices[1]))#jnp.zeros(optim_mask.shape)
     hp_params_all = hp_params_all.at[(hp_optim_mask_indices[1],)].set(hp_params)
     hp_params_all = hp_params_all.at[(hp_optim_mask_indices[0],)].set(hp_fixed_values)
+    logprobs_rho_dict = logprob_rho(hparams=hp_params_all,
+                      w_sampling_scale_alpha=config.prior_hparams_hparams.w_sampling_scale_alpha,
+                      w_sampling_scale_beta=config.prior_hparams_hparams.w_sampling_scale_beta,
+                      a_sampling_scale_alpha=config.prior_hparams_hparams.a_sampling_scale_alpha,
+                      a_sampling_scale_beta=config.prior_hparams_hparams.a_sampling_scale_beta,
+                      kernel_sampling_amplitude_alpha=config.prior_hparams_hparams.kernel_sampling_amplitude_alpha,
+                      kernel_sampling_amplitude_beta=config.prior_hparams_hparams.kernel_sampling_amplitude_beta,
+                      kernel_sampling_lengthscale_alpha=config.prior_hparams_hparams.kernel_sampling_lengthscale_alpha,
+                      kernel_sampling_lengthscale_beta=config.prior_hparams_hparams.kernel_sampling_lengthscale_beta,
+                      eta_sampling_a=config.eta_sampling_a,
+                      eta_sampling_b=config.eta_sampling_b)
+    logprobs_rho = jnp.array(list(logprobs_rho_dict.values()))
+    logprobs_rho = logprobs_rho.at[(hp_optim_mask_indices[0],)].set(0.)
 
 
     eta_profiles = jnp.where(
@@ -1629,7 +1694,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             # num_profiles_split=num_profiles_split,
             # batch=batch,
         )
-    return error_loc_dict
+    return error_loc_dict['mean_dist_anchor_val'] #- logprobs_rho.sum()
   
   # Jit optimization of hparams 
      
@@ -1646,7 +1711,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       include_random_anchor=config.include_random_anchor,
       profile_is_anchor=profile_is_anchor,
       num_profiles_split=num_profiles_split,
-  )['mean_dist_floating_copies_only']
+      config=config,
+  )
 
   mse_jit = jax.jit(mse_jit, static_argnames=('hp_optim_mask_indices'))
 
