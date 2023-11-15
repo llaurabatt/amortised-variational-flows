@@ -754,54 +754,58 @@ def log_images(
     
     cond_values = jnp.hstack([prior_hparams,eta_i_profiles,eta_i_items])
 
-    lalme_az_ = sample_lalme_az(
-        state_list=state_list,
-        batch=batch,
-        cond_values=cond_values,
-        prior_hparams=prior_hparams,
-        # smi_eta=smi_eta_,
-        prng_key=next(prng_seq),
-        config=config,
-        lalme_dataset=lalme_dataset,
-        include_gamma=show_basis_fields,
-        num_samples_chunk=num_samples_chunk,
-    )
+    # lalme_az_ = sample_lalme_az(
+    #     state_list=state_list,
+    #     batch=batch,
+    #     cond_values=cond_values,
+    #     prior_hparams=prior_hparams,
+    #     # smi_eta=smi_eta_,
+    #     prng_key=next(prng_seq),
+    #     config=config,
+    #     lalme_dataset=lalme_dataset,
+    #     include_gamma=show_basis_fields,
+    #     num_samples_chunk=num_samples_chunk,
+    # )
 
-    plot.lalme_plots_arviz(
-        lalme_az=lalme_az_,
-        lalme_dataset=lalme_dataset,
-        step=state_list[0].step,
-        show_mu=show_mu,
-        show_zeta=show_zeta,
-        show_basis_fields=show_basis_fields,
-        show_W_items=show_W_items,
-        show_a_items=show_a_items,
-        lp_floating=lp_floating,
-        lp_floating_traces=lp_floating_traces,
-        lp_floating_grid10=lp_floating_grid10,
-        lp_random_anchor=lp_random_anchor,
-        lp_random_anchor_grid10=lp_random_anchor_grid10,
-        lp_anchor_val=lp_anchor_val,
-        lp_anchor_test=lp_anchor_test,
-        loc_inducing=loc_inducing,
-        workdir_png=workdir_png,
-        summary_writer=summary_writer,
-        suffix=f"_eta_floating_{float(eta_i):.3f}",
-        scatter_kwargs={"alpha": 0.10},
-    )
+    # plot.lalme_plots_arviz(
+    #     lalme_az=lalme_az_,
+    #     lalme_dataset=lalme_dataset,
+    #     step=state_list[0].step,
+    #     show_mu=show_mu,
+    #     show_zeta=show_zeta,
+    #     show_basis_fields=show_basis_fields,
+    #     show_W_items=show_W_items,
+    #     show_a_items=show_a_items,
+    #     lp_floating=lp_floating,
+    #     lp_floating_traces=lp_floating_traces,
+    #     lp_floating_grid10=lp_floating_grid10,
+    #     lp_random_anchor=lp_random_anchor,
+    #     lp_random_anchor_grid10=lp_random_anchor_grid10,
+    #     lp_anchor_val=lp_anchor_val,
+    #     lp_anchor_test=lp_anchor_test,
+    #     loc_inducing=loc_inducing,
+    #     workdir_png=workdir_png,
+    #     summary_writer=summary_writer,
+    #     suffix=f"_eta_floating_{float(eta_i):.3f}",
+    #     scatter_kwargs={"alpha": 0.10},
+    # )
 
     if show_location_priorhp_compare:
+      print('Plotting comparing results...')
       lalme_az_list = []
       prior_hparams_str_list = []
       for prior_hparams_i in config.prior_hparams_plot:
+        print('Samples per prior hparam set')
+        prior_hparams_i_samples =jnp.ones((config.num_samples_plot, 
+                                len(prior_defaults)))*jnp.array(prior_hparams_i) # init params right?
 
-        cond_values = jnp.hstack([prior_hparams_i, eta_i_profiles,eta_i_items])
+        cond_values = jnp.hstack([prior_hparams_i_samples, eta_i_profiles,eta_i_items])
 
         lalme_az_ = sample_lalme_az(
             state_list=state_list,
             batch=batch,
             cond_values=cond_values,
-            prior_hparams=jnp.array(prior_hparams_i),
+            prior_hparams=prior_hparams_i_samples,
             # smi_eta=smi_eta_,
             prng_key=next(prng_seq),
             config=config,
@@ -810,7 +814,7 @@ def log_images(
             num_samples_chunk=num_samples_chunk,
         )
         lalme_az_list.append(lalme_az_)
-        prior_hparams_str_list.append(fr'$\sigma_a$: {prior_hparams_i[0]}, $\sigma_w$: {prior_hparams_i[1]}, $\a_K$: {prior_hparams_i[-2]}, $\ls_K$: {prior_hparams_i[-1]}')
+        prior_hparams_str_list.append(fr'$\sigma_a$: {prior_hparams_i[0]}, $\sigma_w$: {prior_hparams_i[1]}, $a_K$: {prior_hparams_i[-2]}, $ls_K$: {prior_hparams_i[-1]}')
 
       plot.lalme_priorhparam_compare_plots_arviz(
           lalme_az_list=lalme_az_list,

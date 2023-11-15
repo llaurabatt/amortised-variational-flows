@@ -1240,13 +1240,23 @@ def lalme_priorhparam_compare_plots_arviz(
         show_W_items, lalme_dataset['items'], return_indices=True)[2]
     images = []
     colors = ['blue', 'orange', 'green', 'black', 'purple']
-    for i in idx_:            
-      for j_ix, lalme_az_j in enumerate(lalme_az_list):
-        axs = az.plot_forest(lalme_az_j, var_names=[f"W_{i}"], ess=True, color=colors[j_ix])
-      plt.suptitle(f"LMC weights {lalme_dataset['items'][i]}")
-      legend_patches = [Patch(facecolor=colors[j], label=prior_hparams_str_list[j]) for j in jnp.arange(len(prior_hparams_str_list))]
-      plt.figlegend(handles=legend_patches, loc='upper center')
-      plt.tight_layout()
+    # The kind="forestplot" generates credible intervals, where the central points are 
+    # the estimated posterior means, the thick lines are the central quartiles, 
+    # and the thin lines represent the 100 x hdiprob)% highest density intervals.
+
+    for i in idx_: #[31,56,60,61,67,70]:
+      axs = az.plot_forest(lalme_az_list, model_names=prior_hparams_str_list, 
+                            var_names=[f"W_{i}"],  kind='forestplot', filter_vars='regex',
+                            colors=colors[:len(lalme_az_list)],
+                            figsize=(8, lalme_az_list[0].posterior[f'W_{i}'].shape[-1]*4))
+
+      axs[0].legend(loc=None) # makes legend disappear, as legend=False does not work
+      axs[0].set_title('')
+      legend_patches = [Patch(facecolor=colors[j], label=prior_hparams_str_list[j]) for j in np.arange(len(prior_hparams_str_list))]
+      plt.figlegend(handles=legend_patches, loc='lower center', ncols=2, fontsize=11)
+      # plt.suptitle(f"LMC weights {lalme_dataset['items'][i]}")
+      plt.tight_layout()            
+
       if workdir_png:
         plot_name = f"lalme_W_{i}"
         plot_name += suffix
@@ -1268,12 +1278,17 @@ def lalme_priorhparam_compare_plots_arviz(
         show_a_items, lalme_dataset['items'], return_indices=True)[2]
     images = []
     for i in idx_:
-      for j_ix, lalme_az_j in enumerate(lalme_az_list):
-        axs = az.plot_forest(lalme_az_j, var_names=[f"a_{i}"], ess=True, color=colors[j_ix])
-      plt.suptitle(f"LMC offsets {lalme_dataset['items'][i]}")
-      legend_patches = [Patch(facecolor=colors[j], label=prior_hparams_str_list[j]) for j in jnp.arange(len(prior_hparams_str_list))]
-      plt.figlegend(handles=legend_patches, loc='upper center')
-      plt.tight_layout()
+      axs = az.plot_forest(lalme_az_list, model_names=prior_hparams_str_list, 
+                            var_names=[f"a_{i}"],  kind='forestplot', filter_vars='regex',
+                            colors=colors[:len(lalme_az_list)],
+                            figsize=(8, lalme_az_list[0].posterior[f'W_{i}'].shape[-1]))
+
+      axs[0].legend(loc=None) # makes legend disappear, as legend=False does not work
+      axs[0].set_title('')
+      legend_patches = [Patch(facecolor=colors[j], label=prior_hparams_str_list[j]) for j in np.arange(len(prior_hparams_str_list))]
+      plt.figlegend(handles=legend_patches, loc='lower center', ncols=2, fontsize=11)
+      # plt.suptitle(f"LMC offsets {lalme_dataset['items'][i]}")
+      plt.tight_layout()    
       if workdir_png:
         plot_name = f"lalme_a_{i}"
         plot_name += suffix
