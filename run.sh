@@ -42,6 +42,7 @@ all_eta=('0.001' '1.000')
 # ## Variational Meta-Posterior via VMP-flow
 # ### Neural Spline Flow
 # python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_nsf_vmp_flow.py \
+#                           --config.path_mcmc_img $HOME/my-spatial-smi-oldv/data/8_items_mcmc_floating.png \
 #                           --workdir $WORK_DIR/8_items/nsf/vmp_flow \
 #                           --log_dir $WORK_DIR/8_items/nsf/vmp_flow/log_dir \
 #                           --alsologtostderr

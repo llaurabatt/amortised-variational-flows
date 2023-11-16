@@ -438,7 +438,7 @@ def profile_locations_grid(
           var_names=[var_name],
           coords={coord: lp_},
           kind='scatter',
-          color=colors[j_ix],
+          # color=colors[j_ix],
           scatter_kwargs=scatter_kwargs,
           ax=axs[i // ncols, i % ncols],
           )
@@ -457,14 +457,87 @@ def profile_locations_grid(
     axs[i // ncols, i % ncols].set_title(f"Profile: {lp_}")
     if lalme_az_list is not None:
       legend_patches = [Patch(facecolor=colors[j], label=prior_hparams_str_list[j]) for j in jnp.arange(len(prior_hparams_str_list))]
-      plt.figlegend(handles=legend_patches, loc='upper center')
+      plt.figlegend(handles=legend_patches, loc='lower center', ncols=3)
 
   if suptitle:
     fig.suptitle(suptitle)
   fig.tight_layout()
+  if lalme_az_list is not None:
+    fig.subplots_adjust(left=None, bottom=0.15, right=None, top=0.92, wspace=0.3, hspace=0.4)
 
   return fig, axs
 
+def profile_locations_img_level_curves(
+    lalme_dataset: Dict[str, Any],
+    profiles_id: List[int],
+    img:str,
+    var_name: str = 'loc_floating',
+    coord: str = "LP_floating",
+    suptitle: Optional[str] = None,
+    nrows: Optional[int] = None,
+    lalme_az: Optional[InferenceData] = None,
+    lalme_az_2: Optional[InferenceData] = None,
+):
+
+  assert(((lalme_az is not None) or (lalme_az_2 is not None)))
+
+  # Subplots layout
+  if nrows is None:
+    nrows = int(np.sqrt(len(profiles_id)))
+  ncols = len(profiles_id) // nrows
+  ncols += 1 if len(profiles_id) % nrows else 0
+
+
+  fig = plt.figure(figsize=(ncols * 3 + 1, nrows * 3))
+
+  fig_ax = fig.add_axes([0, 0, 1, 1], zorder=1)
+  im = plt.imread(img)
+  fig_ax.imshow(im, extent=[0, ncols, 0, nrows], aspect='auto')
+  fig_ax.axis('off')
+
+
+  for i, lp_ in enumerate(profiles_id):
+      ax = fig.add_subplot(nrows, ncols, i+1, zorder=2, facecolor="none")
+      p_ = np.where(lalme_dataset['LP'] == lp_)[0][0]
+      if lalme_az is not None:
+        az.plot_pair(
+            lalme_az,
+            var_names=[var_name],
+            coords={coord: lp_},
+            kind=["kde"],
+            kde_kwargs={
+                "fill_last": False,
+                "hdi_probs": [0.05, 0.5, 0.95]
+            },
+            ax=ax,
+        )
+      if lalme_az_2 is not None:
+        az.plot_pair(
+            lalme_az_2,
+            var_names=[var_name],
+            coords={coord: lp_},
+            kind=["kde"],
+            kde_kwargs={
+                "fill_last": False,
+                "hdi_probs": [0.05, 0.5, 0.95]
+            },
+            ax=ax,
+        )
+
+      # Set limits, labels, title
+      ax.set_xlim([0, 1])
+      ax.set_ylim([0, 1])
+      ax.set_xlabel("")
+      ax.set_ylabel("")
+      ax.set_xticks([])
+      ax.set_yticks([])
+      ax.spines["top"].set_visible(False)
+      ax.spines["right"].set_visible(False)
+      ax.spines["bottom"].set_visible(False)
+      ax.spines["left"].set_visible(False)
+  fig.subplots_adjust(left=0.03,right=0.98,bottom=0.07,top=0.935)
+
+  return fig, ax
 
 def plot_mixing_weights(
     posterior_sample_dict: Dict[str, Any],
@@ -500,6 +573,7 @@ def lalme_plots_arviz(
     show_basis_fields: bool = False,
     show_W_items: Optional[List[str]] = None,
     show_a_items: Optional[List[str]] = None,
+    mcmc_img: Optional[str] = None,
     lp_floating: Optional[List[int]] = None,
     lp_floating_traces: Optional[List[int]] = None,
     lp_floating_grid10: Optional[List[int]] = None,
@@ -750,6 +824,32 @@ def lalme_plots_arviz(
           image=image,
           step=step,
       )
+
+      if mcmc_img is not None:
+        fig, axs = profile_locations_img_level_curves(
+          img = mcmc_img,
+          lalme_az=lalme_az,
+          lalme_dataset=lalme_dataset,
+          profiles_id=lp_floating_grid10,
+          var_name='loc_floating',
+          coord="LP_floating",
+          nrows=2,
+      )
+      if workdir_png:
+        plot_name = "lalme_floating_profiles_grid_mcmc_compare"
+        plot_name += suffix
+        plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      image = plot_to_image(fig)
+
+      if summary_writer:
+        plot_name = "lalme_floating_profiles_grid"
+        plot_name += suffix
+        summary_writer.image(
+            tag=plot_name,
+            image=image,
+            step=step,
+        )
+
 
   if lp_random_anchor is not None:
     images = []
@@ -1246,7 +1346,7 @@ def lalme_priorhparam_compare_plots_arviz(
 
     for i in idx_: #[31,56,60,61,67,70]:
       axs = az.plot_forest(lalme_az_list, model_names=prior_hparams_str_list, 
-                            var_names=[f"W_{i}"],  kind='forestplot', filter_vars='regex',
+                            var_names=[f"W_{i}"],  kind='forestplot',
                             colors=colors[:len(lalme_az_list)],
                             figsize=(8, lalme_az_list[0].posterior[f'W_{i}'].shape[-1]*4))
 
@@ -1255,7 +1355,10 @@ def lalme_priorhparam_compare_plots_arviz(
       legend_patches = [Patch(facecolor=colors[j], label=prior_hparams_str_list[j]) for j in np.arange(len(prior_hparams_str_list))]
       plt.figlegend(handles=legend_patches, loc='lower center', ncols=2, fontsize=11)
       # plt.suptitle(f"LMC weights {lalme_dataset['items'][i]}")
-      plt.tight_layout()            
+      plt.tight_layout() 
+      plt.subplots_adjust(left=None, 
+                          bottom=max((-0.02*lalme_az_list[0].posterior[f'W_{i}'].shape[-1]+0.19,0)), 
+                          right=None, top=0.98, wspace=0.3, hspace=0.4)            
 
       if workdir_png:
         plot_name = f"lalme_W_{i}"
@@ -1279,7 +1382,7 @@ def lalme_priorhparam_compare_plots_arviz(
     images = []
     for i in idx_:
       axs = az.plot_forest(lalme_az_list, model_names=prior_hparams_str_list, 
-                            var_names=[f"a_{i}"],  kind='forestplot', filter_vars='regex',
+                            var_names=[f"a_{i}"],  kind='forestplot',
                             colors=colors[:len(lalme_az_list)],
                             figsize=(8, lalme_az_list[0].posterior[f'W_{i}'].shape[-1]))
 
@@ -1288,7 +1391,10 @@ def lalme_priorhparam_compare_plots_arviz(
       legend_patches = [Patch(facecolor=colors[j], label=prior_hparams_str_list[j]) for j in np.arange(len(prior_hparams_str_list))]
       plt.figlegend(handles=legend_patches, loc='lower center', ncols=2, fontsize=11)
       # plt.suptitle(f"LMC offsets {lalme_dataset['items'][i]}")
-      plt.tight_layout()    
+      plt.tight_layout()   
+      plt.subplots_adjust(left=None, 
+                          bottom=max((-0.02*lalme_az_list[0].posterior[f'W_{i}'].shape[-1]+0.19,0)), 
+                          right=None, top=0.98, wspace=0.3, hspace=0.4)    
       if workdir_png:
         plot_name = f"lalme_a_{i}"
         plot_name += suffix

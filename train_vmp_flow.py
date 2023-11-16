@@ -634,6 +634,7 @@ def log_images(
     show_a_items: Optional[List[str]] = None,
     lp_floating: Optional[List[int]] = None,
     lp_floating_traces: Optional[List[int]] = None,
+    mcmc_img:Optional[str] = None,
     lp_floating_grid10: Optional[List[int]] = None,
     lp_random_anchor: Optional[List[int]] = None,
     lp_random_anchor_grid10: Optional[List[int]] = None,
@@ -703,6 +704,7 @@ def log_images(
         show_basis_fields=show_basis_fields,
         show_W_items=show_W_items,
         show_a_items=show_a_items,
+        mcmc_img=(mcmc_img if eta_i==1.000 else None),
         lp_floating=lp_floating,
         lp_floating_traces=lp_floating_traces,
         lp_floating_grid10=lp_floating_grid10,
@@ -1190,6 +1192,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             batch=train_ds,
             show_mu=True,
             show_zeta=True,
+            mcmc_img=(config.path_mcmc_img if config.dataset_id=='coarsen_8_items' else None),
             lp_floating_grid10=config.lp_floating_grid10,
             lp_random_anchor_grid10=config.lp_random_anchor_10,
             show_eval_metric=True,
@@ -1385,7 +1388,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         # show_a_items=lalme_dataset['items'],
         # lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
         # lp_floating_traces=config.lp_floating_grid10,
-        # lp_floating_grid10=config.lp_floating_grid10,
+        lp_floating_grid10=config.lp_floating_grid10,
+        mcmc_img=(config.path_mcmc_img if config.dataset_id=='coarsen_8_items' else None),
         lp_random_anchor=(
             lalme_dataset['LP'][:lalme_dataset['num_profiles_anchor']]
             if config.include_random_anchor else None),
