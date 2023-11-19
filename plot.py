@@ -835,20 +835,20 @@ def lalme_plots_arviz(
           coord="LP_floating",
           nrows=2,
       )
-      if workdir_png:
-        plot_name = "lalme_floating_profiles_grid_mcmc_compare"
-        plot_name += suffix
-        plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-      image = plot_to_image(fig)
+        if workdir_png:
+          plot_name = "lalme_floating_profiles_grid_mcmc_compare"
+          plot_name += suffix
+          plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+        # image = plot_to_image(fig)
 
-      if summary_writer:
-        plot_name = "lalme_floating_profiles_grid"
-        plot_name += suffix
-        summary_writer.image(
-            tag=plot_name,
-            image=image,
-            step=step,
-        )
+        # if summary_writer:
+        #   plot_name = "lalme_floating_profiles_grid"
+        #   plot_name += suffix
+        #   summary_writer.image(
+        #       tag=plot_name,
+        #       image=image,
+        #       step=step,
+        #   )
 
 
   if lp_random_anchor is not None:

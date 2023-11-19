@@ -6,7 +6,7 @@ set -x
 REPO_DIR=$PWD
 
 # Directory to save all outputs
-WORK_DIR=$HOME/spatial-smi-output-integrated-allhps-20val-NOeta
+WORK_DIR=$HOME/spatial-smi-output-integrated-allhps-40val-NOeta
 
 # Create output directory and install missing dependencies
 mkdir -p $WORK_DIR
@@ -82,7 +82,7 @@ all_eta=('0.001' '1.000')
 # done
 
 ## Variational Meta-Posterior via VMP-flow
-## Neural Spline Flow
+# Neural Spline Flow
 python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf_vmp_flow.py \
                           --workdir $WORK_DIR/all_items/nsf/vmp_flow \
                           --log_dir $WORK_DIR/all_items/nsf/vmp_flow/log_dir \

@@ -455,13 +455,13 @@ def elbo_estimate_along_eta(
   )
 
   # Sample eta values
-  # etas_profiles_floating = jax.random.beta(
-  #     key=next(prng_seq),
-  #     a=eta_sampling_a,
-  #     b=eta_sampling_b,
-  #     shape=(num_samples,),
-  # )
-  etas_profiles_floating = jnp.ones((num_samples,))
+  etas_profiles_floating = jax.random.beta(
+      key=next(prng_seq),
+      a=eta_sampling_a,
+      b=eta_sampling_b,
+      shape=(num_samples,),
+  )
+  
 
   eta_profiles = jax.vmap(lambda eta_: jnp.where(
               profile_is_anchor,1.,eta_, ))(etas_profiles_floating) #(n_samples, 367)
