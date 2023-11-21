@@ -6,7 +6,7 @@ set -x
 REPO_DIR=$PWD
 
 # Directory to save all outputs
-WORK_DIR=$HOME/spatial-smi-output-integrated-allhps-40val-NOeta
+WORK_DIR=$HOME/spatial-smi-output-integrated-allhps-NOETA-40val-smallcondval
 
 # Create output directory and install missing dependencies
 mkdir -p $WORK_DIR

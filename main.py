@@ -25,6 +25,7 @@ import train_vmp_flow_hpnokernel
 import train_vmp_flow_allhp
 import train_vmp_flow_allhp_randomanchors
 import sample_mcmc_blackjax as sample_mcmc
+import train_vmp_flow_allhp_smallcondval
 # import sample_mcmc_tfp as sample_mcmc
 
 FLAGS = flags.FLAGS
@@ -63,7 +64,7 @@ def main(_):
   elif FLAGS.config.method == 'vmp_flow_hpnokernel':
     train_vmp_flow_hpnokernel.train_and_evaluate(FLAGS.config, FLAGS.workdir)
   elif FLAGS.config.method == 'vmp_flow_allhp':
-    train_vmp_flow_allhp.train_and_evaluate(FLAGS.config, FLAGS.workdir)
+    train_vmp_flow_allhp_smallcondval.train_and_evaluate(FLAGS.config, FLAGS.workdir)
   elif FLAGS.config.method == 'vmp_flow_allhp_randomanchors':
     train_vmp_flow_allhp_randomanchors.train_and_evaluate(FLAGS.config, FLAGS.workdir)
   elif FLAGS.config.method == 'mcmc':

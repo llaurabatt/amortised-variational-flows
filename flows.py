@@ -423,6 +423,8 @@ def meta_nsf_global_params(
     layer = modularbayes.EtaConditionalMaskedCoupling(
         mask=mask,
         bijector=bijector_fn,
+        # TODO: remove conditioner_eta
+        # note default MLP comes with bias
         conditioner_eta=modularbayes.MLPConditioner(
             output_dim=math.prod(event_shape),
             hidden_sizes=hidden_sizes_conditioner_eta,

@@ -544,7 +544,8 @@ def conditional_gaussian_x_given_y(
   return mu_x_given_y, cov_x_given_y
 
 
-def sample_priorhparams_values(
+
+def sample_priorhparams_values_functioning(
     prng_key: PRNGKey,
     num_samples: int,
     cond_hparams: List,
@@ -561,22 +562,22 @@ def sample_priorhparams_values(
   prng_keys = jax.random.split(prng_key, num=4)
   defaults = PriorHparams()
   priorhps_sample = PriorHparams(
-     w_prior_scale=jax.lax.cond('w_prior_scale' in cond_hparams, tfd.Gamma(concentration=w_sampling_scale_alpha, 
-                                                                           rate=w_sampling_scale_beta).sample(sample_shape=(num_samples,),
-                                                                                                              seed=prng_keys[0]),
-                                                                  jnp.ones((num_samples,))*defaults.w_prior_scale),
-     a_prior_scale=jax.lax.cond('a_prior_scale' in cond_hparams, tfd.Gamma(concentration=a_sampling_scale_alpha,
-                                                                           rate=a_sampling_scale_beta).sample(sample_shape=(num_samples,),
-                                                                                                              seed=prng_keys[1]), 
-                                                                  jnp.ones((num_samples,))*defaults.a_prior_scale),
-     kernel_amplitude=jax.lax.cond('kernel_amplitude' in cond_hparams, tfd.Uniform(low=kernel_sampling_amplitude_alpha,
-                                                                                    high=kernel_sampling_amplitude_beta).sample(sample_shape=(num_samples,),
-                                                                                                                                seed=prng_keys[2]),
-                                                                       jnp.ones((num_samples,))*defaults.kernel_amplitude),
-     kernel_length_scale=jax.lax.cond('kernel_length_scale' in cond_hparams, tfd.Uniform(low=kernel_sampling_lengthscale_alpha, 
-                                                                                         high=kernel_sampling_lengthscale_beta).sample(sample_shape=(num_samples,),
-                                                                                                                                       seed=prng_keys[3]),
-                                                                             jnp.ones((num_samples,))*defaults.kernel_length_scale),
+     w_prior_scale=tfd.Gamma(
+      concentration=w_sampling_scale_alpha, 
+      rate=w_sampling_scale_beta).sample(
+      sample_shape=(num_samples,), seed=prng_keys[0]),
+     a_prior_scale=tfd.Gamma(
+      concentration=a_sampling_scale_alpha, 
+      rate=a_sampling_scale_beta).sample(
+      sample_shape=(num_samples,), seed=prng_keys[1]),
+     kernel_amplitude=tfd.Uniform(
+      low=kernel_sampling_amplitude_alpha, 
+      high=kernel_sampling_amplitude_beta).sample(
+      sample_shape=(num_samples,), seed=prng_keys[2]),
+     kernel_length_scale=tfd.Uniform(
+      low=kernel_sampling_lengthscale_alpha, 
+      high=kernel_sampling_lengthscale_beta).sample(
+      sample_shape=(num_samples,), seed=prng_keys[3]),
     # kernel_amplitude=tfd.Gamma(
     #   concentration=kernel_sampling_amplitude_alpha, 
     #   scale=kernel_sampling_amplitude_beta).sample(
@@ -592,13 +593,72 @@ def sample_priorhparams_values(
      zeta_prior_b=jnp.ones((num_samples,))*1.,
   )
 
-  cond_prior_hparams_values = []
-  for k in priorhps_sample:
-    if k in cond_hparams:
-      cond_prior_hparams_values.append(getattr(priorhps_sample, k))
-  cond_prior_hparams_values = jnp.hstack(cond_prior_hparams_values)
+  if len(list(set(cond_hparams)-set(["eta"])))>0:
+    cond_prior_hparams_values = []
+    for k in priorhps_sample._fields:
+      if k in cond_hparams:
+        cond_prior_hparams_values.append(getattr(priorhps_sample, k)[:,None])
+    cond_prior_hparams_values = jnp.hstack(cond_prior_hparams_values)
+    return priorhps_sample, cond_prior_hparams_values
+  else:
+    return priorhps_sample, None
 
-  return priorhps_sample, cond_prior_hparams_values
+
+def sample_priorhparams_values(
+    prng_seq: hk.PRNGSequence,
+    num_samples: int,
+    cond_hparams: List,
+    w_sampling_scale_alpha: Optional[float],
+    w_sampling_scale_beta: Optional[float],
+    a_sampling_scale_alpha: Optional[float],
+    a_sampling_scale_beta: Optional[float],
+    kernel_sampling_amplitude_alpha: Optional[float],
+    kernel_sampling_amplitude_beta: Optional[float],
+    kernel_sampling_lengthscale_alpha: Optional[float],
+    kernel_sampling_lengthscale_beta: Optional[float],
+) -> PriorHparams:
+  """Generate a sample of the prior hyperparameters values applicable to the model."""
+  defaults = PriorHparams()
+  priorhps_sample = PriorHparams(
+     w_prior_scale=tfd.Gamma(concentration=w_sampling_scale_alpha, rate=w_sampling_scale_beta).sample(sample_shape=(num_samples,),
+                                                                                                              seed=next(prng_seq)) 
+                                  if 'w_prior_scale' in cond_hparams
+                                  else jnp.ones((num_samples,))*defaults.w_prior_scale,
+     a_prior_scale=tfd.Gamma(concentration=a_sampling_scale_alpha,rate=a_sampling_scale_beta).sample(sample_shape=(num_samples,),
+                                                                                                              seed=next(prng_seq)) 
+                                  if 'a_prior_scale' in cond_hparams 
+                                  else jnp.ones((num_samples,))*defaults.a_prior_scale,
+     kernel_amplitude=tfd.Uniform(low=kernel_sampling_amplitude_alpha,high=kernel_sampling_amplitude_beta).sample(sample_shape=(num_samples,),
+                                                                                                                                seed=next(prng_seq))
+                      if 'kernel_amplitude' in cond_hparams
+                      else jnp.ones((num_samples,))*defaults.kernel_amplitude,
+     kernel_length_scale=tfd.Uniform(low=kernel_sampling_lengthscale_alpha,high=kernel_sampling_lengthscale_beta).sample(sample_shape=(num_samples,),
+                                                                                                                                       seed=next(prng_seq))
+                          if 'kernel_length_scale' in cond_hparams
+                          else jnp.ones((num_samples,))*defaults.kernel_length_scale,
+    # kernel_amplitude=tfd.Gamma(
+    #   concentration=kernel_sampling_amplitude_alpha, 
+    #   scale=kernel_sampling_amplitude_beta).sample(
+    #   sample_shape=(num_samples,), seed=prng_keys[3]),
+    #  kernel_length_scale=jax.random.gamma(
+    #   key=prng_keys[3],
+    #   a=kernel_sampling_lengthscale_alpha, 
+    #   shape=(num_samples,),
+    #   )/kernel_sampling_lengthscale_beta,
+     mu_prior_concentration=jnp.ones((num_samples,))*1.,
+     mu_prior_rate=jnp.ones((num_samples,))*0.5,
+     zeta_prior_a=jnp.ones((num_samples,))*1.,
+     zeta_prior_b=jnp.ones((num_samples,))*1.,
+  )
+  if len(list(set(cond_hparams)-set(["eta"])))>0:
+    cond_prior_hparams_values = []
+    for k in priorhps_sample._fields:
+      if k in cond_hparams:
+        cond_prior_hparams_values.append(getattr(priorhps_sample, k)[:,None])
+    cond_prior_hparams_values = jnp.hstack(cond_prior_hparams_values)
+    return priorhps_sample, cond_prior_hparams_values
+  else:
+    return priorhps_sample, None
 
 def sample_priorhparams_values_old(
     prng_key: PRNGKey,
