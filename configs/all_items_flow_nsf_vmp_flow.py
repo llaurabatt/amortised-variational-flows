@@ -99,12 +99,12 @@ def get_config():
   config.eval_steps = config.training_steps // 2#5 
   config.num_samples_eval = 500
   config.num_samples_mse = 2_000
-  config.eval_last = True 
+  config.eval_last = False 
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 2#5 
-  config.log_img_at_end = True  
+  config.log_img_at_end = False  
   config.save_samples = False # FLIPPED
 
   # Number of samples used in the plots.

@@ -17,21 +17,20 @@ from jax import numpy as jnp
 
 import haiku as hk
 import optax
-import pickle
 
 from tensorflow_probability.substrates import jax as tfp
 
-import log_prob_fun_allhp
-from log_prob_fun_allhp import ModelParamsGlobal, ModelParamsLocations, PriorHparams, sample_priorhparams_values, logprob_rho
+import log_prob_fun
+from log_prob_fun import ModelParamsGlobal, ModelParamsLocations
 import flows
 import plot
-from train_flow_allhp import (load_data, make_optimizer, get_inducing_points,
+from train_flow import (load_data, make_optimizer, get_inducing_points,
                         error_locations_estimate, logprob_lalme)
 
 from modularbayes._src.utils.training import TrainState
-from modularbayes import (flatten_dict, initial_state_ckpt, update_states, update_state,
+from modularbayes import (flatten_dict, initial_state_ckpt, update_states,
                           save_checkpoint, plot_to_image, normalize_images)
-from modularbayes._src.typing import (Any, Array, Batch, Callable, ConfigDict, Dict, List, NamedTuple,
+from modularbayes._src.typing import (Any, Array, Batch, ConfigDict, Dict, List,
                                       Optional, PRNGKey, SmiEta, SummaryWriter,
                                       Tuple)
 
@@ -42,15 +41,11 @@ jax.config.update('jax_default_matmul_precision', 'float32')
 
 np.set_printoptions(suppress=True, precision=4)
 
-def make_optimizer_hparams(learning_rate: float) -> optax.GradientTransformation:
-  optimizer = optax.adabelief(learning_rate=learning_rate)
-  return optimizer
 
 def q_distr_global(
     flow_name: str,
     flow_kwargs: Dict[str, Any],
-    cond_values: Array,
-    # eta: Array,
+    eta: Array,
 ) -> Dict[str, Any]:
   """Sample from the posterior of the LALME model.
 
@@ -84,14 +79,14 @@ def q_distr_global(
   # Define normalizing flow
   q_distr = getattr(flows, flow_name + '_global_params')(**flow_kwargs)
 
-  num_samples = cond_values.shape[0]
+  num_samples = eta.shape[0]
 
   # Sample from flow
   (sample_flow_concat, sample_logprob,
    sample_base) = q_distr.sample_and_log_prob_with_base(
        seed=hk.next_rng_key(),
        sample_shape=(num_samples,),
-       context=[cond_values, None],
+       context=[eta, None],
    )
 
   # Split flow into model parameters
@@ -114,8 +109,7 @@ def q_distr_loc_floating(
     flow_name: str,
     flow_kwargs: Dict[str, Any],
     global_params_base_sample: Array,
-    cond_values:Array,
-    # eta: Array,
+    eta: Array,
     name: str = 'loc_floating',
 ) -> Dict[str, Any]:
   """Sample from the posterior of floating locations
@@ -158,7 +152,7 @@ def q_distr_loc_floating(
   sample_flow_concat, sample_logprob = q_distr.sample_and_log_prob(
       seed=hk.next_rng_key(),
       sample_shape=(num_samples,),
-      context=[cond_values, global_params_base_sample],
+      context=[eta, global_params_base_sample],
   )
 
   # Split flow into model parameters
@@ -178,8 +172,7 @@ def q_distr_loc_random_anchor(
     flow_name: str,
     flow_kwargs: Dict[str, Any],
     global_params_base_sample: Array,
-    cond_values: Array,
-    # eta: Array,
+    eta: Array,
 ) -> Dict[str, Any]:
   """Sample from the posterior of floating locations
 
@@ -216,7 +209,7 @@ def q_distr_loc_random_anchor(
   (sample_flow_concat, sample_logprob) = q_distr.sample_and_log_prob(
       seed=hk.next_rng_key(),
       sample_shape=(num_samples,),
-      context=[cond_values, global_params_base_sample],
+      context=[eta, global_params_base_sample],
   )
 
   # Split flow into model parameters
@@ -238,8 +231,7 @@ def sample_all_flows(
     prng_key: PRNGKey,
     flow_name: str,
     flow_kwargs: Dict[str, Any],
-    # smi_eta: SmiEta,
-    cond_values: Array,
+    smi_eta: SmiEta,
     include_random_anchor: bool,
 ) -> Dict[str, Any]:
   """Generate a sample from the entire flow posterior."""
@@ -254,8 +246,7 @@ def sample_all_flows(
       next(prng_seq),
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
-      cond_values=cond_values,
-    #   eta=smi_eta['profiles'],
+      eta=smi_eta['profiles'],
   )
   q_distr_out.update({f"global_{k}": v for k, v in q_distr_out_global.items()})
 
@@ -266,8 +257,7 @@ def sample_all_flows(
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
       global_params_base_sample=q_distr_out_global['sample_base'],
-      cond_values=cond_values,
-    #   eta=smi_eta['profiles'],
+      eta=smi_eta['profiles'],
       name='loc_floating',
   )
   q_distr_out['loc_floating_logprob'] = q_distr_out_loc_floating[
@@ -280,8 +270,7 @@ def sample_all_flows(
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
       global_params_base_sample=q_distr_out_global['sample_base'],
-      cond_values=cond_values,
-    #   eta=smi_eta['profiles'],
+      eta=smi_eta['profiles'],
       name='loc_floating_aux',
   )
   q_distr_out['locations_sample'] = ModelParamsLocations(
@@ -300,8 +289,7 @@ def sample_all_flows(
             flow_name=flow_name,
             flow_kwargs=flow_kwargs,
             global_params_base_sample=q_distr_out_global['sample_base'],
-            cond_values=cond_values,
-            # eta=smi_eta['profiles'],
+            eta=smi_eta['profiles'],
         )
     q_distr_out['locations_sample'] = ModelParamsLocations(
         loc_floating=q_distr_out_loc_floating['sample'].loc_floating,
@@ -319,9 +307,7 @@ def sample_all_flows(
 def sample_lalme_az(
     state_list: List[TrainState],
     batch: Batch,
-    cond_values: Array,
-    prior_hparams:PriorHparams,
-    # smi_eta: SmiEta,
+    smi_eta: SmiEta,
     prng_key: PRNGKey,
     config: ConfigDict,
     lalme_dataset: Dict[str, Any],
@@ -336,35 +322,27 @@ def sample_lalme_az(
   locations_sample = []
   gamma_sample = []
 
-#   assert all(cond_values.ndim == 2) # what is this line for?
+  assert all(x.ndim == 2 for x in smi_eta.values())
 
   # Sampling divided into chunks, to avoid OOM on GPU
   # Split etas into chunks
-  split_idx_ = np.arange(num_samples_chunk, cond_values.shape[0],
+  split_idx_ = np.arange(num_samples_chunk, smi_eta['profiles'].shape[0],
                          num_samples_chunk).tolist()
-  cond_values_chunked_ = jnp.split(cond_values, split_idx_, axis=0)
-  # prior_hparams_chunked_ = jax.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
-  #                                  prior_hparams)
+  smi_eta_chunked_ = jax.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
+                                  smi_eta)
+  # dict of lists -> list of dicts
+  smi_eta_chunked_ = [
+      dict(zip(smi_eta_chunked_, t)) for t in zip(*smi_eta_chunked_.values())
+  ]
 
-#   split_idx_ = np.arange(num_samples_chunk, smi_eta['profiles'].shape[0],
-#                          num_samples_chunk).tolist() # list of idxs multiple of num_samples_chunk up to tot samples
-#   smi_eta_chunked_ = jax.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
-#                                   smi_eta) # turns into {key: list of arrays of num_samples_chunk samples}
-#   # dict of lists -> list of dicts
-#   smi_eta_chunked_ = [
-#       dict(zip(smi_eta_chunked_, t)) for t in zip(*smi_eta_chunked_.values()) # turns into list of len len(split_idx_) of {key: array of num_samples_chunk samples}
-#   ]
-
-
-  for cond_val_ in cond_values_chunked_:#,prior_hparams_chunked_):
+  for smi_eta_ in smi_eta_chunked_:
     # Sample from variational posterior
     q_distr_out = sample_all_flows(
         params_tuple=[state.params for state in state_list],
         prng_key=next(prng_seq),
         flow_name=config.flow_name,
         flow_kwargs=config.flow_kwargs,
-        cond_values=cond_val_,
-        # smi_eta=smi_eta_,
+        smi_eta=smi_eta_,
         include_random_anchor=config.include_random_anchor,
     )
 
@@ -374,22 +352,19 @@ def sample_lalme_az(
     if include_gamma:
       # Get a sample of the basis GPs on profiles locations
       # conditional on values at the inducing locations.
-      gamma_sample_, _, _ = jax.vmap(
-          lambda key_, global_, locations_: log_prob_fun_allhp.
+      gamma_sample_, _ = jax.vmap(
+          lambda key_, global_, locations_: log_prob_fun.
           sample_gamma_profiles_given_gamma_inducing(
               batch=batch,
               model_params_global=global_,
               model_params_locations=locations_,
               prng_key=key_,
-              prior_hparams=PriorHparams(*prior_hparams),#(*prior_hparams_[0]),
               kernel_name=config.kernel_name,
-              # kernel_kwargs=config.kernel_kwargs,
+              kernel_kwargs=config.kernel_kwargs,
               gp_jitter=config.gp_jitter,
-              num_profiles_anchor=config.num_profiles_anchor,
-              num_inducing_points=config.num_inducing_points,
               include_random_anchor=config.include_random_anchor,
           ))(
-              jax.random.split(next(prng_seq), cond_val_.shape[0]),
+              jax.random.split(next(prng_seq), smi_eta_['profiles'].shape[0]),
               q_distr_out['global_sample'],
               q_distr_out['locations_sample'],
           )
@@ -421,42 +396,7 @@ def sample_lalme_az(
 
   return lalme_az
 
-def get_cond_values(
-    cond_hparams_names: List,
-    num_samples: float,
-    eta_init: Optional[float],
-    prior_hparams_init: Optional[NamedTuple],
-    ):
-  if 'eta' in cond_hparams_names:
-    eta_init = jnp.ones((num_samples, ))*eta_init
 
-  cond_prior_hparams_names = cond_hparams_names.copy()
-  try:
-    cond_prior_hparams_names.remove('eta')
-  except:
-    pass
-  if len(cond_prior_hparams_names)>0:
-    cond_prior_hparams_init = []
-    for k in prior_hparams_init._fields:
-      if k in cond_hparams_names:
-          val = getattr(prior_hparams_init, k)
-          sample_val = jnp.ones((num_samples,))*val
-          cond_prior_hparams_init.append(sample_val[:,None])
-    cond_prior_hparams_init = jnp.hstack(cond_prior_hparams_init)
-
-  # cond values for flows
-  if (('eta' in cond_hparams_names) & (len(cond_hparams_names)>1)):
-    cond_values_init = jnp.hstack([cond_prior_hparams_init, eta_init[:,None]])
-  elif 'eta' in cond_hparams_names: 
-    cond_values_init = eta_init[:,None]
-  else:
-    cond_values_init = cond_prior_hparams_init
-  # cond_values_init = jax.lax.cond((('eta' in cond_hparams_names) & (len(cond_hparams_names)>1)), 
-  #                           jnp.hstack([cond_prior_hparams_init, eta_init[:,None]]),
-  #                           jax.lax.cond('eta' in cond_hparams_names, 
-  #                                         eta_init[:,None], cond_prior_hparams_init))
-  return cond_values_init
-  
 def elbo_estimate_along_eta(
     params_tuple: Tuple[hk.Params],
     batch: Optional[Batch],
@@ -464,62 +404,38 @@ def elbo_estimate_along_eta(
     num_samples: int,
     flow_name: str,
     flow_kwargs: Dict[str, Any],
-    cond_hparams: List,
-    sample_priorhparams_fn:Callable,
-    sample_priorhparams_kwargs: Dict[str, Any],
+    eta_sampling_a: float,
+    eta_sampling_b: float,
     include_random_anchor: bool,
     profile_is_anchor: Array,
-    num_profiles_anchor:int,
-    num_inducing_points:int,
-    eta_sampling_a: Optional[float],
-    eta_sampling_b: Optional[float],
-    # prior_hparams: Dict[str, Any],
+    prior_hparams: Dict[str, Any],
     kernel_name: Optional[str] = None,
-    # kernel_kwargs: Optional[Dict[str, Any]] = None,
-    num_samples_gamma_profiles: Optional[int] = 0,
+    kernel_kwargs: Optional[Dict[str, Any]] = None,
+    num_samples_gamma_profiles: int = 0,
     gp_jitter: Optional[float] = None,
 ) -> Dict[str, Array]:
   # params_tuple = [state.params for state in state_list]
 
   prng_seq = hk.PRNGSequence(prng_key)
 
-  ## hyperparams for log-joint:
-  # Sample hparams
-  # prior_hparams_sample, cond_prior_hparams_values = sample_priorhparams_fn(
-  #     prng_key=next(prng_seq),
-  #     num_samples=num_samples, cond_hparams=cond_hparams,
-  #     **sample_priorhparams_kwargs,
-  # )
-  prior_hparams_sample, cond_prior_hparams_values = sample_priorhparams_fn(
-      prng_seq=prng_seq,
-      num_samples=num_samples, cond_hparams=cond_hparams,
-      **sample_priorhparams_kwargs,
+  # Sample eta values
+  etas_profiles_floating = jax.random.beta(
+      key=next(prng_seq),
+      a=eta_sampling_a,
+      b=eta_sampling_b,
+      shape=(num_samples,),
   )
 
-
-  # Sample eta values
-  etas_profiles_floating = jax.random.beta(key=next(prng_seq),
-                                           a=eta_sampling_a,
-                                           b=eta_sampling_b,
-                                           shape=(num_samples,)) if 'eta' in cond_hparams else jnp.ones((num_samples,))
-
-
-  eta_profiles = jax.vmap(lambda eta_: jnp.where(
-              profile_is_anchor,1.,eta_, ))(etas_profiles_floating) #(n_samples, 367)
-  eta_items = jnp.ones((num_samples, len(batch['num_forms_tuple']))) #(n_samples, 71)
-
   smi_eta_elbo = {
-      'profiles':eta_profiles,
-      'items':eta_items,
+      'profiles':
+          jax.vmap(lambda eta_: jnp.where(
+              profile_is_anchor,
+              1.,
+              eta_,
+          ))(etas_profiles_floating),
+      'items':
+          jnp.ones((num_samples, len(batch['num_forms_tuple']))),
   }
-
-  # # cond values for flows
-  cond_values =jnp.hstack([cond_prior_hparams_values, etas_profiles_floating[:,None]]) if (('eta' in cond_hparams) & (len(cond_hparams)>1)) else (etas_profiles_floating if 'eta' in cond_hparams else cond_prior_hparams_values)
-
-
-  # cond_values = jnp.hstack([jnp.stack(prior_hparams_sample, axis=-1),
-  #                           eta_profiles, eta_items,
-  #                           ]) #(n_samples, n_hps+367+71)
 
   # Sample from flow
   q_distr_out = sample_all_flows(
@@ -527,8 +443,7 @@ def elbo_estimate_along_eta(
       prng_key=next(prng_seq),
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
-      cond_values=cond_values,
-    #   smi_eta=smi_eta_elbo,
+      smi_eta=etas_profiles_floating, #smi_eta_elbo,
       include_random_anchor=include_random_anchor,
   )
 
@@ -539,25 +454,22 @@ def elbo_estimate_along_eta(
       loc_random_anchor=None,
   )
   log_prob_joint_stg1 = jax.vmap(
-      lambda key_, global_, locations_, prior_hparams_i, smi_eta_: logprob_lalme(
+      lambda key_, global_, locations_, smi_eta_: logprob_lalme(
           batch=batch,
           prng_key=key_,
           model_params_global=global_,
           model_params_locations=locations_,
-          prior_hparams=prior_hparams_i,
+          prior_hparams=prior_hparams,
           kernel_name=kernel_name,
-          # kernel_kwargs=kernel_kwargs,
+          kernel_kwargs=kernel_kwargs,
           num_samples_gamma_profiles=num_samples_gamma_profiles,
           smi_eta_profiles=smi_eta_,
           gp_jitter=gp_jitter,
-          num_profiles_anchor=num_profiles_anchor,
-          num_inducing_points=num_inducing_points,
           random_anchor=False,
       ))(
           jax.random.split(next(prng_seq), num_samples),
           q_distr_out['global_sample'],
           locations_stg1_,
-          prior_hparams_sample,
           smi_eta_elbo['profiles'],
       )
 
@@ -574,25 +486,22 @@ def elbo_estimate_along_eta(
       loc_random_anchor=None,
   )
   log_prob_joint_stg2 = jax.vmap(
-      lambda key_, global_, locations_, prior_hparams_i : logprob_lalme(
+      lambda key_, global_, locations_: logprob_lalme(
           batch=batch,
           prng_key=key_,
           model_params_global=global_,
           model_params_locations=locations_,
-          prior_hparams=prior_hparams_i,
+          prior_hparams=prior_hparams,
           kernel_name=kernel_name,
-          # kernel_kwargs=kernel_kwargs,
+          kernel_kwargs=kernel_kwargs,
           num_samples_gamma_profiles=num_samples_gamma_profiles,
           smi_eta_profiles=None,
           gp_jitter=gp_jitter,
-          num_profiles_anchor=num_profiles_anchor,
-          num_inducing_points=num_inducing_points,
           random_anchor=False,
       ))(
           jax.random.split(next(prng_seq), num_samples),
           jax.lax.stop_gradient(q_distr_out['global_sample']),
           locations_stg2_,
-          prior_hparams_sample,
       )
   log_q_stg2 = (
       jax.lax.stop_gradient(q_distr_out['global_sample_logprob']) +
@@ -610,25 +519,22 @@ def elbo_estimate_along_eta(
         loc_random_anchor=q_distr_out['locations_sample'].loc_random_anchor,
     )
     log_prob_joint_stg3 = jax.vmap(
-        lambda key_, global_, locations_, prior_hparams_i: logprob_lalme(
+        lambda key_, global_, locations_: logprob_lalme(
             batch=batch,
             prng_key=key_,
             model_params_global=global_,
             model_params_locations=locations_,
-            prior_hparams=prior_hparams_i,
+            prior_hparams=prior_hparams,
             kernel_name=kernel_name,
-            # kernel_kwargs=kernel_kwargs,
+            kernel_kwargs=kernel_kwargs,
             num_samples_gamma_profiles=num_samples_gamma_profiles,
             smi_eta_profiles=None,
             gp_jitter=gp_jitter,
-            num_profiles_anchor=num_profiles_anchor,
-            num_inducing_points=num_inducing_points,
             random_anchor=True,
         ))(
             jax.random.split(next(prng_seq), num_samples),
             jax.lax.stop_gradient(q_distr_out['global_sample']),
             locations_stg3_,
-            prior_hparams_sample,
         )
 
     log_q_stg3 = (
@@ -669,7 +575,6 @@ def error_locations_vector_estimate(
     batch: Optional[Batch],
     prng_key: PRNGKey,
     config: ConfigDict,
-    cond_hparams_names: List,
     eta_eval_grid: Array,
     num_samples: int,
 ) -> Dict[str, Array]:
@@ -680,59 +585,36 @@ def error_locations_vector_estimate(
   """
 
   prng_seq = hk.PRNGSequence(prng_key)
+
   error_grid = []
 
-  prior_defaults = PriorHparams()
-  # prior_defaults = jnp.stack(PriorHparams())
-  # prior_hparams=jnp.ones((num_samples, 
-  #                                 len(prior_defaults)))*prior_defaults # init params right?
- 
-  LPs = batch['LP']
-  LPs_split = np.split(
-  LPs,
-  np.cumsum(batch['num_profiles_split']),
-  )[:-1]
-  train_idxs = jnp.where(jnp.isin(LPs_split[3], LPs_split[0]*1000))[0]
-
   for eta_i in eta_eval_grid:
-
-    cond_values = get_cond_values(cond_hparams_names=cond_hparams_names,
-                      num_samples=num_samples,
-                      eta_init=eta_i,
-                      prior_hparams_init=prior_defaults
-                      )
-    # # eta_i = eta_eval_grid[0]
-    # eta_i_profiles = eta_i * jnp.ones((num_samples, config.num_profiles))
-    # eta_i_profiles = jax.vmap(lambda eta_: jnp.where(
-    #             jnp.arange(config.num_profiles) < config.num_profiles_anchor,
-    #             1.,eta_, ))(eta_i_profiles)
-    
-    # eta_i_items = jnp.ones((num_samples, len(config.num_forms_tuple)))
-    # smi_eta_ = {
-    #     'profiles':eta_i_profiles,
-    #     'items':eta_i_items,
-    # }
-    # cond_values = jnp.hstack([prior_hparams, eta_i_profiles, eta_i_items])
-
+    # eta_i = eta_eval_grid[0]
+    eta_i_samples = eta_i * jnp.ones((num_samples,))
+    eta_i_profiles = eta_i * jnp.ones((num_samples, config.num_profiles))
+    smi_eta_ = {
+        'profiles':
+            jax.vmap(lambda eta_: jnp.where(
+                jnp.arange(config.num_profiles) < config.num_profiles_anchor,
+                1.,
+                eta_,
+            ))(eta_i_profiles),
+        'items':
+            jnp.ones((num_samples, len(config.num_forms_tuple))),
+    }
     q_distr_out = sample_all_flows(
         params_tuple=[state.params for state in state_list],
         prng_key=next(prng_seq),
         flow_name=config.flow_name,
         flow_kwargs=config.flow_kwargs,
-        cond_values=cond_values,
-        # smi_eta=smi_eta_,
+        smi_eta=eta_i_samples, #smi_eta_,
         include_random_anchor=config.include_random_anchor,
     )
 
     error_grid.append(
         error_locations_estimate(
             locations_sample=q_distr_out['locations_sample'],
-            num_profiles_split=batch['num_profiles_split'],
-            loc=batch['loc'],
-            train_idxs=train_idxs,
-            # LPs=batch['LP'],
-            floating_anchor_copies=config.floating_anchor_copies,
-            # batch=batch,
+            batch=batch,
         ))
 
   error_loc_dict = jax.tree_map(lambda *x: jnp.stack(x, axis=0), *error_grid)  # pylint: disable=no-value-for-parameter
@@ -746,7 +628,6 @@ def log_images(
     config: ConfigDict,
     lalme_dataset: Dict[str, Any],
     batch: Batch,
-    cond_hparams_names:List,
     show_mu: bool = False,
     show_zeta: bool = False,
     show_basis_fields: bool = False,
@@ -754,12 +635,12 @@ def log_images(
     show_a_items: Optional[List[str]] = None,
     lp_floating: Optional[List[int]] = None,
     lp_floating_traces: Optional[List[int]] = None,
+    mcmc_img:Optional[str] = None,
     lp_floating_grid10: Optional[List[int]] = None,
     lp_random_anchor: Optional[List[int]] = None,
     lp_random_anchor_grid10: Optional[List[int]] = None,
     show_lp_anchor_val: Optional[bool] = False,
     show_lp_anchor_test: Optional[bool] = False,
-    show_location_priorhp_compare: Optional[bool] = False,
     loc_inducing: Optional[Array] = None,
     show_eval_metric: bool = False,
     eta_eval_grid: Optional[Array] = None,
@@ -786,38 +667,28 @@ def log_images(
                               np.cumsum(lalme_dataset['num_profiles_split']))[2]
   else:
     lp_anchor_test = None
-    
-  prior_defaults = PriorHparams()
-  # prior_defaults = jnp.stack(PriorHparams())
-  # prior_hparams=jnp.ones((config.num_samples_plot, 
-  #                                 len(prior_defaults)))*prior_defaults # init params right?
 
   # Plot posterior samples
   for eta_i in config.eta_plot:
+    eta_i_samples = eta_i * jnp.ones((config.num_samples_plot,))
+    eta_i_profiles = jax.vmap(lambda eta_: jnp.where(
+        profile_is_anchor,
+        1.,
+        eta_,
+    ))(
+        eta_i * jnp.ones((config.num_samples_plot, config.num_profiles)))
 
-    # eta_i_profiles = jax.vmap(lambda eta_: jnp.where(
-    #     profile_is_anchor,1., eta_,
-    # ))(eta_i * jnp.ones((config.num_samples_plot, config.num_profiles)))
+    smi_eta_ = {
+        'profiles':
+            eta_i_profiles,
+        'items':
+            jnp.ones((config.num_samples_plot, len(config.num_forms_tuple))),
+    }
 
-    # eta_i_items = jnp.ones((config.num_samples_plot, len(config.num_forms_tuple)))
-    # smi_eta_ = {
-    #     'profiles':eta_i_profiles,
-    #     'items':eta_i_items,
-    # }
-    # cond_values = jnp.hstack([prior_hparams,eta_i_profiles,eta_i_items])
-
-    cond_values = get_cond_values(cond_hparams_names=cond_hparams_names,
-                      num_samples=config.num_samples_plot,
-                      eta_init=eta_i,
-                      prior_hparams_init=prior_defaults
-                      )
-    
     lalme_az_ = sample_lalme_az(
         state_list=state_list,
         batch=batch,
-        cond_values=cond_values,
-        prior_hparams=jnp.stack(prior_defaults),
-        # smi_eta=smi_eta_,
+        smi_eta=eta_i_samples, #smi_eta_,
         prng_key=next(prng_seq),
         config=config,
         lalme_dataset=lalme_dataset,
@@ -834,6 +705,7 @@ def log_images(
         show_basis_fields=show_basis_fields,
         show_W_items=show_W_items,
         show_a_items=show_a_items,
+        mcmc_img=(mcmc_img if eta_i==1.000 else None),
         lp_floating=lp_floating,
         lp_floating_traces=lp_floating_traces,
         lp_floating_grid10=lp_floating_grid10,
@@ -848,67 +720,13 @@ def log_images(
         scatter_kwargs={"alpha": 0.10},
     )
 
-    if show_location_priorhp_compare:
-      print('Plotting comparing results...')
-      lalme_az_list = []
-      prior_hparams_str_list = []
-      for prior_hparams_i in config.prior_hparams_plot:
-        print('Samples per prior hparam set')
-
-        # prior_hparams_i_samples =jnp.ones((config.num_samples_plot, 
-        #                         len(prior_defaults)))*jnp.array(prior_hparams_i)
-        
-        cond_values = get_cond_values(cond_hparams_names=cond_hparams_names,
-                      num_samples=config.num_samples_plot,
-                      eta_init=eta_i,
-                      prior_hparams_init=PriorHparams(*prior_hparams_i)
-                      )
-
-        # cond_values = jnp.hstack([prior_hparams_i_samples, eta_i_profiles,eta_i_items])
-
-        lalme_az_ = sample_lalme_az(
-            state_list=state_list,
-            batch=batch,
-            cond_values=cond_values,
-            prior_hparams=jnp.array(prior_hparams_i), #prior_hparams_i_samples,
-            # smi_eta=smi_eta_,
-            prng_key=next(prng_seq),
-            config=config,
-            lalme_dataset=lalme_dataset,
-            include_gamma=show_basis_fields,
-            num_samples_chunk=num_samples_chunk,
-        )
-        lalme_az_list.append(lalme_az_)
-        prior_hparams_str_list.append(fr'$\sigma_a$: {prior_hparams_i[0]}, $\sigma_w$: {prior_hparams_i[1]}, $a_K$: {prior_hparams_i[-2]}, $ls_K$: {prior_hparams_i[-1]}')
-
-      plot.lalme_priorhparam_compare_plots_arviz(
-          lalme_az_list=lalme_az_list,
-          lalme_dataset=lalme_dataset,
-          prior_hparams_str_list=prior_hparams_str_list,
-          step=state_list[0].step,
-          show_basis_fields=show_basis_fields,
-          show_W_items=show_W_items,
-          show_a_items=show_a_items,
-          lp_floating_grid10=lp_floating_grid10,
-          lp_random_anchor_grid10=lp_random_anchor_grid10,
-          lp_anchor_val=lp_anchor_val,
-          lp_anchor_test=lp_anchor_test,
-          loc_inducing=loc_inducing,
-          workdir_png=workdir_png,
-          summary_writer=summary_writer,
-          suffix=f"_eta_floating_{float(eta_i):.3f}_priorhp_compare",
-          scatter_kwargs={"alpha": 0.10},
-          )
-
   ### Evaluation metrics ###
-  
   if show_eval_metric:
 
     error_loc_dict = error_locations_vector_estimate(
         state_list=state_list,
         batch=batch,
         prng_key=next(prng_seq),
-        cond_hparams_names=cond_hparams_names,
         config=config,
         eta_eval_grid=eta_eval_grid,
         num_samples=num_samples_chunk,
@@ -1023,49 +841,6 @@ def log_images(
     if summary_writer:
       images.append(plot_to_image(fig))
 
-    plot_name = 'lalme_vmp_dist_mean_floating'
-    fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
-    # Plot distance as a function of eta
-    axs.plot(eta_eval_grid, error_loc_dict['dist_mean_floating'])
-    axs.set_xlabel('eta_floating')
-    axs.set_ylabel('Distance to posterior mean')
-    axs.set_title('Error distance for floating profiles\n' +
-                  '(posterior vs. fit-technique)')
-    fig.tight_layout()
-    if workdir_png:
-      fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-    if summary_writer:
-      images.append(plot_to_image(fig))
-
-    if config.floating_anchor_copies:
-      plot_name = 'lalme_vmp_mean_dist_floating_copies_only'
-      fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
-      # Plot distance as a function of eta
-      axs.plot(eta_eval_grid, error_loc_dict['mean_dist_floating_copies_only'])
-      axs.set_xlabel('eta_floating')
-      axs.set_ylabel('Mean distance')
-      axs.set_title('Error distance for floating profiles\n' +
-                    '(posterior vs. fit-technique)')
-      fig.tight_layout()
-      if workdir_png:
-        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-      if summary_writer:
-        images.append(plot_to_image(fig))
-
-      plot_name = 'lalme_vmp_dist_mean_floating_copies_only'
-      fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
-      # Plot distance as a function of eta
-      axs.plot(eta_eval_grid, error_loc_dict['dist_mean_floating_copies_only'])
-      axs.set_xlabel('eta_floating')
-      axs.set_ylabel('Distance to posterior mean')
-      axs.set_title('Error distance for floating profiles\n' +
-                    '(posterior vs. fit-technique)')
-      fig.tight_layout()
-      if workdir_png:
-        fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
-      if summary_writer:
-        images.append(plot_to_image(fig))
-
     if config.include_random_anchor:
       plot_name = 'lalme_vmp_mean_dist_random_anchor'
       fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(4, 3))
@@ -1089,7 +864,6 @@ def log_images(
           step=state_list[0].step,
           max_outputs=len(images),
       )
-
 
 
 def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
@@ -1129,25 +903,19 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   }
 
   # Compute GP covariance between anchor profiles
-  # train_ds['cov_anchor'] = getattr(
-  #     kernels, config.kernel_name)(**config.kernel_kwargs).matrix(
-  #         x1=train_ds['loc'][:train_ds['num_profiles_anchor'], :],
-  #         x2=train_ds['loc'][:train_ds['num_profiles_anchor'], :],
-  #     )
+  train_ds['cov_anchor'] = getattr(
+      kernels, config.kernel_name)(**config.kernel_kwargs).matrix(
+          x1=train_ds['loc'][:train_ds['num_profiles_anchor'], :],
+          x2=train_ds['loc'][:train_ds['num_profiles_anchor'], :],
+      )
 
   train_ds = get_inducing_points(
       dataset=train_ds,
       inducing_grid_shape=config.flow_kwargs.inducing_grid_shape,
-      # kernel_name=config.kernel_name,
-      # kernel_kwargs=config.kernel_kwargs,
-      # gp_jitter=config.gp_jitter,
+      kernel_name=config.kernel_name,
+      kernel_kwargs=config.kernel_kwargs,
+      gp_jitter=config.gp_jitter,
   )
-
-  LPs = np.split(
-      train_ds['LP'],
-      np.cumsum(train_ds['num_profiles_split']),#np.cumsum(batch['num_profiles_split'][1:]),
-  )[:-1]
-  print(f"TRAIN LPs: {LPs[0] if config.num_lp_anchor_train>0 else 'NONE'} \n VAL LPs: {LPs[1] if config.num_lp_anchor_val>0 else 'NONE'} \n TEST LPs: {LPs[2] if config.num_lp_anchor_test>0 else 'NONE'} \n FLOATING LPs: {LPs[3] }")
 
   # These parameters affect the dimension of the flow
   # so they are also part of the flow parameters
@@ -1172,31 +940,13 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   #   -Global parameters
   #   -Posterior locations for floating profiles
   #   -Posterior locations for anchor profiles (treated as floating)
-  # cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
-  eta_init = 1.
-  prior_hparams_init = PriorHparams()
-
-
-  
-  cond_values_init = get_cond_values(cond_hparams_names=config.cond_hparams_names,
-                      num_samples=config.num_samples_elbo,
-                      eta_init=eta_init,
-                      prior_hparams_init=prior_hparams_init
-                      )
-
-#   prior_defaults = jnp.stack(PriorHparams())
-#   prior_hparams=jnp.ones((config.num_samples_elbo, 
-#                                   len(prior_defaults)))*prior_defaults # init params right?
-
-
-#   eta_profiles = jnp.ones((config.num_samples_elbo, train_ds['num_profiles']))
-#   eta_items = jnp.ones((config.num_samples_elbo, len(train_ds['num_forms_tuple'])))
-# #   smi_eta_init = {
-# #       'profiles':eta_profiles,
-# #       'items':eta_items,
-# #   }
-#   cond_values_init = jnp.hstack([prior_hparams, eta_profiles, eta_items])
-
+  eta_init = jnp.ones((config.num_samples_elbo, ))
+  smi_eta_init = {
+      'profiles':
+          jnp.ones((config.num_samples_elbo, train_ds['num_profiles'])),
+      'items':
+          jnp.ones((config.num_samples_elbo, len(train_ds['num_forms_tuple']))),
+  }
 
   # Global parameters
   checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints')
@@ -1212,8 +962,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           forward_fn_kwargs={
               'flow_name': config.flow_name,
               'flow_kwargs': config.flow_kwargs,
-              'cond_values':cond_values_init,
-            #   'eta': smi_eta_init['profiles'],
+              'eta': eta_init, #smi_eta_init['profiles'],
           },
           prng_key=next(prng_seq),
           optimizer=make_optimizer(**config.optim_kwargs),
@@ -1226,8 +975,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       next(prng_seq),
       flow_name=config.flow_name,
       flow_kwargs=config.flow_kwargs,
-      cond_values=cond_values_init,
-    #   eta=smi_eta_init['profiles'],
+      eta=eta_init, #smi_eta_init['profiles'],
   )['sample_base']
 
   state_list.append(
@@ -1238,8 +986,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
               'flow_name': config.flow_name,
               'flow_kwargs': config.flow_kwargs,
               'global_params_base_sample': global_sample_base_,
-              'cond_values':cond_values_init,
-            #   'eta': smi_eta_init['profiles'],
+              'eta': eta_init, #smi_eta_init['profiles'],
               'name': 'loc_floating',
           },
           prng_key=next(prng_seq),
@@ -1254,8 +1001,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
               'flow_name': config.flow_name,
               'flow_kwargs': config.flow_kwargs,
               'global_params_base_sample': global_sample_base_,
-              'cond_values':cond_values_init,
-            #   'eta': smi_eta_init['profiles'],
+              'eta': eta_init, #smi_eta_init['profiles'],
               'name': 'loc_floating_aux',
           },
           prng_key=next(prng_seq),
@@ -1284,8 +1030,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           prng_key,
           flow_name=config.flow_name,
           flow_kwargs=config.flow_kwargs,
-          cond_values=cond_values_init,
-        #   eta=smi_eta_init['profiles'],
+          eta=eta_init, #smi_eta_init['profiles'],
       ),
       columns=(
           "module",
@@ -1307,8 +1052,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           flow_name=config.flow_name,
           flow_kwargs=config.flow_kwargs,
           global_params_base_sample=global_sample_base_,
-          cond_values=cond_values_init,
-        #   eta=smi_eta_init['profiles'],
+          eta=eta_init, #smi_eta_init['profiles'],
           name='loc_floating',
       ),
       columns=(
@@ -1332,8 +1076,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                 'flow_name': config.flow_name,
                 'flow_kwargs': config.flow_kwargs,
                 'global_params_base_sample': global_sample_base_,
-                'cond_values':cond_values_init,
-                # 'eta': smi_eta_init['profiles'],
+                'eta': eta_init, #smi_eta_init['profiles'],
             },
             prng_key=next(prng_seq),
             optimizer=make_optimizer(**config.optim_kwargs),
@@ -1347,8 +1090,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             flow_name=config.flow_name,
             flow_kwargs=config.flow_kwargs,
             global_params_base_sample=global_sample_base_,
-            cond_values=cond_values_init,
-            # eta=smi_eta_init['profiles'],
+            eta=eta_init,  #smi_eta_init['profiles'],
         ),
         columns=(
             "module",
@@ -1379,18 +1121,13 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             'flow_kwargs': config.flow_kwargs,
             'eta_sampling_a': config.eta_sampling_a,
             'eta_sampling_b': config.eta_sampling_b,
-            'cond_hparams':config.cond_hparams_names,
             'include_random_anchor': config.include_random_anchor,
-            # 'prior_hparams': config.prior_hparams,
+            'prior_hparams': config.prior_hparams,
             'profile_is_anchor': profile_is_anchor,
             'kernel_name': config.kernel_name,
-            # 'kernel_kwargs': config.kernel_kwargs,
-            'sample_priorhparams_fn': sample_priorhparams_values,
-            'sample_priorhparams_kwargs': config.prior_hparams_hparams,
+            'kernel_kwargs': config.kernel_kwargs,
             'num_samples_gamma_profiles': config.num_samples_gamma_profiles,
             'gp_jitter': config.gp_jitter,
-            'num_profiles_anchor':config.num_profiles_anchor,
-            'num_inducing_points':config.num_inducing_points,
         },
     )
 
@@ -1415,7 +1152,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   #       num_samples_gamma_profiles=config.num_samples_gamma_profiles,
   #       gp_jitter=config.gp_jitter,
   #   )
-    
+
   # error_locations_estimate_jit = lambda state_list, batch, prng_key: error_locations_estimate(
   #     params_tuple=[state.params for state in state_list],
   #     batch=batch,
@@ -1454,9 +1191,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             config=config,
             lalme_dataset=lalme_dataset,
             batch=train_ds,
-            cond_hparams_names=config.cond_hparams_names,
             show_mu=True,
             show_zeta=True,
+            mcmc_img=(config.path_mcmc_img if config.dataset_id=='coarsen_8_items' else None),
             lp_floating_grid10=config.lp_floating_grid10,
             lp_random_anchor_grid10=config.lp_random_anchor_10,
             show_eval_metric=True,
@@ -1525,7 +1262,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           state_list=state_list,
           batch=train_ds,
           prng_key=next(prng_seq),
-          cond_hparams_names=config.cond_hparams_names,
           config=config,
           eta_eval_grid=eta_eval_grid_,
           num_samples=config.num_samples_eval,
@@ -1583,7 +1319,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         state_list=state_list,
         batch=train_ds,
         prng_key=next(prng_seq),
-        cond_hparams_names=config.cond_hparams_names,
         config=config,
         eta_eval_grid=eta_eval_grid_,
         num_samples=config.num_samples_eval,
@@ -1612,33 +1347,26 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   if config.save_samples:
     logging.info("Saving samples of VMP...")
     for eta_i in config.eta_plot:
-      # prior_defaults = jnp.stack(PriorHparams())
-      # prior_hparams=jnp.ones((config.num_samples_plot, 
-      #                             len(prior_defaults)))*prior_defaults # init params right?
-      
-      # eta_i_profiles = eta_i * jnp.ones(
-      #     (config.num_samples_plot, config.num_profiles))
-      # eta_i_profiles = jax.vmap(lambda eta_: jnp.where(profile_is_anchor,
-      #             1.,eta_,))(eta_i_profiles)
-      # eta_i_items = jnp.ones((config.num_samples_plot, len(config.num_forms_tuple)))
-      # smi_eta_ = {
-      #     'profiles':eta_i_profiles,
-      #     'items':eta_i_items,
-      # }
-      # cond_values = jnp.hstack([prior_hparams, eta_i_profiles, eta_i_items])
-      prior_defaults = PriorHparams()
-      cond_values = get_cond_values(cond_hparams_names=config.cond_hparams_names,
-                      num_samples=config.num_samples_plot,
-                      eta_init=eta_i,
-                      prior_hparams_init=prior_defaults
-                      )
+      eta_i_samples = eta_i * jnp.ones(
+          (config.num_samples_plot,))
+      eta_i_profiles = eta_i * jnp.ones(
+          (config.num_samples_plot, config.num_profiles))
+
+      smi_eta_ = {
+          'profiles':
+              jax.vmap(lambda eta_: jnp.where(
+                  profile_is_anchor,
+                  1.,
+                  eta_,
+              ))(eta_i_profiles),
+          'items':
+              jnp.ones((config.num_samples_plot, len(config.num_forms_tuple))),
+      }
 
       lalme_az_ = sample_lalme_az(
           state_list=state_list,
           batch=train_ds,
-          cond_values=cond_values,
-          prior_hparams=jnp.stack(PriorHparams()),#prior_hparams,
-        #   smi_eta=smi_eta_,
+          smi_eta=eta_i_samples, #smi_eta_,
           prng_key=next(prng_seq),
           config=config,
           lalme_dataset=lalme_dataset,
@@ -1656,15 +1384,15 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         config=config,
         lalme_dataset=lalme_dataset,
         batch=train_ds,
-        cond_hparams_names=config.cond_hparams_names,
-        show_mu=False, # True
-        show_zeta=False, # True
+        show_mu=False,
+        show_zeta=False,
         show_basis_fields=False,
         # show_W_items=lalme_dataset['items'],
         # show_a_items=lalme_dataset['items'],
         # lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
         # lp_floating_traces=config.lp_floating_grid10,
         lp_floating_grid10=config.lp_floating_grid10,
+        mcmc_img=(config.path_mcmc_img if config.dataset_id=='coarsen_8_items' else None),
         lp_random_anchor=(
             lalme_dataset['LP'][:lalme_dataset['num_profiles_anchor']]
             if config.include_random_anchor else None),
@@ -1676,293 +1404,15 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             True if lalme_dataset['num_profiles_split'].lp_anchor_test > 0 else
             False),
         loc_inducing=train_ds['loc_inducing'],
-        show_location_priorhp_compare=False,
-        show_eval_metric=True, # True
+        show_eval_metric=True,
         eta_eval_grid=jnp.linspace(0, 1, 21),
         num_samples_chunk=config.num_samples_chunk_plot,
         summary_writer=summary_writer,
         workdir_png=workdir,
     )
-
     logging.info("...done!")
 
 
-#####################################################################################
-  # Find best eta ###
-
-  #################################
-  # TODO: repeated block, can probably be deleted
-  prior_defaults = jnp.stack(PriorHparams())
-  prior_hparams_default = jnp.array([5., 10., 1., 0.5, 1., 1., 0.2, 0.3])
-  assert jnp.all(prior_defaults == prior_hparams_default)
-  eta_star_default= 1.0
-  hp_star_default = jnp.hstack([prior_hparams_default, eta_star_default]) 
-
-  # optim_mask = jnp.array([1, 1, 0, 0, 0, 0, 1, 1, 1])
-  optim_mask = jnp.array([1 if i in config.cond_hparams_names else 0 for i in PriorHparams()._fields ] + ([1] if 'eta' in config.cond_hparams_names else [0]))
-  print('optim mask:', optim_mask)
-  optim_mask_indices = (tuple(i for i, x in enumerate(optim_mask) if x == 0),tuple(i for i, x in enumerate(optim_mask) if x == 1))
-  hp_star_init = hp_star_default[optim_mask==1]
-  hp_fixed = hp_star_default[optim_mask==0]
-  #################################
-
-
-  num_profiles_split = train_ds['num_profiles_split']
-  LPs = train_ds['LP']
-  floating_anchor_copies = config.floating_anchor_copies
-  LPs_split = np.split(
-  LPs,
-  np.cumsum(num_profiles_split),
-  )[:-1]
-
-  train_idxs = jnp.where(jnp.isin(LPs_split[3], LPs_split[0]*1000))[0]
-  
-  # jax.debug.print(train_ds['num_profiles_split'].lp_anchor_val)
-  # jax.debug.print(train_ds['num_profiles_split'].lp_anchor_test)
-  error_locations_estimate_jit = lambda locations_sample, loc: error_locations_estimate(
-    locations_sample=locations_sample,
-    num_profiles_split=num_profiles_split,
-    loc=loc,
-    floating_anchor_copies=floating_anchor_copies,
-    train_idxs=train_idxs,
-  )
-  error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
-
-
-
-  def mse_fixedhp(
-    hp_params:Array,
-    hp_optim_mask_indices:Tuple,
-    hp_fixed_values:Array,
-    state_list: List[TrainState],
-    batch: Optional[Batch],
-    prng_key: PRNGKey,
-    flow_name: str,
-    flow_kwargs: Dict[str, Any],
-    include_random_anchor:bool,
-    num_samples: int,
-    profile_is_anchor:Array,
-    num_profiles_split:int,
-    config:ConfigDict,
-) -> Dict[str, Array]:
-
-
-
-
-    # # Sample eta values
-    # hp_fixed_values = jnp.array(hp_fixed_values)
-    # hp_params_all = jnp.zeros(len(hp_optim_mask_indices[0])+ len(hp_optim_mask_indices[1]))#jnp.zeros(optim_mask.shape)
-    # hp_params_all = hp_params_all.at[(hp_optim_mask_indices[1],)].set(hp_params)
-    # hp_params_all = hp_params_all.at[(hp_optim_mask_indices[0],)].set(hp_fixed_values)
-
-    
-    # logprobs_rho_dict = logprob_rho(hparams=hp_params_all,
-    #                   w_sampling_scale_alpha=config.prior_hparams_hparams.w_sampling_scale_alpha,
-    #                   w_sampling_scale_beta=config.prior_hparams_hparams.w_sampling_scale_beta,
-    #                   a_sampling_scale_alpha=config.prior_hparams_hparams.a_sampling_scale_alpha,
-    #                   a_sampling_scale_beta=config.prior_hparams_hparams.a_sampling_scale_beta,
-    #                   kernel_sampling_amplitude_alpha=config.prior_hparams_hparams.kernel_sampling_amplitude_alpha,
-    #                   kernel_sampling_amplitude_beta=config.prior_hparams_hparams.kernel_sampling_amplitude_beta,
-    #                   kernel_sampling_lengthscale_alpha=config.prior_hparams_hparams.kernel_sampling_lengthscale_alpha,
-    #                   kernel_sampling_lengthscale_beta=config.prior_hparams_hparams.kernel_sampling_lengthscale_beta,
-    #                   eta_sampling_a=config.eta_sampling_a,
-    #                   eta_sampling_b=config.eta_sampling_b)
-    # logprobs_rho = jnp.array(list(logprobs_rho_dict.values()))
-    # logprobs_rho = logprobs_rho.at[(hp_optim_mask_indices[0],)].set(0.)
-
-    # eta_profiles = jnp.where(
-    #             profile_is_anchor,1.,hp_params_all[-1])#(367)
-    # eta_items = jnp.ones(len(batch['num_forms_tuple'])) #(71)
-
-    # cond_values = jnp.hstack([hp_params_all[:-1],
-    #                           eta_profiles, eta_items,
-    #                           ]) #(n_samples, n_hps+367+71)
-    cond_values = hp_params
-
-    q_distr_out = sample_all_flows(
-        params_tuple=[state.params for state in state_list],
-        prng_key=prng_key,
-        flow_name=flow_name,
-        flow_kwargs=flow_kwargs,
-        cond_values=jnp.broadcast_to(cond_values, (num_samples, len(cond_values))),
-        # smi_eta=smi_eta_,
-        include_random_anchor=include_random_anchor,
-    )
-
-    error_loc_dict = error_locations_estimate_jit(
-            locations_sample=q_distr_out['locations_sample'],
-            loc=batch['loc'],
-            # num_profiles_split=num_profiles_split,
-            # batch=batch,
-        )
-    return error_loc_dict['mean_dist_anchor_val'] #- logprobs_rho.sum()
-  
-  # Jit optimization of hparams 
-     
-  mse_jit = lambda hp_params, batch, prng_key, state_list_vmp,  hp_optim_mask_indices, hp_fixed_values: mse_fixedhp(
-      hp_params=hp_params,
-      hp_optim_mask_indices=hp_optim_mask_indices,
-      hp_fixed_values=hp_fixed_values,
-      state_list=state_list_vmp,
-      batch=batch,
-      prng_key=prng_key,
-      num_samples=config.num_samples_mse,
-      flow_name=config.flow_name,
-      flow_kwargs=config.flow_kwargs,
-      include_random_anchor=config.include_random_anchor,
-      profile_is_anchor=profile_is_anchor,
-      num_profiles_split=num_profiles_split,
-      config=config,
-  )
-
-  mse_jit = jax.jit(mse_jit, static_argnames=('hp_optim_mask_indices'))
-
-  update_hp_star_state = lambda hp_star_state, batch, prng_key: update_state(
-        state=hp_star_state,
-        batch=batch,
-        prng_key=prng_key,
-        optimizer=make_optimizer_hparams(**config.optim_kwargs_hp), #make_optimizer(**config.optim_kwargs), 
-        loss_fn=mse_jit,
-        loss_fn_kwargs={
-            'state_list_vmp': state_list,
-            'hp_optim_mask_indices':optim_mask_indices,
-            'hp_fixed_values':hp_fixed,
-        },
-    )
-  update_hp_star_state = jax.jit(update_hp_star_state)
-
-  # Jit optimization of eta only
-
-  # mse_jit_eta = lambda eta, prior_hparams, batch, prng_key, state_list_vmp: mse_fixedhp(
-  #     hp_params=jnp.hstack([prior_hparams, eta]),
-  #     state_list=state_list_vmp,
-  #     batch=batch,
-  #     prng_key=prng_key,
-  #     num_samples=config.num_samples_mse,
-  #     flow_name=config.flow_name,
-  #     flow_kwargs=config.flow_kwargs,
-  #     include_random_anchor=config.include_random_anchor,
-  #     profile_is_anchor=profile_is_anchor,
-  #     num_profiles_split=num_profiles_split,
-  # )['mean_dist_anchor_val']
-
-  # mse_jit_eta = jax.jit(mse_jit_eta)
-
-  # update_eta_star_state = lambda eta_star_state, batch, prng_key: update_state(
-  #       state=eta_star_state,
-  #       batch=batch,
-  #       prng_key=prng_key,
-  #       optimizer=make_optimizer_hparams(**config.optim_kwargs_hp), #make_optimizer(**config.optim_kwargs), 
-  #       loss_fn=mse_jit_eta,
-  #       loss_fn_kwargs={
-  #           'state_list_vmp': state_list,
-  #           'prior_hparams':prior_hparams_init,
-  #       },
-  #   )
-  # update_eta_star_state = jax.jit(update_eta_star_state)
-
-  logging.info('Finding best hyperparameters...')
-
-  
-
-  # Reset random key sequence
-  prng_seq = hk.PRNGSequence(config.seed)
-
-
-  info_dict = {'init':hp_star_init,
-  'loss':[], 'params':[], 'step':[]}
-
-  # key_search = next(prng_seq)
-
-  # # SGD over elpd for all hparams 
-  hp_star_state = TrainState(
-      params=hp_star_init,
-      opt_state=make_optimizer_hparams(**config.optim_kwargs_hp).init(hp_star_init),
-      step=0,
-  )
-  for _ in range(config.hp_star_steps):
-    hp_star_state, mse = update_hp_star_state(
-        hp_star_state,
-        batch=train_ds,
-        prng_key=next(prng_seq),
-    )
-  
-  # SGD over elpd for eta only
-  # eta_star_state = TrainState(
-  #     params=eta_star_init,
-  #     opt_state=make_optimizer_hparams(**config.optim_kwargs_hp).init(eta_star_init),
-  #     step=0,
-  # )
-  # for _ in range(config.hp_star_steps):
-  #   eta_star_state, mse = update_eta_star_state(
-  #       eta_star_state,
-  #       batch=train_ds,
-  #       prng_key=next(prng_seq),
-  #   )
-
-    # if state_list[0].step % config.hp_star_steps == 0:
-    #   logging.info("STEP: %5d; training loss: %.3f", state_list[0].step,
-    #                neg_elpd["train_loss"])
-    info_dict['loss'].append(mse["train_loss"])
-    info_dict['params'].append(hp_star_state.params)
-    info_dict['step'].append(hp_star_state.step)
-    # info_dict['params'].append(eta_star_state.params)
-    # info_dict['step'].append(eta_star_state.step)
-
-
-    field_names=('w_prior_scale', 'a_prior_scale', 
-                # 'mu_prior_concentration', 'mu_prior_rate', 
-                # 'zeta_prior_a', 'zeta_prior_b', 
-                'kernel_amplitude', 'kernel_length_scale')
-  
-    
-    if ((hp_star_state.step == 1) or (hp_star_state.step % 100 == 0)):
-      labs = "STEP: %5d; training loss: %.6f " + ' '.join([hp + ':%.3f' for hp in config.cond_hparams_names])
-      # logging.info("STEP: %5d; training loss: %.3f w_prior_scale:%.3f a_prior_scale:%.3f kernel_amplitude:%.3f kernel_length_scale:%.3f eta:%.3f",
-      logging.info(labs,
-        float(hp_star_state.step),
-      float(mse["train_loss"]), *[float(hp_star_state.params[i]) for i in range(len(config.cond_hparams_names))])
-
-    # Clip eta_star to [0,1] hypercube and hp_star to [0.000001,..]
-    hp_star_state = TrainState(
-        params=jnp.hstack([jnp.clip(hp_star_state.params[0],0., 10.) if 'w_prior_scale' in config.cond_hparams_names else [],# w_prior_scale
-                          jnp.clip(hp_star_state.params[1],3., 19.) if 'a_prior_scale' in config.cond_hparams_names else [],# a_prior_scale
-                          jnp.clip(hp_star_state.params[6],0.1, 0.4) if 'kernel_amplitude' in config.cond_hparams_names else [],# kernel_amplitude
-                          jnp.clip(hp_star_state.params[7],0.2, 0.5) if 'kernel_length_scale' in config.cond_hparams_names else [],# kernel_length_scale
-                          jnp.clip(hp_star_state.params[-1], 0., 1.) if 'eta' in config.cond_hparams_names else []]),
-        opt_state=hp_star_state.opt_state,
-        step=hp_star_state.step,
-    )
-    # hp_star_state = TrainState(
-    #     params=jnp.hstack([jnp.clip(hp_star_state.params[:8],0.),
-    #                       jnp.clip(hp_star_state.params[-1], 0., 1.)]),
-    #     opt_state=hp_star_state.opt_state,
-    #     step=hp_star_state.step,
-    # )
-    # eta_star_state = TrainState(
-    #     params=jnp.clip(eta_star_state.params, 0., 1.),
-    #     opt_state=eta_star_state.opt_state,
-    #     step=eta_star_state.step,
-    # )
-
-    # summary_writer.scalar(
-    #     tag='rnd_eff_hp_star_neg_elpd',
-    #     value=neg_elpd['train_loss'],
-    #     step=hp_star_state.step - 1,
-    # )
-    # for i, hp_star_i in enumerate(hp_star_state.params):
-    #   summary_writer.scalar(
-    #       tag=f'rnd_eff_eta_star_{i}',
-    #       value=hp_star_i,
-    #       step=hp_star_state.step - 1,
-    #   )
-  with open(workdir + f"/hp_info_priordefaults_eta{hp_star_init[-1]:.6f}.sav", 'wb') as f:
-    pickle.dump(info_dict, f)
-
-
-
-
-#####################################################################################
 # # For debugging
 # config = get_config()
 # workdir = str(pathlib.Path.home() / 'spatial-smi-output-exp/all_items/nsf/vmp_flow')
