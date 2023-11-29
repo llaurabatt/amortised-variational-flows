@@ -87,8 +87,8 @@ def get_config():
   config.num_lp_anchor_train = 80
   config.num_lp_floating_train = 247
   config.num_items_keep = 71
-  config.num_lp_anchor_val = 20
-  config.num_lp_anchor_test = 20
+  config.num_lp_anchor_val = 40
+  config.num_lp_anchor_test = 0
   config.remove_empty_forms = True
   config.ad_hoc_val_profiles = False # CHECK ALWAYS!!!
   config.ad_hoc_val_list = [83, 104, 138, 94, 301, 348, 377, 441, 732, 1132, 1198, 1199, 1204, 1301,
@@ -102,12 +102,12 @@ def get_config():
   config.eval_steps = config.training_steps // 2#5 
   config.num_samples_eval = 500
   config.num_samples_mse = 2_000
-  config.eval_last = False 
+  config.eval_last = True 
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 2#5 
-  config.log_img_at_end = False  
+  config.log_img_at_end = True  
   config.save_samples = False # FLIPPED
   config.path_mcmc_img = ''
 
