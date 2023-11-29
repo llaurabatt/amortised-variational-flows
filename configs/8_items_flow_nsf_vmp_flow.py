@@ -7,7 +7,7 @@ def get_config():
   """Get the hyperparameter configuration."""
   config = ml_collections.ConfigDict()
 
-  config.method = 'vmp_flow'
+  config.method = 'vmp_flow_allhp' # vmp_flow
 
   # Dataset to use
   config.dataset_id = 'coarsen_8_items'
@@ -48,6 +48,16 @@ def get_config():
   config.kernel_kwargs.length_scale = 0.3
   config.gp_jitter = 1e-3
 
+  config.prior_hparams_hparams = ml_collections.ConfigDict()
+  config.prior_hparams_hparams.w_sampling_scale_alpha = 5.
+  config.prior_hparams_hparams.w_sampling_scale_beta = 1.
+  config.prior_hparams_hparams.a_sampling_scale_alpha = 10.
+  config.prior_hparams_hparams.a_sampling_scale_beta = 1.
+  config.prior_hparams_hparams.kernel_sampling_amplitude_alpha = 0.1
+  config.prior_hparams_hparams.kernel_sampling_amplitude_beta = 0.4
+  config.prior_hparams_hparams.kernel_sampling_lengthscale_alpha = 0.2
+  config.prior_hparams_hparams.kernel_sampling_lengthscale_beta = 0.5
+
   # Number of training steps to run.
   config.training_steps = 300_000
 
@@ -66,6 +76,7 @@ def get_config():
       'staircase': False,
       'end_value': None,
   }
+  config.cond_hparams_names = []
 
   config.num_lp_anchor_train = 120
   config.num_lp_floating_train = 10
@@ -94,9 +105,10 @@ def get_config():
 
   # Number of samples used in the plots.
   config.num_samples_plot = 10_000
-  config.num_samples_chunk_plot = 1_000
+  config.num_samples_chunk_plot = 500
 
   # Floating profiles to plot in grid
+  config.floating_anchor_copies = False # CHECK ALWAYS!!!
   config.lp_floating_grid10 = [
       136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
   ]

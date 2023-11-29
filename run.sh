@@ -6,7 +6,8 @@ set -x
 REPO_DIR=$PWD
 
 # Directory to save all outputs
-WORK_DIR=$HOME/spatial-smi-output-integrated-ONLYeta-smallcondval
+WORK_DIR=$HOME/spatial-smi-output-integrated-allhps-40val-smallcondval
+
 
 # Create output directory and install missing dependencies
 mkdir -p $WORK_DIR
@@ -41,11 +42,11 @@ all_eta=('0.001' '1.000')
 
 # ## Variational Meta-Posterior via VMP-flow
 # ### Neural Spline Flow
-python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_nsf_vmp_flow.py \
-                          --config.path_mcmc_img $HOME/my-spatial-smi-oldv/data/8_items_mcmc_floating.png \
-                          --workdir $WORK_DIR/8_items/nsf/vmp_flow \
-                          --log_dir $WORK_DIR/8_items/nsf/vmp_flow/log_dir \
-                          --alsologtostderr
+# python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_nsf_vmp_flow.py \
+#                           --config.path_mcmc_img $HOME/my-spatial-smi-oldv/data/8_items_mcmc_floating.png \
+#                           --workdir $WORK_DIR/8_items/nsf/vmp_flow \
+#                           --log_dir $WORK_DIR/8_items/nsf/vmp_flow/log_dir \
+#                           --alsologtostderr
 
 # ## MCMC
 ## Single eta
@@ -83,7 +84,7 @@ python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_flow_nsf_vmp_flow.p
 
 ## Variational Meta-Posterior via VMP-flow
 # Neural Spline Flow
-# python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf_vmp_flow.py \
-#                           --workdir $WORK_DIR/all_items/nsf/vmp_flow \
-#                           --log_dir $WORK_DIR/all_items/nsf/vmp_flow/log_dir \
-#                           --alsologtostderr
+python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf_vmp_flow.py \
+                          --workdir $WORK_DIR/all_items/nsf/vmp_flow \
+                          --log_dir $WORK_DIR/all_items/nsf/vmp_flow/log_dir \
+                          --alsologtostderr

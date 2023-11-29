@@ -51,6 +51,7 @@ def get_config():
 
   # Number of training steps to run.
   config.training_steps = 100_000 #200_000
+  config.cond_hparams_names = None
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()

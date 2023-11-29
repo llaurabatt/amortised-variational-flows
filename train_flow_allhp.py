@@ -785,7 +785,9 @@ def error_locations_estimate(
     num_profiles_split:int,
     loc: Array,
     floating_anchor_copies: bool,
-    train_idxs:Array,
+    ad_hoc_val_profiles:bool,
+    train_idxs: Optional[Array],
+    val_idxs: Optional[Array],
     # LPs:Array,
     # batch: Optional[Batch],
 ) -> Dict[str, Array]:
@@ -862,6 +864,15 @@ def error_locations_estimate(
     distances = jnp.linalg.norm(
         pred_floating[2][:,train_idxs,:].mean(axis=0) - targets_all[3][train_idxs,:], ord=2, axis=-1)
     error_loc_out['dist_mean_floating_copies_only'] = distances.mean()
+
+  if ad_hoc_val_profiles:
+    distances = jnp.linalg.norm(
+    pred_floating[0][:,val_idxs,:] - targets_all[1][val_idxs,:][None, ...], ord=2, axis=-1)
+    error_loc_out[f'mean_dist_anchor_val_subset'] = distances.mean()
+    # Average of distance between Fit-technique locations and posterior mean
+    distances = jnp.linalg.norm(
+        pred_floating[0][:,val_idxs,:].mean(axis=0) - targets_all[1][val_idxs,:], ord=2, axis=-1)
+    error_loc_out[f'dist_mean_anchor_val_subset'] = distances.mean()
 
 
 
