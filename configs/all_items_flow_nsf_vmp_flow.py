@@ -80,9 +80,9 @@ def get_config():
   # Optimizer for searching hp
   config.optim_kwargs_hp = ml_collections.ConfigDict()
   config.optim_kwargs_hp.learning_rate = 1e-4
-  config.hp_star_steps = 10_000
-  config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
-
+  config.hp_star_steps = 5_000
+  config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 
+                               'kernel_length_scale']
   config.floating_anchor_copies = False # CHECK ALWAYS!!!
   config.num_lp_anchor_train = 80
   config.num_lp_floating_train = 247
@@ -99,14 +99,14 @@ def get_config():
   config.num_samples_gamma_profiles = 3
 
   # How often to evaluate the model.
-  config.eval_steps = config.training_steps // 2#5 
+  config.eval_steps = config.training_steps // 5 
   config.num_samples_eval = 500
   config.num_samples_mse = 2_000
-  config.eval_last = True 
+  config.eval_last = False 
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
-  config.log_img_steps = config.training_steps // 2#5 
+  config.log_img_steps = config.training_steps // 5 
   config.log_img_at_end = True  
   config.save_samples = False # FLIPPED
   config.path_mcmc_img = ''
@@ -115,6 +115,28 @@ def get_config():
   config.num_samples_plot = 10_000 #2_000 for basis fields
   config.num_samples_chunk_plot = 500 #100 for basis fields
 
+  # Val profiles to plot in grid
+  config.lp_anchor_val_grid30 = [88, 104,133, 138,139, 294, 301, 307, 348,  363,
+                                 377, 441,446,448, 472,732, 814, 1125,  
+                                 1132,1134,1142,1198,1205,1301, 1329, 1330, 
+                                 1339, 1341, 1345, 1348, ]
+  # left aside: [83,84, 544,617,770,1199,1204,1302,1327,1332,]  
+  
+  config.lp_anchor_val_grid28 = [104,133, 138,139, 294, 301, 307, 348,  363,
+                                 377, 441,448, 472,732, 814, 1125,  
+                                 1132,1134,1142,1198,1205,1301, 1329, 1330, 
+                                 1339, 1341, 1345, 1348, ]
+  
+    
+  config.lp_anchor_val_grid21 = [104,133, 138,139, 294, 301, 307, 
+                                 348,  363,441,472,732, 1125, 1132,
+                                 1134,1198,1205,1330, 1339, 1341, 1348, ]
+  
+  # config.lp_anchor_val_grid10 = [104,133, 138,139, 294, 301, 307, 348,  363,
+  #                                377] # ORIGINAL
+  config.lp_anchor_val_grid10 = [104,133, 139, 301, 363, 732, 1125,  1205,
+                                 1330,1348]
+  
   # Floating profiles to plot in grid
   config.lp_floating_grid10 = [
       136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
@@ -151,10 +173,14 @@ def get_config():
   config.lp_random_anchor_10 = None
 
   # eta shown in figures
-  config.eta_plot = [1.0] #[0.001, 0.25, 0.5, 0.75, 1.0]
-  config.prior_hparams_plot = [[5., 10., 1., 0.5, 1., 1., 0.2, 0.3],
-                               [1., 4., 1., 0.5, 1., 1., 0.5, 0.9],
-                               [8., 15., 1., 0.5, 1., 1., 0.1, 0.05]]
+  config.eta_plot = [0.42, 1.0]# [0.001, 0.25, 0.42, 0.5, 0.75, 1.0]
+  config.prior_hparams_plot = [[0.2, 0.2, 1., 0.5, 1., 1., 0.1, 0.5],#optim
+                               [5., 10., 1., 0.5, 1., 1., 0.2, 0.3], #optim bound
+                               ] # high
+                              #  [1., 4., 1., 0.5, 1., 1., 0.5, 0.9],
+                              #  [8., 15., 1., 0.5, 1., 1., 0.1, 0.05]]
+  # config.prior_hparams_plot_optim = [5.5, 11,  1., 0.5, 1., 1., 0.4, 0.2]
+  config.prior_hparams_plot_optim = [0.2, 0.2,  1., 0.5, 1., 1., 0.1, 0.5]
 
   # How often to save model checkpoints.
   config.checkpoint_steps = config.training_steps // 5

@@ -793,6 +793,10 @@ def log_images(
     lp_floating: Optional[List[int]] = None,
     lp_floating_traces: Optional[List[int]] = None,
     lp_floating_grid10: Optional[List[int]] = None,
+    lp_anchor_val_grid30:Optional[List[int]] = None,
+    lp_anchor_val_grid28:Optional[List[int]] = None,
+    lp_anchor_val_grid10:Optional[List[int]] = None,
+    lp_anchor_val_grid21:Optional[List[int]] = None,
     mcmc_img: Optional[str] = None,
     lp_random_anchor: Optional[List[int]] = None,
     lp_random_anchor_grid10: Optional[List[int]] = None,
@@ -844,52 +848,62 @@ def log_images(
     #     'items':eta_i_items,
     # }
     # cond_values = jnp.hstack([prior_hparams,eta_i_profiles,eta_i_items])
-    if cond_hparams_names:
-      cond_values = get_cond_values(cond_hparams_names=cond_hparams_names,
-                        num_samples=config.num_samples_plot,
-                        eta_init=eta_i,
-                        prior_hparams_init=prior_defaults
-                        )
-    else:
-      cond_values = None
+    # if config.prior_hparams_plot_optim:
+    #   prior_hparams_init = PriorHparams(*config.prior_hparams_plot_optim)
+    #   prior_hparams_init_vals = jnp.array(config.prior_hparams_plot_optim)
+    # else:
+    #   prior_hparams_init = prior_defaults
+    #   prior_hparams_init_vals = jnp.stack(prior_defaults)
+    # if cond_hparams_names:
+    #   cond_values = get_cond_values(cond_hparams_names=cond_hparams_names,
+    #                     num_samples=config.num_samples_plot,
+    #                     eta_init=eta_i,
+    #                     prior_hparams_init=prior_hparams_init,
+    #                     )
+    # else:
+    #   cond_values = None
     
-    lalme_az_ = sample_lalme_az(
-        state_list=state_list,
-        batch=batch,
-        cond_values=cond_values,
-        prior_hparams=jnp.stack(prior_defaults),
-        # smi_eta=smi_eta_,
-        prng_key=next(prng_seq),
-        config=config,
-        lalme_dataset=lalme_dataset,
-        include_gamma=show_basis_fields,
-        num_samples=config.num_samples_plot,
-        num_samples_chunk=num_samples_chunk,
-    )
+    # lalme_az_ = sample_lalme_az(
+    #     state_list=state_list,
+    #     batch=batch,
+    #     cond_values=cond_values,
+    #     prior_hparams=jnp.stack(prior_defaults),
+    #     # smi_eta=smi_eta_,
+    #     prng_key=next(prng_seq),
+    #     config=config,
+    #     lalme_dataset=lalme_dataset,
+    #     include_gamma=show_basis_fields,
+    #     num_samples=config.num_samples_plot,
+    #     num_samples_chunk=num_samples_chunk,
+    # )
 
-    plot.lalme_plots_arviz(
-        lalme_az=lalme_az_,
-        lalme_dataset=lalme_dataset,
-        step=state_list[0].step,
-        show_mu=show_mu,
-        show_zeta=show_zeta,
-        show_basis_fields=show_basis_fields,
-        show_W_items=show_W_items,
-        show_a_items=show_a_items,
-        lp_floating=lp_floating,
-        lp_floating_traces=lp_floating_traces,
-        lp_floating_grid10=lp_floating_grid10,
-        mcmc_img=(mcmc_img if eta_i==1.000 else None),
-        lp_random_anchor=lp_random_anchor,
-        lp_random_anchor_grid10=lp_random_anchor_grid10,
-        lp_anchor_val=lp_anchor_val,
-        lp_anchor_test=lp_anchor_test,
-        loc_inducing=loc_inducing,
-        workdir_png=workdir_png,
-        summary_writer=summary_writer,
-        suffix=f"_eta_floating_{float(eta_i):.3f}",
-        scatter_kwargs={"alpha": 0.10},
-    )
+    # plot.lalme_plots_arviz(
+    #     lalme_az=lalme_az_,
+    #     lalme_dataset=lalme_dataset,
+    #     step=state_list[0].step,
+    #     show_mu=show_mu,
+    #     show_zeta=show_zeta,
+    #     show_basis_fields=show_basis_fields,
+    #     show_W_items=show_W_items,
+    #     show_a_items=show_a_items,
+    #     lp_floating=lp_floating,
+    #     lp_floating_traces=lp_floating_traces,
+    #     lp_floating_grid10=lp_floating_grid10,
+    #     lp_anchor_val_grid30=lp_anchor_val_grid30,
+    #     lp_anchor_val_grid28=lp_anchor_val_grid28,
+    #     lp_anchor_val_grid21=lp_anchor_val_grid21,
+    #     lp_anchor_val_grid10=lp_anchor_val_grid10,
+    #     mcmc_img=(mcmc_img if eta_i==1.000 else None),
+    #     lp_random_anchor=lp_random_anchor,
+    #     lp_random_anchor_grid10=lp_random_anchor_grid10,
+    #     lp_anchor_val=lp_anchor_val,
+    #     lp_anchor_test=lp_anchor_test,
+    #     loc_inducing=loc_inducing,
+    #     workdir_png=workdir_png,
+    #     summary_writer=summary_writer,
+    #     suffix=f"_eta_floating_{float(eta_i):.3f}_sigma_a_{prior_hparams_init_vals[0]:.3f}_sigma_w_{prior_hparams_init_vals[1]:.3f}_sigma_K_{prior_hparams_init_vals[-2]:.3f}_ls_K_{prior_hparams_init_vals[-1]:.3f}",
+    #     scatter_kwargs={"alpha": 0.10},
+    # )
 
     if show_location_priorhp_compare:
       print('Plotting comparing results...')
@@ -926,7 +940,7 @@ def log_images(
             num_samples_chunk=num_samples_chunk,
         )
         lalme_az_list.append(lalme_az_)
-        prior_hparams_str_list.append(fr'$\sigma_a$: {prior_hparams_i[0]}, $\sigma_w$: {prior_hparams_i[1]}, $a_K$: {prior_hparams_i[-2]}, $ls_K$: {prior_hparams_i[-1]}')
+        prior_hparams_str_list.append(fr'$\sigma_a$: {prior_hparams_i[0]}, $\sigma_w$: {prior_hparams_i[1]}, $\sigma_K$: {prior_hparams_i[-2]}, $ls_K$: {prior_hparams_i[-1]}')
 
       plot.lalme_priorhparam_compare_plots_arviz(
           lalme_az_list=lalme_az_list,
@@ -937,6 +951,7 @@ def log_images(
           show_W_items=show_W_items,
           show_a_items=show_a_items,
           lp_floating_grid10=lp_floating_grid10,
+          lp_anchor_val_grid10=lp_anchor_val_grid10,
           lp_random_anchor_grid10=lp_random_anchor_grid10,
           lp_anchor_val=lp_anchor_val,
           lp_anchor_test=lp_anchor_test,
@@ -1742,18 +1757,22 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         lalme_dataset=lalme_dataset,
         batch=train_ds,
         cond_hparams_names=config.cond_hparams_names,
-        show_mu=False, # True
-        show_zeta=False, # True
+        # show_mu=True,
+        # show_zeta=True, 
         show_basis_fields=False,
         # show_W_items=lalme_dataset['items'],
         # show_a_items=lalme_dataset['items'],
         # lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
         # lp_floating_traces=config.lp_floating_grid10,
-        lp_floating_grid10=config.lp_floating_grid10,
+        # lp_floating_grid10=config.lp_floating_grid10,
+        # lp_anchor_val_grid30=config.lp_anchor_val_grid30,
+        # lp_anchor_val_grid21=config.lp_anchor_val_grid21,
+        # lp_anchor_val_grid28=config.lp_anchor_val_grid28,
+        lp_anchor_val_grid10=config.lp_anchor_val_grid10,
         # lp_random_anchor=(
         #     lalme_dataset['LP'][:lalme_dataset['num_profiles_anchor']]
         #     if config.include_random_anchor else None),
-        # # lp_random_anchor_grid10=config.lp_random_anchor_10,
+        # lp_random_anchor_grid10=config.lp_random_anchor_10,
         # show_lp_anchor_val=(
         #     True if lalme_dataset['num_profiles_split'].lp_anchor_val > 0 else
         #     False),
@@ -1762,8 +1781,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         #     False),
         mcmc_img=(config.path_mcmc_img if config.dataset_id=='coarsen_8_items' else None),
         loc_inducing=train_ds['loc_inducing'],
-        show_location_priorhp_compare=False,
-        show_eval_metric=True, 
+        show_location_priorhp_compare=True,
+        show_eval_metric=False, 
         eta_eval_grid=jnp.linspace(0, 1, 21),
         num_samples_chunk=config.num_samples_chunk_plot,
         summary_writer=summary_writer,
@@ -1779,21 +1798,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   #################################
   # TODO: repeated block, can probably be deleted
   if config.cond_hparams_names:
-    prior_defaults = jnp.stack(PriorHparams())
-    prior_hparams_default = jnp.array([5., 10., 1., 0.5, 1., 1., 0.2, 0.3])
-    assert jnp.all(prior_defaults == prior_hparams_default)
-    eta_star_default= 1.0
-    hp_star_default = jnp.hstack([prior_hparams_default, eta_star_default]) 
-
-    # optim_mask = jnp.array([1, 1, 0, 0, 0, 0, 1, 1, 1])
-    optim_mask = jnp.array([1 if i in config.cond_hparams_names else 0 for i in PriorHparams()._fields ] + ([1] if 'eta' in config.cond_hparams_names else [0]))
-    print('optim mask:', optim_mask)
-    optim_mask_indices = (tuple(i for i, x in enumerate(optim_mask) if x == 0),tuple(i for i, x in enumerate(optim_mask) if x == 1))
-    hp_star_init = hp_star_default[optim_mask==1]
-    hp_fixed = hp_star_default[optim_mask==0]
-    #################################
-
-
     num_profiles_split = train_ds['num_profiles_split']
     LPs = train_ds['LP']
     LPs_split = np.split(
@@ -1812,251 +1816,209 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       val_idxs = jnp.where(jnp.isin(LPs_split[1], jnp.array(config.ad_hoc_val_list)))[0]
     else:
       val_idxs = None
+
+    prior_defaults = jnp.stack(PriorHparams())
+    prior_hparams_default = jnp.array([5., 10., 1., 0.5, 1., 1., 0.2, 0.3])
+    assert jnp.all(prior_defaults == prior_hparams_default)
+    eta_star_default= 1.0
+    hp_star_default = jnp.hstack([prior_hparams_default, eta_star_default]) 
+
+    init_vals = {'default':hp_star_default,
+                 'chris_opt':jnp.array([0.75, 4., 1., 0.5, 1., 1., 0.1, 0.2, 0.]),
+                 'low':jnp.array([1., 4., 1., 0.5, 1., 1., 0.1, 0.2, 0.]),
+                 'high':jnp.array([8., 14., 1., 0.5, 1., 1., 0.4, 0.5, 0.5]),}
+
+    # optim_mask = jnp.array([1, 1, 0, 0, 0, 0, 1, 1, 1])
+    optim_mask = jnp.array([1 if i in config.cond_hparams_names else 0 for i in PriorHparams()._fields ] + ([1] if 'eta' in config.cond_hparams_names else [0]))
+    print('optim mask:', optim_mask)
+    optim_mask_indices = (tuple(i for i, x in enumerate(optim_mask) if x == 0),tuple(i for i, x in enumerate(optim_mask) if x == 1))
     
-    # jax.debug.print(train_ds['num_profiles_split'].lp_anchor_val)
-    # jax.debug.print(train_ds['num_profiles_split'].lp_anchor_test)
-    error_locations_estimate_jit = lambda locations_sample, loc: error_locations_estimate(
-      locations_sample=locations_sample,
-      num_profiles_split=num_profiles_split,
-      loc=loc,
-      floating_anchor_copies=floating_anchor_copies,
-      train_idxs=train_idxs,
-      ad_hoc_val_profiles=ad_hoc_val_profiles,
-      val_idxs=val_idxs,
-    )
-    error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
-
-
-
-    def mse_fixedhp(
-      hp_params:Array,
-      hp_optim_mask_indices:Tuple,
-      hp_fixed_values:Array,
-      state_list: List[TrainState],
-      batch: Optional[Batch],
-      prng_key: PRNGKey,
-      flow_name: str,
-      flow_kwargs: Dict[str, Any],
-      include_random_anchor:bool,
-      num_samples: int,
-      profile_is_anchor:Array,
-      num_profiles_split:int,
-      config:ConfigDict,
-  ) -> Dict[str, Array]:
-
-
-
-
-      # # Sample eta values
-      # hp_fixed_values = jnp.array(hp_fixed_values)
-      # hp_params_all = jnp.zeros(len(hp_optim_mask_indices[0])+ len(hp_optim_mask_indices[1]))#jnp.zeros(optim_mask.shape)
-      # hp_params_all = hp_params_all.at[(hp_optim_mask_indices[1],)].set(hp_params)
-      # hp_params_all = hp_params_all.at[(hp_optim_mask_indices[0],)].set(hp_fixed_values)
-
+    for init_type, init_val in init_vals.items():
       
-      # logprobs_rho_dict = logprob_rho(hparams=hp_params_all,
-      #                   w_sampling_scale_alpha=config.prior_hparams_hparams.w_sampling_scale_alpha,
-      #                   w_sampling_scale_beta=config.prior_hparams_hparams.w_sampling_scale_beta,
-      #                   a_sampling_scale_alpha=config.prior_hparams_hparams.a_sampling_scale_alpha,
-      #                   a_sampling_scale_beta=config.prior_hparams_hparams.a_sampling_scale_beta,
-      #                   kernel_sampling_amplitude_alpha=config.prior_hparams_hparams.kernel_sampling_amplitude_alpha,
-      #                   kernel_sampling_amplitude_beta=config.prior_hparams_hparams.kernel_sampling_amplitude_beta,
-      #                   kernel_sampling_lengthscale_alpha=config.prior_hparams_hparams.kernel_sampling_lengthscale_alpha,
-      #                   kernel_sampling_lengthscale_beta=config.prior_hparams_hparams.kernel_sampling_lengthscale_beta,
-      #                   eta_sampling_a=config.eta_sampling_a,
-      #                   eta_sampling_b=config.eta_sampling_b)
-      # logprobs_rho = jnp.array(list(logprobs_rho_dict.values()))
-      # logprobs_rho = logprobs_rho.at[(hp_optim_mask_indices[0],)].set(0.)
-
-      # eta_profiles = jnp.where(
-      #             profile_is_anchor,1.,hp_params_all[-1])#(367)
-      # eta_items = jnp.ones(len(batch['num_forms_tuple'])) #(71)
-
-      # cond_values = jnp.hstack([hp_params_all[:-1],
-      #                           eta_profiles, eta_items,
-      #                           ]) #(n_samples, n_hps+367+71)
-      cond_values = hp_params
-
-      q_distr_out = sample_all_flows(
-          params_tuple=[state.params for state in state_list],
-          prng_key=prng_key,
-          flow_name=flow_name,
-          flow_kwargs=flow_kwargs,
-          cond_values=jnp.broadcast_to(cond_values, (num_samples, len(cond_values))),
-          # smi_eta=smi_eta_,
-          include_random_anchor=include_random_anchor,
-          num_samples=num_samples,
-      )
-
-      error_loc_dict = error_locations_estimate_jit(
-              locations_sample=q_distr_out['locations_sample'],
-              loc=batch['loc'],
-              # num_profiles_split=num_profiles_split,
-              # batch=batch,
-          )
-      return error_loc_dict['mean_dist_anchor_val'] #- logprobs_rho.sum()
     
-    # Jit optimization of hparams 
-      
-    mse_jit = lambda hp_params, batch, prng_key, state_list_vmp,  hp_optim_mask_indices, hp_fixed_values: mse_fixedhp(
-        hp_params=hp_params,
-        hp_optim_mask_indices=hp_optim_mask_indices,
-        hp_fixed_values=hp_fixed_values,
-        state_list=state_list_vmp,
-        batch=batch,
-        prng_key=prng_key,
-        num_samples=config.num_samples_mse,
-        flow_name=config.flow_name,
-        flow_kwargs=config.flow_kwargs,
-        include_random_anchor=config.include_random_anchor,
-        profile_is_anchor=profile_is_anchor,
+      hp_star_init = init_val[optim_mask==1]
+      hp_fixed = init_val[optim_mask==0]
+      print(init_type, hp_star_init)
+
+      error_locations_estimate_jit = lambda locations_sample, loc: error_locations_estimate(
+        locations_sample=locations_sample,
         num_profiles_split=num_profiles_split,
-        config=config,
-    )
+        loc=loc,
+        floating_anchor_copies=floating_anchor_copies,
+        train_idxs=train_idxs,
+        ad_hoc_val_profiles=ad_hoc_val_profiles,
+        val_idxs=val_idxs,
+      )
+      error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
 
-    mse_jit = jax.jit(mse_jit, static_argnames=('hp_optim_mask_indices'))
 
-    update_hp_star_state = lambda hp_star_state, batch, prng_key: update_state(
-          state=hp_star_state,
+
+      def mse_fixedhp(
+        hp_params:Array,
+        hp_optim_mask_indices:Tuple,
+        hp_fixed_values:Array,
+        state_list: List[TrainState],
+        batch: Optional[Batch],
+        prng_key: PRNGKey,
+        flow_name: str,
+        flow_kwargs: Dict[str, Any],
+        include_random_anchor:bool,
+        num_samples: int,
+        profile_is_anchor:Array,
+        num_profiles_split:int,
+        config:ConfigDict,
+    ) -> Dict[str, Array]:
+
+        # # Sample eta values
+        # hp_fixed_values = jnp.array(hp_fixed_values)
+        # hp_params_all = jnp.zeros(len(hp_optim_mask_indices[0])+ len(hp_optim_mask_indices[1]))#jnp.zeros(optim_mask.shape)
+        # hp_params_all = hp_params_all.at[(hp_optim_mask_indices[1],)].set(hp_params)
+        # hp_params_all = hp_params_all.at[(hp_optim_mask_indices[0],)].set(hp_fixed_values)
+
+        
+        # logprobs_rho_dict = logprob_rho(hparams=hp_params_all,
+        #                   w_sampling_scale_alpha=config.prior_hparams_hparams.w_sampling_scale_alpha,
+        #                   w_sampling_scale_beta=config.prior_hparams_hparams.w_sampling_scale_beta,
+        #                   a_sampling_scale_alpha=config.prior_hparams_hparams.a_sampling_scale_alpha,
+        #                   a_sampling_scale_beta=config.prior_hparams_hparams.a_sampling_scale_beta,
+        #                   kernel_sampling_amplitude_alpha=config.prior_hparams_hparams.kernel_sampling_amplitude_alpha,
+        #                   kernel_sampling_amplitude_beta=config.prior_hparams_hparams.kernel_sampling_amplitude_beta,
+        #                   kernel_sampling_lengthscale_alpha=config.prior_hparams_hparams.kernel_sampling_lengthscale_alpha,
+        #                   kernel_sampling_lengthscale_beta=config.prior_hparams_hparams.kernel_sampling_lengthscale_beta,
+        #                   eta_sampling_a=config.eta_sampling_a,
+        #                   eta_sampling_b=config.eta_sampling_b)
+        # logprobs_rho = jnp.array(list(logprobs_rho_dict.values()))
+        # logprobs_rho = logprobs_rho.at[(hp_optim_mask_indices[0],)].set(0.)
+
+        # eta_profiles = jnp.where(
+        #             profile_is_anchor,1.,hp_params_all[-1])#(367)
+        # eta_items = jnp.ones(len(batch['num_forms_tuple'])) #(71)
+
+        # cond_values = jnp.hstack([hp_params_all[:-1],
+        #                           eta_profiles, eta_items,
+        #                           ]) #(n_samples, n_hps+367+71)
+        cond_values = hp_params
+
+        q_distr_out = sample_all_flows(
+            params_tuple=[state.params for state in state_list],
+            prng_key=prng_key,
+            flow_name=flow_name,
+            flow_kwargs=flow_kwargs,
+            cond_values=jnp.broadcast_to(cond_values, (num_samples, len(cond_values))),
+            # smi_eta=smi_eta_,
+            include_random_anchor=include_random_anchor,
+            num_samples=num_samples,
+        )
+
+        error_loc_dict = error_locations_estimate_jit(
+                locations_sample=q_distr_out['locations_sample'],
+                loc=batch['loc'],
+                # num_profiles_split=num_profiles_split,
+                # batch=batch,
+            )
+        return error_loc_dict['mean_dist_anchor_val'] #- logprobs_rho.sum()
+      
+      # Jit optimization of hparams 
+        
+      mse_jit = lambda hp_params, batch, prng_key, state_list_vmp,  hp_optim_mask_indices, hp_fixed_values: mse_fixedhp(
+          hp_params=hp_params,
+          hp_optim_mask_indices=hp_optim_mask_indices,
+          hp_fixed_values=hp_fixed_values,
+          state_list=state_list_vmp,
           batch=batch,
           prng_key=prng_key,
-          optimizer=make_optimizer_hparams(**config.optim_kwargs_hp), #make_optimizer(**config.optim_kwargs), 
-          loss_fn=mse_jit,
-          loss_fn_kwargs={
-              'state_list_vmp': state_list,
-              'hp_optim_mask_indices':optim_mask_indices,
-              'hp_fixed_values':hp_fixed,
-          },
+          num_samples=config.num_samples_mse,
+          flow_name=config.flow_name,
+          flow_kwargs=config.flow_kwargs,
+          include_random_anchor=config.include_random_anchor,
+          profile_is_anchor=profile_is_anchor,
+          num_profiles_split=num_profiles_split,
+          config=config,
       )
-    update_hp_star_state = jax.jit(update_hp_star_state)
 
-    # Jit optimization of eta only
+      mse_jit = jax.jit(mse_jit, static_argnames=('hp_optim_mask_indices'))
 
-    # mse_jit_eta = lambda eta, prior_hparams, batch, prng_key, state_list_vmp: mse_fixedhp(
-    #     hp_params=jnp.hstack([prior_hparams, eta]),
-    #     state_list=state_list_vmp,
-    #     batch=batch,
-    #     prng_key=prng_key,
-    #     num_samples=config.num_samples_mse,
-    #     flow_name=config.flow_name,
-    #     flow_kwargs=config.flow_kwargs,
-    #     include_random_anchor=config.include_random_anchor,
-    #     profile_is_anchor=profile_is_anchor,
-    #     num_profiles_split=num_profiles_split,
-    # )['mean_dist_anchor_val']
+      update_hp_star_state = lambda hp_star_state, batch, prng_key: update_state(
+            state=hp_star_state,
+            batch=batch,
+            prng_key=prng_key,
+            optimizer=make_optimizer_hparams(**config.optim_kwargs_hp), #make_optimizer(**config.optim_kwargs), 
+            loss_fn=mse_jit,
+            loss_fn_kwargs={
+                'state_list_vmp': state_list,
+                'hp_optim_mask_indices':optim_mask_indices,
+                'hp_fixed_values':hp_fixed,
+            },
+        )
+      update_hp_star_state = jax.jit(update_hp_star_state)
 
-    # mse_jit_eta = jax.jit(mse_jit_eta)
 
-    # update_eta_star_state = lambda eta_star_state, batch, prng_key: update_state(
-    #       state=eta_star_state,
-    #       batch=batch,
-    #       prng_key=prng_key,
-    #       optimizer=make_optimizer_hparams(**config.optim_kwargs_hp), #make_optimizer(**config.optim_kwargs), 
-    #       loss_fn=mse_jit_eta,
-    #       loss_fn_kwargs={
-    #           'state_list_vmp': state_list,
-    #           'prior_hparams':prior_hparams_init,
-    #       },
-    #   )
-    # update_eta_star_state = jax.jit(update_eta_star_state)
-
-    logging.info('Finding best hyperparameters...')
+      logging.info('Finding best hyperparameters...')
 
     
-
-    # Reset random key sequence
-    prng_seq = hk.PRNGSequence(config.seed)
-
-
-    info_dict = {'init':hp_star_init,
-    'loss':[], 'params':[], 'step':[]}
-
-    # key_search = next(prng_seq)
-
-    # # SGD over elpd for all hparams 
-    hp_star_state = TrainState(
-        params=hp_star_init,
-        opt_state=make_optimizer_hparams(**config.optim_kwargs_hp).init(hp_star_init),
-        step=0,
-    )
-    for _ in range(config.hp_star_steps):
-      hp_star_state, mse = update_hp_star_state(
-          hp_star_state,
-          batch=train_ds,
-          prng_key=next(prng_seq),
-      )
-    
-    # SGD over elpd for eta only
-    # eta_star_state = TrainState(
-    #     params=eta_star_init,
-    #     opt_state=make_optimizer_hparams(**config.optim_kwargs_hp).init(eta_star_init),
-    #     step=0,
-    # )
-    # for _ in range(config.hp_star_steps):
-    #   eta_star_state, mse = update_eta_star_state(
-    #       eta_star_state,
-    #       batch=train_ds,
-    #       prng_key=next(prng_seq),
-    #   )
-
-      # if state_list[0].step % config.hp_star_steps == 0:
-      #   logging.info("STEP: %5d; training loss: %.3f", state_list[0].step,
-      #                neg_elpd["train_loss"])
-      info_dict['loss'].append(mse["train_loss"])
-      info_dict['params'].append(hp_star_state.params)
-      info_dict['step'].append(hp_star_state.step)
-      # info_dict['params'].append(eta_star_state.params)
-      # info_dict['step'].append(eta_star_state.step)
+      # Reset random key sequence
+      prng_seq = hk.PRNGSequence(config.seed)
 
 
-      field_names=('w_prior_scale', 'a_prior_scale', 
-                  # 'mu_prior_concentration', 'mu_prior_rate', 
-                  # 'zeta_prior_a', 'zeta_prior_b', 
-                  'kernel_amplitude', 'kernel_length_scale')
-    
-      
-      if ((hp_star_state.step == 1) or (hp_star_state.step % 100 == 0)):
-        labs = "STEP: %5d; training loss: %.6f " + ' '.join([hp + ':%.3f' for hp in config.cond_hparams_names])
-        # logging.info("STEP: %5d; training loss: %.3f w_prior_scale:%.3f a_prior_scale:%.3f kernel_amplitude:%.3f kernel_length_scale:%.3f eta:%.3f",
-        logging.info(labs,
-          float(hp_star_state.step),
-        float(mse["train_loss"]), *[float(hp_star_state.params[i]) for i in range(len(config.cond_hparams_names))])
+      info_dict = {'init':hp_star_init, 'init_type':init_type, 'hp_names':config.cond_hparams_names,
+      'loss':[], 'params':[], 'step':[]}
 
-      # Clip eta_star to [0,1] hypercube and hp_star to [0.000001,..]
+      # key_search = next(prng_seq)
+
+      # # SGD over elpd for all hparams 
       hp_star_state = TrainState(
-          params=jnp.hstack([jnp.clip(hp_star_state.params[0],0., 10.) if 'w_prior_scale' in config.cond_hparams_names else [],# w_prior_scale
-                            jnp.clip(hp_star_state.params[1],3., 19.) if 'a_prior_scale' in config.cond_hparams_names else [],# a_prior_scale
-                            jnp.clip(hp_star_state.params[6],0.1, 0.4) if 'kernel_amplitude' in config.cond_hparams_names else [],# kernel_amplitude
-                            jnp.clip(hp_star_state.params[7],0.2, 0.5) if 'kernel_length_scale' in config.cond_hparams_names else [],# kernel_length_scale
-                            jnp.clip(hp_star_state.params[-1], 0., 1.) if 'eta' in config.cond_hparams_names else []]),
-          opt_state=hp_star_state.opt_state,
-          step=hp_star_state.step,
+          params=hp_star_init,
+          opt_state=make_optimizer_hparams(**config.optim_kwargs_hp).init(hp_star_init),
+          step=0,
       )
-      # hp_star_state = TrainState(
-      #     params=jnp.hstack([jnp.clip(hp_star_state.params[:8],0.),
-      #                       jnp.clip(hp_star_state.params[-1], 0., 1.)]),
-      #     opt_state=hp_star_state.opt_state,
-      #     step=hp_star_state.step,
-      # )
-      # eta_star_state = TrainState(
-      #     params=jnp.clip(eta_star_state.params, 0., 1.),
-      #     opt_state=eta_star_state.opt_state,
-      #     step=eta_star_state.step,
-      # )
+      for _ in range(config.hp_star_steps):
+        hp_star_state, mse = update_hp_star_state(
+            hp_star_state,
+            batch=train_ds,
+            prng_key=next(prng_seq),
+        )
+      
+        info_dict['loss'].append(mse["train_loss"])
+        info_dict['params'].append(hp_star_state.params)
+        info_dict['step'].append(hp_star_state.step)
 
-      # summary_writer.scalar(
-      #     tag='rnd_eff_hp_star_neg_elpd',
-      #     value=neg_elpd['train_loss'],
-      #     step=hp_star_state.step - 1,
-      # )
-      # for i, hp_star_i in enumerate(hp_star_state.params):
-      #   summary_writer.scalar(
-      #       tag=f'rnd_eff_eta_star_{i}',
-      #       value=hp_star_i,
-      #       step=hp_star_state.step - 1,
-      #   )
-    with open(workdir + f"/hp_info_priordefaults_eta{hp_star_init[-1]:.6f}.sav", 'wb') as f:
-      pickle.dump(info_dict, f)
+
+        field_names=('w_prior_scale', 'a_prior_scale', 
+                    # 'mu_prior_concentration', 'mu_prior_rate', 
+                    # 'zeta_prior_a', 'zeta_prior_b', 
+                    'kernel_amplitude', 'kernel_length_scale')
+      
+        
+        if ((hp_star_state.step == 1) or (hp_star_state.step % 100 == 0)):
+          labs = "STEP: %5d; training loss: %.6f " + ' '.join([hp + ':%.3f' for hp in config.cond_hparams_names])
+          logging.info(labs,
+            float(hp_star_state.step),
+          float(mse["train_loss"]), *[float(hp_star_state.params[i]) for i in range(len(config.cond_hparams_names))])
+
+        # Clip eta_star to [0,1] hypercube and hp_star to [0.000001,..]
+        hp_star_state = TrainState(
+            params=jnp.hstack([jnp.clip(hp_star_state.params[config.cond_hparams_names.index('w_prior_scale')],0., 10.) if 'w_prior_scale' in config.cond_hparams_names else [],# w_prior_scale
+                              jnp.clip(hp_star_state.params[config.cond_hparams_names.index('a_prior_scale')],3., 19.) if 'a_prior_scale' in config.cond_hparams_names else [],# a_prior_scale
+                              jnp.clip(hp_star_state.params[config.cond_hparams_names.index('kernel_amplitude')],0.1, 0.4) if 'kernel_amplitude' in config.cond_hparams_names else [],# kernel_amplitude
+                              jnp.clip(hp_star_state.params[config.cond_hparams_names.index('kernel_length_scale')],0.2, 0.5) if 'kernel_length_scale' in config.cond_hparams_names else [],# kernel_length_scale
+                              jnp.clip(hp_star_state.params[config.cond_hparams_names.index('eta')], 0., 1.) if 'eta' in config.cond_hparams_names else []]),
+            opt_state=hp_star_state.opt_state,
+            step=hp_star_state.step,
+        )
+
+        # summary_writer.scalar(
+        #     tag='rnd_eff_hp_star_neg_elpd',
+        #     value=neg_elpd['train_loss'],
+        #     step=hp_star_state.step - 1,
+        # )
+        # for i, hp_star_i in enumerate(hp_star_state.params):
+        #   summary_writer.scalar(
+        #       tag=f'rnd_eff_eta_star_{i}',
+        #       value=hp_star_i,
+        #       step=hp_star_state.step - 1,
+        #   )
+      with open(workdir + f"/hp_info_{init_type}" + ".sav", 'wb') as f:
+        pickle.dump(info_dict, f)
 
 
 

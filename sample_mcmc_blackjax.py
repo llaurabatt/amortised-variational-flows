@@ -525,8 +525,8 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   config.num_inducing_points = math.prod(
       config.model_hparams.inducing_grid_shape)
 
-  samples_path_stg1 = workdir + '/lalme_stg1_unb_az.nc'
-  samples_path = workdir + '/lalme_az.nc'
+  samples_path_stg1 = workdir + '/lalme_stg1_unb_az_10_000s'+ (f'_thinning{config.thinning}' if config.thinning!=1 else "")+ '.nc'
+  samples_path = workdir + '/lalme_az_10_000s' + (f'_thinning{config.thinning}' if config.thinning!=1 else "")+ '.nc'
 
   # For training, we need a Dictionary compatible with jit
   # we remove string vectors
@@ -768,6 +768,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
       # Create InferenceData object
       lalme_stg1_unb_az = plot.lalme_az_from_samples(
           lalme_dataset=lalme_dataset,
+          thinning=config.thinning,
           model_params_global=ModelParamsGlobal(
               gamma_inducing=model_params_stg1_unb_samples.gamma_inducing,
               mixing_weights_list=model_params_stg1_unb_samples
@@ -811,7 +812,11 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         mu=jnp.array(lalme_stg1_unb_az.posterior.mu),
         zeta=jnp.array(lalme_stg1_unb_az.posterior.zeta),
     )
-
+    # ADDED
+    model_params_loc_floating_aux_samples = jnp.array(lalme_stg1_unb_az.posterior.loc_floating_aux)
+    del lalme_stg1_unb_az
+    # ADDED END
+    
     # Define target logdensity function
     @jax.jit
     def logdensity_fn_stg2(model_params, conditioner, prng_key_gamma):
@@ -847,8 +852,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     ))(
         jax.random.split(next(prng_seq), config.num_chains),
         ModelParamsLocations(
-            loc_floating=jnp.array(
-                lalme_stg1_unb_az.posterior.loc_floating_aux)[:, 0, ...],
+            loc_floating=model_params_loc_floating_aux_samples[:, 0, ...],#jnp.array(lalme_stg1_unb_az.posterior.loc_floating_aux)[:, 0, ...],
             loc_floating_aux=None,
             loc_random_anchor=None,
         ),
@@ -857,13 +861,20 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     # The number of samples is large and often it does not fit into GPU memory
     # we split the sampling of stage 2 into chunks
-    assert config.num_samples % config.num_samples_perchunk_stg2 == 0
-    num_chunks_stg2 = config.num_samples // config.num_samples_perchunk_stg2
+    num_effective_samples = int(config.num_samples/config.thinning)
+    assert num_effective_samples % config.num_samples_perchunk_stg2 == 0
+    num_chunks_stg2 = num_effective_samples// config.num_samples_perchunk_stg2
 
     # Initialize stage 1 using loc_floating_aux
     # we use the tuned HMC parameters from above
     # Note: vmap is first applied to the chains, then to samples from
     #   conditioner this requires swap axes 0 and 1 in a few places
+    # my_logdensity_fn=lambda param_: logdensity_fn_stg2(
+    #         conditioner=cond,
+    #         model_params=param_,
+    #         prng_key_gamma=key_gamma_,
+    #     )
+    # logdensity, logdensity_grad = jax.value_and_grad(my_logdensity_fn)(model_params_global_unb_samples)
     init_fn_multichain = jax.vmap(lambda param, cond, hmc_param: blackjax.nuts(
         logdensity_fn=lambda param_: logdensity_fn_stg2(
             conditioner=cond,
@@ -873,6 +884,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         step_size=hmc_param['step_size'],
         inverse_mass_matrix=hmc_param['inverse_mass_matrix'],
     ).init(position=param))
+
     init_fn_multicond_multichain = jax.vmap(
         lambda param_, cond_: init_fn_multichain(
             param=param_,
@@ -883,7 +895,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     # The initial position for loc_floating in the first chunk is the location
     # of loc_floating_aux from stage 1
     initial_position_i = ModelParamsLocations(
-        loc_floating=jnp.array(lalme_stg1_unb_az.posterior.loc_floating_aux)
+        loc_floating=model_params_loc_floating_aux_samples#jnp.array(lalme_stg1_unb_az.posterior.loc_floating_aux)
         [:, :config.num_samples_perchunk_stg2,
          ...].swapaxes(0,
                        1),  # swap axes to have (num_samples, num_chains, ...)
@@ -933,8 +945,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
          model_params_global_unb=model_params_global_unb_samples,
          model_params_locations_unb=ModelParamsLocations(
              loc_floating=model_params_stg2_unb_samples.loc_floating,
-             loc_floating_aux=jnp.array(
-                 lalme_stg1_unb_az.posterior.loc_floating_aux),
+             loc_floating_aux=model_params_loc_floating_aux_samples,#jnp.array(lalme_stg1_unb_az.posterior.loc_floating_aux),
              loc_random_anchor=None,
          ),
      )
@@ -1001,8 +1012,8 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
                )))(
                    jax.random.split(
                        next(prng_seq),
-                       config.num_chains * config.num_samples).reshape(
-                           (config.num_chains, config.num_samples, 2)),
+                       config.num_chains * int((config.num_samples/config.thinning))).reshape(
+                           (config.num_chains, int((config.num_samples/config.thinning)), 2)),
                    model_params_global_samples_,
                    model_params_locations_samples_,
                )

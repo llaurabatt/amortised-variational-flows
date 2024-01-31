@@ -577,6 +577,10 @@ def lalme_plots_arviz(
     lp_floating: Optional[List[int]] = None,
     lp_floating_traces: Optional[List[int]] = None,
     lp_floating_grid10: Optional[List[int]] = None,
+    lp_anchor_val_grid30: Optional[List[int]] = None,
+    lp_anchor_val_grid28: Optional[List[int]] = None,
+    lp_anchor_val_grid21: Optional[List[int]] = None,
+    lp_anchor_val_grid10: Optional[List[int]] = None,
     lp_random_anchor: Optional[List[int]] = None,
     lp_random_anchor_grid10: Optional[List[int]] = None,
     lp_anchor_val: Optional[List[int]] = None,
@@ -945,6 +949,110 @@ def lalme_plots_arviz(
           step=step,
       )
 
+  if lp_anchor_val_grid30 is not None:
+    # lp_anchor_val = np.setdiff1d(lp_anchor_val, [104, 138, 1198, 1301, 1348])
+    fig, axs = profile_locations_grid(
+        lalme_az=lalme_az,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_anchor_val_grid30,
+        var_name='loc_floating',
+        coord="LP_floating",
+        nrows=10,
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_lp_anchor_val_grid30"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_lp_anchor_val_grid30"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+  if lp_anchor_val_grid28 is not None:
+    # lp_anchor_val = np.setdiff1d(lp_anchor_val, [104, 138, 1198, 1301, 1348])
+    fig, axs = profile_locations_grid(
+        lalme_az=lalme_az,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_anchor_val_grid28,
+        var_name='loc_floating',
+        coord="LP_floating",
+        nrows=4,
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_lp_anchor_val_grid28"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_lp_anchor_val_grid28"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+  if lp_anchor_val_grid21 is not None:
+    # lp_anchor_val = np.setdiff1d(lp_anchor_val, [104, 138, 1198, 1301, 1348])
+    fig, axs = profile_locations_grid(
+        lalme_az=lalme_az,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_anchor_val_grid21,
+        var_name='loc_floating',
+        coord="LP_floating",
+        nrows=3,
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_lp_anchor_val_grid21"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_lp_anchor_val_grid21"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+  if lp_anchor_val_grid10 is not None:
+    # lp_anchor_val = np.setdiff1d(lp_anchor_val, [104, 138, 1198, 1301, 1348])
+    fig, axs = profile_locations_grid(
+        lalme_az=lalme_az,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_anchor_val_grid10,
+        var_name='loc_floating',
+        coord="LP_floating",
+        nrows=2,
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_lp_anchor_val_grid10"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_lp_anchor_val_grid10"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
   if lp_anchor_test is not None:
     fig, axs = profile_locations_grid(
         lalme_az=lalme_az,
@@ -1190,6 +1298,7 @@ def lalme_az_from_samples(
     model_params_global: ModelParamsGlobal,
     model_params_locations: Optional[ModelParamsLocations] = None,
     model_params_gamma: Optional[ModelParamsGammaProfiles] = None,
+    thinning: Optional[int] = 1,
 ) -> InferenceData:
   """Converts a posterior dictionary to an ArviZ InferenceData object.
 
@@ -1208,7 +1317,11 @@ def lalme_az_from_samples(
           "Arrays in model_params_global" +
           "are expected to have shapes: (num_chains, num_samples, ...)")
 
+    
   samples_dict = model_params_global._asdict()
+  num_chains = samples_dict['mu'].shape[0]
+  num_samples = samples_dict['mu'].shape[1]
+  thin_idxs = jnp.where(jnp.arange(num_samples)%thinning==0)[0]
 
   samples_dict.update(
       {f"W_{i}": x for i, x in enumerate(samples_dict['mixing_weights_list'])})
@@ -1290,6 +1403,12 @@ def lalme_az_from_samples(
     if v is None:
       del samples_dict[k]
 
+  if thinning!=1:
+    samples_dict = {i:x[:,thin_idxs,...] for i,x in samples_dict.items()}
+
+  shape_match = [((x.shape[0]== num_chains) and (x.shape[1]== thin_idxs.shape[0])) for x in samples_dict.values()]
+  assert sum(shape_match) == len(shape_match)
+
   lalme_az = az.convert_to_inference_data(
       samples_dict,
       coords=coords_lalme,
@@ -1309,6 +1428,7 @@ def lalme_priorhparam_compare_plots_arviz(
     show_basis_fields: bool = False,
     show_W_items: Optional[List[str]] = None,
     show_a_items: Optional[List[str]] = None,
+    lp_anchor_val_grid10: Optional[List[int]] = None,
     lp_floating_grid10: Optional[List[int]] = None,
     lp_random_anchor_grid10: Optional[List[int]] = None,
     lp_anchor_val: Optional[List[int]] = None,
@@ -1343,8 +1463,21 @@ def lalme_priorhparam_compare_plots_arviz(
     # The kind="forestplot" generates credible intervals, where the central points are 
     # the estimated posterior means, the thick lines are the central quartiles, 
     # and the thin lines represent the 100 x hdiprob)% highest density intervals.
+    # for i in [31,56,60,61,67,70]:
+      
+    #   W_samples_forms = lalme_az_list[0].posterior[f'W_{i}'].squeeze()
+    #   fig, ax = plt.subplots(1, W_samples_forms.shape[-2], figsize=(10,5))      
+    #   for b_ix, a in enumerate(ax.flatten()):
+    #     W_samples = W_samples_forms[:,b_ix,:]
+    #     sns.boxplot(W_samples, ax=a)
+         
 
-    for i in idx_: #[31,56,60,61,67,70]:
+    #   if workdir_png:
+    #     plot_name = f"lalme_W_{i}_{prior_hparams_str_list[0]}"
+    #     plot_name += suffix
+    #     plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    #   images.append(plot_to_image(None))
+    for i in [60,61]:#[31,56,60,61,67,70]
       axs = az.plot_forest(lalme_az_list, model_names=prior_hparams_str_list, 
                             var_names=[f"W_{i}"],  kind='forestplot',
                             colors=colors[:len(lalme_az_list)],
@@ -1361,7 +1494,7 @@ def lalme_priorhparam_compare_plots_arviz(
                           right=None, top=0.98, wspace=0.3, hspace=0.4)            
 
       if workdir_png:
-        plot_name = f"lalme_W_{i}"
+        plot_name = f"lalme_W_{i}_2_"
         plot_name += suffix
         plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
       images.append(plot_to_image(None))
@@ -1410,6 +1543,32 @@ def lalme_priorhparam_compare_plots_arviz(
           step=step,
           max_outputs=len(images),
       )
+
+  if lp_anchor_val_grid10:
+    for lalme_az_j, prior_hparams_j in zip(lalme_az_list,prior_hparams_str_list):
+      fig, axs = profile_locations_grid(
+          lalme_az=lalme_az_j,
+          lalme_dataset=lalme_dataset,
+          profiles_id=lp_anchor_val_grid10,
+          var_name='loc_floating',
+          coord="LP_floating",
+          nrows=2,
+          scatter_kwargs=scatter_kwargs,
+      )
+      if workdir_png:
+        plot_name = f"lalme_val_anchor_profiles_grid_{prior_hparams_j}"
+        plot_name += suffix
+        plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      image = plot_to_image(fig)
+
+      if summary_writer:
+        plot_name = f"lalme_val_anchor_profiles_grid_{prior_hparams_j}"
+        plot_name += suffix
+        summary_writer.image(
+            tag=plot_name,
+            image=image,
+            step=step,
+        )
 
   if lp_floating_grid10 is not None:
     fig, axs = profile_locations_grid(

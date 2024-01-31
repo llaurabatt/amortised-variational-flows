@@ -7,7 +7,7 @@ def get_config():
   """Get the hyperparameter configuration."""
   config = ml_collections.ConfigDict()
 
-  config.method = 'mcmc'
+  config.method = 'mcmc' #'mcmc'
 
   # Dataset to use
   config.dataset_id = 'coarsen_8_items'
@@ -49,15 +49,16 @@ def get_config():
 
   config.num_samples_gamma_profiles = 100
 
-  config.num_samples = 5_000 # 5_000, 100
-  config.num_samples_perchunk_stg1 = 100 # 100, 20
-  config.num_samples_subchain_stg2 = 100 # 100, 10
-  config.num_samples_perchunk_stg2 = 100 # 100, 20
-  config.num_burnin_steps_stg1 = 1_000
-  config.num_steps_call_warmup = 200
+  config.num_samples = 10_000 # 5_000, 5_000, 100 CHRIS 5_000
+  config.thinning = 10 # Laura
+  # config.num_samples_perchunk_stg1 = 100 # 100, 20 
+  config.num_samples_subchain_stg2 = 500 # 300, 100, 100, 10 CHRIS 100
+  config.num_samples_perchunk_stg2 = 100 # 100, 100, 20 CHRIS 100
+  config.num_burnin_steps_stg1 = 1_000 # CHRIS 1_000
+  config.num_steps_call_warmup = 200 # CHRIS 200
 
   config.mcmc_step_size = 0.01
-  config.num_chains = 4
+  config.num_chains = 1
 
   # SMI degree of influence of floating profiles
   config.eta_profiles_floating = 1.0

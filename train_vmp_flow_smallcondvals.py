@@ -246,7 +246,7 @@ def sample_all_flows(
       next(prng_seq),
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
-      eta=smi_eta['profiles'],
+      eta=smi_eta,
   )
   q_distr_out.update({f"global_{k}": v for k, v in q_distr_out_global.items()})
 
@@ -257,7 +257,7 @@ def sample_all_flows(
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
       global_params_base_sample=q_distr_out_global['sample_base'],
-      eta=smi_eta['profiles'],
+      eta=smi_eta,
       name='loc_floating',
   )
   q_distr_out['loc_floating_logprob'] = q_distr_out_loc_floating[
@@ -270,7 +270,7 @@ def sample_all_flows(
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
       global_params_base_sample=q_distr_out_global['sample_base'],
-      eta=smi_eta['profiles'],
+      eta=smi_eta,
       name='loc_floating_aux',
   )
   q_distr_out['locations_sample'] = ModelParamsLocations(
@@ -289,7 +289,7 @@ def sample_all_flows(
             flow_name=flow_name,
             flow_kwargs=flow_kwargs,
             global_params_base_sample=q_distr_out_global['sample_base'],
-            eta=smi_eta['profiles'],
+            eta=smi_eta,
         )
     q_distr_out['locations_sample'] = ModelParamsLocations(
         loc_floating=q_distr_out_loc_floating['sample'].loc_floating,
@@ -322,18 +322,19 @@ def sample_lalme_az(
   locations_sample = []
   gamma_sample = []
 
-  assert all(x.ndim == 2 for x in smi_eta.values())
+#   assert all(x.ndim == 2 for x in smi_eta.values())
 
   # Sampling divided into chunks, to avoid OOM on GPU
   # Split etas into chunks
-  split_idx_ = np.arange(num_samples_chunk, smi_eta['profiles'].shape[0],
+  split_idx_ = np.arange(num_samples_chunk, smi_eta.shape[0],
                          num_samples_chunk).tolist()
-  smi_eta_chunked_ = jax.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
-                                  smi_eta)
-  # dict of lists -> list of dicts
-  smi_eta_chunked_ = [
-      dict(zip(smi_eta_chunked_, t)) for t in zip(*smi_eta_chunked_.values())
-  ]
+#   smi_eta_chunked_ = jax.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
+#                                   smi_eta)
+#   # dict of lists -> list of dicts
+#   smi_eta_chunked_ = [
+#       dict(zip(smi_eta_chunked_, t)) for t in zip(*smi_eta_chunked_.values())
+#   ]
+  smi_eta_chunked_ = jnp.split(smi_eta, split_idx_, axis=0)
 
   for smi_eta_ in smi_eta_chunked_:
     # Sample from variational posterior
@@ -342,7 +343,7 @@ def sample_lalme_az(
         prng_key=next(prng_seq),
         flow_name=config.flow_name,
         flow_kwargs=config.flow_kwargs,
-        smi_eta=smi_eta_,
+        smi_eta=smi_eta_[:,None],
         include_random_anchor=config.include_random_anchor,
     )
 
@@ -364,7 +365,7 @@ def sample_lalme_az(
               gp_jitter=config.gp_jitter,
               include_random_anchor=config.include_random_anchor,
           ))(
-              jax.random.split(next(prng_seq), smi_eta_['profiles'].shape[0]),
+              jax.random.split(next(prng_seq), smi_eta_.shape[0]),
               q_distr_out['global_sample'],
               q_distr_out['locations_sample'],
           )
@@ -443,7 +444,7 @@ def elbo_estimate_along_eta(
       prng_key=next(prng_seq),
       flow_name=flow_name,
       flow_kwargs=flow_kwargs,
-      smi_eta=etas_profiles_floating, #smi_eta_elbo,
+      smi_eta=etas_profiles_floating[:,None], #smi_eta_elbo,
       include_random_anchor=include_random_anchor,
   )
 
@@ -607,7 +608,7 @@ def error_locations_vector_estimate(
         prng_key=next(prng_seq),
         flow_name=config.flow_name,
         flow_kwargs=config.flow_kwargs,
-        smi_eta=eta_i_samples, #smi_eta_,
+        smi_eta=eta_i_samples[:,None], #smi_eta_,
         include_random_anchor=config.include_random_anchor,
     )
 
@@ -940,7 +941,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   #   -Global parameters
   #   -Posterior locations for floating profiles
   #   -Posterior locations for anchor profiles (treated as floating)
-  eta_init = jnp.ones((config.num_samples_elbo, ))
+  eta_init = jnp.ones((config.num_samples_elbo, 1))
   smi_eta_init = {
       'profiles':
           jnp.ones((config.num_samples_elbo, train_ds['num_profiles'])),

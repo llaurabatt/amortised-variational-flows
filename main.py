@@ -25,7 +25,9 @@ import train_vmp_flow_hpnokernel
 import train_vmp_flow_allhp
 import train_vmp_flow_allhp_randomanchors
 import sample_mcmc_blackjax as sample_mcmc
+import sample_mcmc_blackjax_DEBUG as sample_mcmc_debug
 import train_vmp_flow_allhp_smallcondval
+import train_vmp_flow_smallcondvals
 # import sample_mcmc_tfp as sample_mcmc
 
 FLAGS = flags.FLAGS
@@ -58,7 +60,7 @@ def main(_):
   if FLAGS.config.method == 'flow':
     train_flow.train_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
   elif FLAGS.config.method == 'vmp_flow':
-    train_vmp_flow.train_and_evaluate(FLAGS.config, FLAGS.workdir)
+    train_vmp_flow_smallcondvals.train_and_evaluate(FLAGS.config, FLAGS.workdir)
   elif FLAGS.config.method == 'vmp_flow_mse':
     train_vmp_flow_mse.train_and_evaluate(FLAGS.config, FLAGS.workdir)
   elif FLAGS.config.method == 'vmp_flow_hpnokernel':
@@ -70,6 +72,8 @@ def main(_):
   elif FLAGS.config.method == 'mcmc':
     with jax.profiler.trace("/home/llaurabat/tmp/jax-trace"):
         sample_mcmc.sample_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
+  elif FLAGS.config.method == 'mcmc_debug':
+    sample_mcmc_debug.sample_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
   else:
     raise ValueError(f'Unknown method {FLAGS.config.method}')
 

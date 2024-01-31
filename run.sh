@@ -6,15 +6,15 @@ set -x
 REPO_DIR=$PWD
 
 # Directory to save all outputs
-WORK_DIR=$HOME/spatial-smi-output-integrated-allhps-40val-smallcondval-unifrhoeta
-
+WORK_DIR=$HOME/spatial-smi-output-original
+# WORK_DIR=$HOME/spatial-smi-output-integrated-allhps-40val-smallcondval
 
 # Create output directory and install missing dependencies
 mkdir -p $WORK_DIR
 # pip install -Ur $REPO_DIR/requirements.txt
 
 # all_eta=('0.001' '0.250' '0.500' '0.750' '1.000')
-all_eta=('0.001' '1.000')
+all_eta=('1.000')
 # ### 8 ITEMS ###
 
 # ## Variational inference
@@ -50,15 +50,15 @@ all_eta=('0.001' '1.000')
 
 # ## MCMC
 ## Single eta
-# for eta in "${all_eta[@]}"
-# do
-#   python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_mcmc.py \
-#                             --workdir $WORK_DIR/8_items/mcmc/eta_floating_$eta \
-#                             --config.eta_profiles_floating $eta \
-#                             --config.path_variational_samples $WORK_DIR/8_items/nsf/eta_floating_${eta}/posterior_sample_dict.npz \
-#                             --log_dir $WORK_DIR/8_items/mcmc/eta_floating_$eta/log_dir \
-#                             --alsologtostderr
-# done
+for eta in "${all_eta[@]}"
+do
+  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_mcmc.py \
+                            --workdir $WORK_DIR/8_items/mcmc/eta_floating_sub500_$eta \
+                            --config.eta_profiles_floating $eta \
+                            --config.path_variational_samples $WORK_DIR/8_items/nsf/eta_floating_${eta}/posterior_sample_dict.npz \
+                            --log_dir $WORK_DIR/8_items/mcmc/eta_floating_sub300_$eta/log_dir \
+                            --alsologtostderr
+done
 
 # ### ALL ITEMS ###
 
@@ -84,7 +84,7 @@ all_eta=('0.001' '1.000')
 
 ## Variational Meta-Posterior via VMP-flow
 # Neural Spline Flow
-python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf_vmp_flow.py \
-                          --workdir $WORK_DIR/all_items/nsf/vmp_flow \
-                          --log_dir $WORK_DIR/all_items/nsf/vmp_flow/log_dir \
-                          --alsologtostderr
+# python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf_vmp_flow.py \
+#                           --workdir $WORK_DIR/all_items/nsf/vmp_flow \
+#                           --log_dir $WORK_DIR/all_items/nsf/vmp_flow/log_dir \
+#                           --alsologtostderr

@@ -95,16 +95,16 @@ class EtaConditionalMaskedCoupling(ConditionalBijector, distrax.MaskedCoupling):
     masked_y = jnp.where(self._event_mask, y, 0.)
 
     ######### 
-    # conditioner_input = jnp.concatenate([
-    #     masked_y,
-    #     jnp.broadcast_to(context[0], y.shape[:-1] + (context[0].shape[-1],)),
-    # ],
-    #                                     axis=-1)
+    conditioner_input = jnp.concatenate([
+        masked_y,
+        jnp.broadcast_to(context[0], y.shape[:-1] + (context[0].shape[-1],)),
+    ],
+                                        axis=-1)
 
-    # params = self._conditioner(conditioner_input) + self._conditioner_eta(
-    #     context[1])
+    params = self._conditioner(conditioner_input) + self._conditioner_eta(
+        context[1])
     
-    ######### 
+    ######## 
     if ((context[0] is None) and(context[1] is None)):
       conditioner_input = masked_y
 
