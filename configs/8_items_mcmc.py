@@ -49,13 +49,13 @@ def get_config():
 
   config.num_samples_gamma_profiles = 100
 
-  config.num_samples = 10_000 # 5_000, 5_000, 100 CHRIS 5_000
+  config.num_samples = 15_000 # 10_000, 5_000, 5_000, 100 CHRIS 5_000
   config.thinning = 10 # Laura
   # config.num_samples_perchunk_stg1 = 100 # 100, 20 
-  config.num_samples_subchain_stg2 = 500 # 300, 100, 100, 10 CHRIS 100
-  config.num_samples_perchunk_stg2 = 100 # 100, 100, 20 CHRIS 100
-  config.num_burnin_steps_stg1 = 1_000 # CHRIS 1_000
-  config.num_steps_call_warmup = 200 # CHRIS 200
+  config.num_samples_subchain_stg2 = 100 # 300, 100, 100, 10 CHRIS 100
+  config.num_samples_perchunk_stg2 = 10 # 100, 100, 20 CHRIS 100
+  # config.num_burnin_steps_stg1 = 1_000 # CHRIS 1_000
+  config.num_steps_call_warmup = 500 # CHRIS 200
 
   config.mcmc_step_size = 0.01
   config.num_chains = 1
@@ -72,6 +72,7 @@ def get_config():
   config.lp_floating_grid10 = [
       136, 234, 1002, 501, 236, 237, 319, 515, 699, 755
   ]
+  config.plot_floating_aux = True
   # config.lp_floating_grid10 = None
 
   return config

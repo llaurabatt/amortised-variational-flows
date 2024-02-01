@@ -575,7 +575,9 @@ def lalme_plots_arviz(
     show_a_items: Optional[List[str]] = None,
     mcmc_img: Optional[str] = None,
     lp_floating: Optional[List[int]] = None,
+    lp_floating_aux_traces: Optional[List[int]] = None,
     lp_floating_traces: Optional[List[int]] = None,
+    lp_floating_aux_grid10: Optional[List[int]] = None,
     lp_floating_grid10: Optional[List[int]] = None,
     lp_anchor_val_grid30: Optional[List[int]] = None,
     lp_anchor_val_grid28: Optional[List[int]] = None,
@@ -775,7 +777,6 @@ def lalme_plots_arviz(
           image=image,
           step=step,
       )
-
     axs = az.plot_trace(
         lalme_az,
         var_names=["loc_floating"],
@@ -803,6 +804,91 @@ def lalme_plots_arviz(
           image=image,
           step=step,
       )
+
+      
+
+  if lp_floating_aux_traces is not None:
+    axs = az.plot_trace(
+        lalme_az,
+        var_names=["loc_floating_aux"],
+        coords={
+            "LP_floating": lp_floating_aux_traces,
+            'coords': ['x']
+        },
+        compact=False,
+    )
+    for axs_i in axs:
+      axs_i[0].set_xlim([0, 1])
+    plt.tight_layout()
+
+    if workdir_png:
+      plot_name = "lalme_loc_floating_aux_traces_x"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(None)
+
+    if summary_writer:
+      plot_name = "lalme_loc_floating_aux_traces_x"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+    axs = az.plot_trace(
+        lalme_az,
+        var_names=["loc_floating_aux"],
+        coords={
+            "LP_floating": lp_floating_aux_traces,
+            'coords': ['y']
+        },
+        compact=False,
+    )
+    for axs_i in axs:
+      axs_i[0].set_xlim([0, 1])
+    plt.tight_layout()
+
+    if workdir_png:
+      plot_name = "lalme_loc_floating_aux_traces_y"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(None)
+
+    if summary_writer:
+      plot_name = "lalme_loc_floating_aux_traces_y"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
+  if lp_floating_aux_grid10 is not None:
+    fig, axs = profile_locations_grid(
+        lalme_az=lalme_az,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_floating_aux_grid10,
+        var_name='loc_floating_aux',
+        coord="LP_floating",
+        nrows=2,
+        scatter_kwargs=scatter_kwargs,
+    )
+    if workdir_png:
+      plot_name = "lalme_floating_aux_profiles_grid"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_floating_aux_profiles_grid"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+
 
   if lp_floating_grid10 is not None:
     fig, axs = profile_locations_grid(

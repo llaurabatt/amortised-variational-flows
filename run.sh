@@ -53,10 +53,10 @@ all_eta=('1.000')
 for eta in "${all_eta[@]}"
 do
   python3 $REPO_DIR/main.py --config $REPO_DIR/configs/8_items_mcmc.py \
-                            --workdir $WORK_DIR/8_items/mcmc/eta_floating_sub500_$eta \
+                            --workdir $WORK_DIR/8_items/mcmc/eta_floating_w500_s15_000_t10_sub100_$eta \
                             --config.eta_profiles_floating $eta \
                             --config.path_variational_samples $WORK_DIR/8_items/nsf/eta_floating_${eta}/posterior_sample_dict.npz \
-                            --log_dir $WORK_DIR/8_items/mcmc/eta_floating_sub300_$eta/log_dir \
+                            --log_dir $WORK_DIR/8_items/mcmc/eta_floating_w500_s15_000_t10_sub100_$eta/log_dir \
                             --alsologtostderr
 done
 

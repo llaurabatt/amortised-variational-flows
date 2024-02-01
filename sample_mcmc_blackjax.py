@@ -571,6 +571,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   if os.path.exists(samples_path):
     logging.info("\t Loading final samples")
     lalme_az = az.from_netcdf(samples_path)
+    lalme_stg1_unb_az = None
   else:
     times_data = {}
     times_data['start_sampling'] = time.perf_counter()
@@ -1025,29 +1026,6 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   )
 
   ### Posterior visualisation with Arviz
-
-  logging.info("Plotting results...")
-
-  plot.lalme_plots_arviz(
-      lalme_az=lalme_az_with_gamma,
-      lalme_dataset=lalme_dataset,
-      step=0,
-      show_mu=True,
-      show_zeta=True,
-      show_basis_fields=True,
-      show_W_items=lalme_dataset['items'],
-      show_a_items=lalme_dataset['items'],
-      lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
-      lp_floating_traces=config.lp_floating_grid10,
-      lp_floating_grid10=config.lp_floating_grid10,
-      loc_inducing=train_ds['loc_inducing'],
-      workdir_png=workdir,
-      summary_writer=summary_writer,
-      suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
-      scatter_kwargs={"alpha": 0.05},
-  )
-  logging.info("...done!")
-
   # Load samples to compare MCMC vs Variational posteriors
   if (config.path_variational_samples != '') and (os.path.exists(
       config.path_variational_samples)):
@@ -1069,6 +1047,52 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         data_labels=["MCMC", "VI"],
     )
     logging.info("...done!")
+
+  logging.info("Plotting results...")
+
+  plot.lalme_plots_arviz(
+      lalme_az=lalme_az_with_gamma,
+      lalme_dataset=lalme_dataset,
+      step=0,
+      show_mu=True,
+      show_zeta=True,
+      show_basis_fields=True,
+      show_W_items=lalme_dataset['items'],
+      show_a_items=lalme_dataset['items'],
+      lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
+      lp_floating_traces=config.lp_floating_grid10,
+      lp_floating_grid10=config.lp_floating_grid10,
+      loc_inducing=train_ds['loc_inducing'],
+      workdir_png=workdir,
+      summary_writer=summary_writer,
+      suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
+      scatter_kwargs={"alpha": 0.05},
+  )
+
+#   del lalme_az
+
+  if config.plot_floating_aux:
+    #   if not lalme_stg1_unb_az:
+    #     logging.info("\t Loading samples for stage 1 for aux plot...")
+    #     lalme_stg1_unb_az = az.from_netcdf(samples_path_stg1)
+
+      plot.lalme_plots_arviz(
+
+            lalme_az=lalme_az_with_gamma, #lalme_stg1_unb_az,
+            lalme_dataset=lalme_dataset,
+            step=0,
+            lp_floating_aux_traces=config.lp_floating_grid10,
+            lp_floating_aux_grid10=config.lp_floating_grid10,
+            workdir_png=workdir,
+            summary_writer=summary_writer,
+            suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
+            scatter_kwargs={"alpha": 0.05},
+    )
+  logging.info("...done!")
+
+
+
+
 
 
 
