@@ -1349,9 +1349,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     logging.info("Saving samples of VMP...")
     for eta_i in config.eta_plot:
       eta_i_samples = eta_i * jnp.ones(
-          (config.num_samples_plot,))
+          (config.num_samples_save,))
       eta_i_profiles = eta_i * jnp.ones(
-          (config.num_samples_plot, config.num_profiles))
+          (config.num_samples_save, config.num_profiles))
 
       smi_eta_ = {
           'profiles':
@@ -1361,7 +1361,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                   eta_,
               ))(eta_i_profiles),
           'items':
-              jnp.ones((config.num_samples_plot, len(config.num_forms_tuple))),
+              jnp.ones((config.num_samples_save, len(config.num_forms_tuple))),
       }
 
       lalme_az_ = sample_lalme_az(

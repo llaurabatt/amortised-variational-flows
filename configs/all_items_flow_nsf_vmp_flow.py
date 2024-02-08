@@ -81,8 +81,7 @@ def get_config():
   config.optim_kwargs_hp = ml_collections.ConfigDict()
   config.optim_kwargs_hp.learning_rate = 1e-4
   config.hp_star_steps = 5_000
-  config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 
-                               'kernel_length_scale']
+  config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale']
   config.floating_anchor_copies = False # CHECK ALWAYS!!!
   config.num_lp_anchor_train = 80
   config.num_lp_floating_train = 247

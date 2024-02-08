@@ -7,7 +7,7 @@ def get_config():
   """Get the hyperparameter configuration."""
   config = ml_collections.ConfigDict()
 
-  config.method = 'vmp_flow_allhp' # vmp_flow
+  config.method = 'vmp_flow' # vmp_flow
 
   # Dataset to use
   config.dataset_id = 'coarsen_8_items'
@@ -100,11 +100,12 @@ def get_config():
 
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5
-  config.log_img_at_end = True
-  config.save_samples = False
+  config.log_img_at_end = False
+  config.save_samples = True
 
   # Number of samples used in the plots.
   config.num_samples_plot = 10_000
+  config.num_samples_save = 1_000
   config.num_samples_chunk_plot = 500
 
   # Floating profiles to plot in grid

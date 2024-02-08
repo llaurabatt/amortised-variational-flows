@@ -4,3 +4,4 @@ git+https://github.com/awslabs/syne-tune.git
 # modularbayes
 scikit-learn
 seaborn
+POT

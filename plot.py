@@ -380,6 +380,7 @@ def profile_locations_grid(
     suptitle: Optional[str] = None,
     nrows: Optional[int] = None,
     scatter_kwargs: Optional[Dict[str, Any]] = None,
+    wass_dists: Optional[dict] = None,
     lalme_az: Optional[InferenceData] = None,
     lalme_az_2: Optional[InferenceData] = None,
     lalme_az_list: Optional[List] = None,
@@ -454,7 +455,7 @@ def profile_locations_grid(
     axs[i // ncols, i % ncols].set_ylim([0, 1])
     axs[i // ncols, i % ncols].set_xlabel("")
     axs[i // ncols, i % ncols].set_ylabel("")
-    axs[i // ncols, i % ncols].set_title(f"Profile: {lp_}")
+    axs[i // ncols, i % ncols].set_title(f"Profile: {lp_}" + f", WD {float(wass_dists[lp_]):.2f}" if wass_dists else "")
     if lalme_az_list is not None:
       legend_patches = [Patch(facecolor=colors[j], label=prior_hparams_str_list[j]) for j in jnp.arange(len(prior_hparams_str_list))]
       plt.figlegend(handles=legend_patches, loc='lower center', ncols=3)
@@ -1175,6 +1176,7 @@ def posterior_samples_compare(
     lp_floating_grid10: Optional[List[int]] = None,
     show_mu: bool = False,
     show_zeta: bool = False,
+    wass_dists: Optional[dict] = None,
     summary_writer: Optional[SummaryWriter] = None,
     workdir_png: Optional[str] = None,
     suffix: str = '',
@@ -1194,6 +1196,7 @@ def posterior_samples_compare(
         lalme_az_2=lalme_az_2,
         lalme_dataset=lalme_dataset,
         profiles_id=lp_floating_grid10,
+        wass_dists=wass_dists,
         var_name='loc_floating',
         coord="LP_floating",
         nrows=2,
@@ -1201,6 +1204,7 @@ def posterior_samples_compare(
     )
     if workdir_png:
       plot_name = "lalme_floating_profiles_grid_compare"
+      plot_name += suffix
       fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
     image = plot_to_image(fig)
 

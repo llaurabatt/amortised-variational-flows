@@ -59,6 +59,7 @@ def get_config():
 
   config.mcmc_step_size = 0.01
   config.num_chains = 1
+  config.max_wass_samples = 1_000
 
   # SMI degree of influence of floating profiles
   config.eta_profiles_floating = 1.0

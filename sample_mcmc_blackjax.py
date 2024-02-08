@@ -26,6 +26,7 @@ from blackjax.mcmc.hmc import HMCState
 from blackjax.mcmc.nuts import NUTSInfo
 # from blackjax.types import PyTree
 from jax.experimental import host_callback
+import ot
 from tensorflow_probability.substrates import jax as tfp
 
 from flax.metrics import tensorboard
@@ -39,6 +40,7 @@ from train_flow import load_data, get_inducing_points
 from flows import get_global_params_shapes
 import log_prob_fun
 from log_prob_fun import ModelParamsGlobal, ModelParamsLocations
+
 
 ModelParamsStg1 = namedtuple("modelparams_stg1", [
     'gamma_inducing',
@@ -1027,25 +1029,76 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
   ### Posterior visualisation with Arviz
   # Load samples to compare MCMC vs Variational posteriors
-  if (config.path_variational_samples != '') and (os.path.exists(
-      config.path_variational_samples)):
-    logging.info("Plotting comparison MCMC and Variational...")
-    lalme_az_variational = az.from_netcdf(config.path_variational_samples)
+  if (config.path_variational_samples != ''):
+    Wass_dict = {'LP_order':config.lp_floating_grid10}
+    loc_samples_mcmc = jnp.vstack(jnp.array(lalme_az_with_gamma.posterior[f'loc_floating'].reindex(LP_floating=config.lp_floating_grid10)))
+    loc_samples_mcmc = loc_samples_mcmc[1000:] # just last 500 samples
+    n_samples_mcmc = loc_samples_mcmc.shape[0]
+    if n_samples_mcmc > config.max_wass_samples:
+        idxs = jax.random.choice(key=next(prng_seq), a=n_samples_mcmc, shape=(config.max_wass_samples,))
+        loc_samples_mcmc = loc_samples_mcmc[idxs]
+        n_samples_mcmc = config.max_wass_samples
+    VI_path_dict = eval(config.path_variational_samples)
+    for VI_name, VI_path in VI_path_dict.items():
+      if os.path.exists(VI_path):
+        logging.info("Plotting comparison MCMC and Variational...")
+        lalme_az_variational = az.from_netcdf(VI_path)
+        loc_samples_VI = jnp.array(lalme_az_variational.posterior[f'loc_floating'].reindex(LP_floating=config.lp_floating_grid10).squeeze()) # assume (n_samples, n_locs, 2)
+        n_samples_VI = loc_samples_VI.shape[0]
+        if n_samples_VI > config.max_wass_samples:
+            idxs = jax.random.choice(key=next(prng_seq), a=n_samples_VI, shape=(config.max_wass_samples,))
+            loc_samples_VI = loc_samples_VI[idxs]
+            n_samples_VI = config.max_wass_samples
+        a_mcmc = jnp.ones((n_samples_mcmc,)) / n_samples_mcmc
+        b_VI = jnp.ones((n_samples_VI,)) / n_samples_VI
+        
+        # Need to swap axis from (n_samples, n_locations, ...) to (n_locations, n_samples, ...)
+        Wass_dict[VI_name] = jnp.array([ot.emd2(a_mcmc, b_VI, ot.dist(x, y, metric='euclidean')) 
+                                        for (x,y) in zip(loc_samples_mcmc.swapaxes(0,1), loc_samples_VI.swapaxes(0,1))])
 
-    plot.posterior_samples_compare(
-        lalme_az_1=lalme_az_with_gamma,
-        lalme_az_2=lalme_az_variational,
-        lalme_dataset=lalme_dataset,
-        step=0,
-        lp_floating_grid10=config.lp_floating_grid10,
-        show_mu=(lalme_dataset['num_items'] <= 8),
-        show_zeta=(lalme_dataset['num_items'] <= 8),
-        summary_writer=summary_writer,
-        workdir_png=workdir,
-        suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
-        scatter_kwargs={"alpha": 0.03},
-        data_labels=["MCMC", "VI"],
-    )
+            
+        plot.posterior_samples_compare(
+            lalme_az_1=lalme_az_with_gamma,
+            lalme_az_2=lalme_az_variational,
+            lalme_dataset=lalme_dataset,
+            step=0,
+            lp_floating_grid10=config.lp_floating_grid10,
+            show_mu=(lalme_dataset['num_items'] <= 8),
+            show_zeta=(lalme_dataset['num_items'] <= 8),
+            wass_dists={lp_: wass for lp_, wass in zip(Wass_dict['LP_order'], Wass_dict[VI_name])},
+            summary_writer=summary_writer,
+            workdir_png=workdir,
+            suffix=f"_{VI_name}_eta_floating_{float(config.eta_profiles_floating):.3f}",
+            scatter_kwargs={"alpha": 0.3},#0.03
+            data_labels=["MCMC", "VI"],
+        )
+
+    if config.print_Wass_table:
+        def dict_to_latex_table_single_row(data):
+            # Header: Model names
+            header = " & ".join(data.keys()) + " \\\\"
+            
+            # Single row for Wasserstein Distances
+            wd_row = "WD & " + " & ".join(f"{v['WD']:.2f}" for v in data.values()) + " \\\\"
+            
+            latex_table = f"""% Automatically generated table
+                \\begin{{table}}[ht]
+                \\centering
+                \\begin{{tabular}}{{l{'c' * len(data)}}}
+                \\hline
+                    {header}
+                \\hline
+                    {wd_row}
+                \\hline
+                \\end{{tabular}}
+                \\caption{{Wasserstein Distances between models.}}
+                \\label{{tab:wd_models}}
+                \\end{{table}}
+                """
+            return latex_table
+
+        latex_table_code = dict_to_latex_table_single_row(data)
+
     logging.info("...done!")
 
   logging.info("Plotting results...")

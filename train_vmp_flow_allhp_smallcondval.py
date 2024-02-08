@@ -536,7 +536,7 @@ def elbo_estimate_along_eta(
 
   if cond_hparams:
   # # cond values for flows
-    cond_values =jnp.hstack([cond_prior_hparams_values, etas_profiles_floating[:,None]]) if (('eta' in cond_hparams) & (len(cond_hparams)>1)) else (etas_profiles_floating if 'eta' in cond_hparams else cond_prior_hparams_values)
+    cond_values =jnp.hstack([cond_prior_hparams_values, etas_profiles_floating[:,None]]) if (('eta' in cond_hparams) & (len(cond_hparams)>1)) else (etas_profiles_floating[:,None] if 'eta' in cond_hparams else cond_prior_hparams_values)
 
   else:
     cond_values = None
@@ -1743,6 +1743,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           config=config,
           lalme_dataset=lalme_dataset,
           include_gamma=False,
+          num_samples=config.num_samples_plot,
+          num_samples_chunk=config.num_samples_chunk_plot,
       )
       lalme_az_.to_netcdf(workdir + f'/lalme_az_eta_{float(eta_i):.3f}.nc')
     logging.info("...done!")

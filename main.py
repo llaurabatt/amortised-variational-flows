@@ -72,8 +72,6 @@ def main(_):
   elif FLAGS.config.method == 'mcmc':
     with jax.profiler.trace("/home/llaurabat/tmp/jax-trace"):
         sample_mcmc.sample_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
-  elif FLAGS.config.method == 'mcmc_debug':
-    sample_mcmc_debug.sample_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
   else:
     raise ValueError(f'Unknown method {FLAGS.config.method}')
 
