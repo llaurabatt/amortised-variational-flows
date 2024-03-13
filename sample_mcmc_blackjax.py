@@ -1063,8 +1063,8 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
             lalme_dataset=lalme_dataset,
             step=0,
             lp_floating_grid10=config.lp_floating_grid10,
-            show_mu=(lalme_dataset['num_items'] <= 8),
-            show_zeta=(lalme_dataset['num_items'] <= 8),
+            # show_mu=(lalme_dataset['num_items'] <= 8),
+            # show_zeta=(lalme_dataset['num_items'] <= 8),
             wass_dists={lp_: wass for lp_, wass in zip(Wass_dict['LP_order'], Wass_dict[VI_name])},
             summary_writer=summary_writer,
             workdir_png=workdir,
@@ -1072,32 +1072,52 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
             scatter_kwargs={"alpha": 0.3},#0.03
             data_labels=["MCMC", "VI"],
         )
+    def generate_latex_wd_table(data):
+        latex_code = """
+            \\begin{table}[ht]
+            \\centering
+            \\begin{tabular}{lccc}
+            \\toprule
+            & \\multicolumn{3}{c}{Models} \\\\
+            \\cmidrule(lr){2-4}
+            & VMP & VP & Additive-VMP \\\\
+            \\midrule
+            WD"""
+                
+        for model in ['VMP', 'VP', 'Additive-VMP']:
+            wd_value = data[model]['WD']
+            ci_lower, ci_upper = data[model]['CI']
+            latex_code += f" & {wd_value:.2f}"
+            latex_code += "\\\\\n& " if model == "Additive-VMP" else " "
+        latex_code += "& " + " & ".join(f"({ci_lower:.2f}, {ci_upper:.2f})" for model in ['VMP', 'VP', 'Additive-VMP'] for ci_lower, ci_upper in [data[model]['CI']])
+        
+        latex_code += """
+            \\bottomrule
+            \\end{tabular}
+            \\caption{Wasserstein Distances (WD) and Confidence Intervals (CIs) for different models.}
+            \\label{tab:WD_CIs}
+            \\end{table}
+            """
+        return latex_code
 
-    if config.print_Wass_table:
-        def dict_to_latex_table_single_row(data):
-            # Header: Model names
-            header = " & ".join(data.keys()) + " \\\\"
-            
-            # Single row for Wasserstein Distances
-            wd_row = "WD & " + " & ".join(f"{v['WD']:.2f}" for v in data.values()) + " \\\\"
-            
-            latex_table = f"""% Automatically generated table
-                \\begin{{table}}[ht]
-                \\centering
-                \\begin{{tabular}}{{l{'c' * len(data)}}}
-                \\hline
-                    {header}
-                \\hline
-                    {wd_row}
-                \\hline
-                \\end{{tabular}}
-                \\caption{{Wasserstein Distances between models.}}
-                \\label{{tab:wd_models}}
-                \\end{{table}}
-                """
-            return latex_table
+    # Example data
+    latex_data = {
+        'VMP': {'WD': Wass_dict['VMP'].mean(), 
+                'CI': (Wass_dict['VMP'].mean()-Wass_dict['VMP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)), 
+                       Wass_dict['VMP'].mean()+Wass_dict['VMP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)))},
+        'VP': {'WD': Wass_dict['ADDITIVE-VMP'].mean(), 
+                'CI': (Wass_dict['VMP'].mean()-Wass_dict['ADDITIVE-VMP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)), 
+                       Wass_dict['VMP'].mean()+Wass_dict['ADDITIVE-VMP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)))},
+        'Additive-VMP': {'WD': Wass_dict['VP'].mean(), 
+                'CI': (Wass_dict['VMP'].mean()-Wass_dict['VP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)), 
+                       Wass_dict['VMP'].mean()+Wass_dict['VP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)))}
+    }
 
-        latex_table_code = dict_to_latex_table_single_row(data)
+    # Generate LaTeX table code
+    latex_table_code = generate_latex_wd_table(latex_data)
+
+    # Print the LaTeX code
+    print(latex_table_code)
 
     logging.info("...done!")
 
