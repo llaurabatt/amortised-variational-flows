@@ -20,6 +20,7 @@ import optax
 import pickle
 
 from tensorflow_probability.substrates import jax as tfp
+import wandb
 
 import log_prob_fun_allhp
 from log_prob_fun_allhp import ModelParamsGlobal, ModelParamsLocations, PriorHparams, sample_priorhparams_values, logprob_rho
@@ -831,79 +832,79 @@ def log_images(
     lp_anchor_test = None
     
   prior_defaults = PriorHparams()
-  # prior_defaults = jnp.stack(PriorHparams())
-  # prior_hparams=jnp.ones((config.num_samples_plot, 
-  #                                 len(prior_defaults)))*prior_defaults # init params right?
+  prior_defaults = jnp.stack(PriorHparams())
+  prior_hparams=jnp.ones((config.num_samples_plot, 
+                                  len(prior_defaults)))*prior_defaults # init params right?
 
   # Plot posterior samples
   for eta_i in config.eta_plot:
 
-    # eta_i_profiles = jax.vmap(lambda eta_: jnp.where(
-    #     profile_is_anchor,1., eta_,
-    # ))(eta_i * jnp.ones((config.num_samples_plot, config.num_profiles)))
+    eta_i_profiles = jax.vmap(lambda eta_: jnp.where(
+        profile_is_anchor,1., eta_,
+    ))(eta_i * jnp.ones((config.num_samples_plot, config.num_profiles)))
 
-    # eta_i_items = jnp.ones((config.num_samples_plot, len(config.num_forms_tuple)))
-    # smi_eta_ = {
-    #     'profiles':eta_i_profiles,
-    #     'items':eta_i_items,
-    # }
-    # cond_values = jnp.hstack([prior_hparams,eta_i_profiles,eta_i_items])
-    # if config.prior_hparams_plot_optim:
-    #   prior_hparams_init = PriorHparams(*config.prior_hparams_plot_optim)
-    #   prior_hparams_init_vals = jnp.array(config.prior_hparams_plot_optim)
-    # else:
-    #   prior_hparams_init = prior_defaults
-    #   prior_hparams_init_vals = jnp.stack(prior_defaults)
-    # if cond_hparams_names:
-    #   cond_values = get_cond_values(cond_hparams_names=cond_hparams_names,
-    #                     num_samples=config.num_samples_plot,
-    #                     eta_init=eta_i,
-    #                     prior_hparams_init=prior_hparams_init,
-    #                     )
-    # else:
-    #   cond_values = None
+    eta_i_items = jnp.ones((config.num_samples_plot, len(config.num_forms_tuple)))
+    smi_eta_ = {
+        'profiles':eta_i_profiles,
+        'items':eta_i_items,
+    }
+    cond_values = jnp.hstack([prior_hparams,eta_i_profiles,eta_i_items])
+    if config.prior_hparams_plot_optim:
+      prior_hparams_init = PriorHparams(*config.prior_hparams_plot_optim)
+      prior_hparams_init_vals = jnp.array(config.prior_hparams_plot_optim)
+    else:
+      prior_hparams_init = prior_defaults
+      prior_hparams_init_vals = jnp.stack(prior_defaults)
+    if cond_hparams_names:
+      cond_values = get_cond_values(cond_hparams_names=cond_hparams_names,
+                        num_samples=config.num_samples_plot,
+                        eta_init=eta_i,
+                        prior_hparams_init=prior_hparams_init,
+                        )
+    else:
+      cond_values = None
     
-    # lalme_az_ = sample_lalme_az(
-    #     state_list=state_list,
-    #     batch=batch,
-    #     cond_values=cond_values,
-    #     prior_hparams=jnp.stack(prior_defaults),
-    #     # smi_eta=smi_eta_,
-    #     prng_key=next(prng_seq),
-    #     config=config,
-    #     lalme_dataset=lalme_dataset,
-    #     include_gamma=show_basis_fields,
-    #     num_samples=config.num_samples_plot,
-    #     num_samples_chunk=num_samples_chunk,
-    # )
+    lalme_az_ = sample_lalme_az(
+        state_list=state_list,
+        batch=batch,
+        cond_values=cond_values,
+        prior_hparams=jnp.stack(prior_defaults),
+        # smi_eta=smi_eta_,
+        prng_key=next(prng_seq),
+        config=config,
+        lalme_dataset=lalme_dataset,
+        include_gamma=show_basis_fields,
+        num_samples=config.num_samples_plot,
+        num_samples_chunk=num_samples_chunk,
+    )
 
-    # plot.lalme_plots_arviz(
-    #     lalme_az=lalme_az_,
-    #     lalme_dataset=lalme_dataset,
-    #     step=state_list[0].step,
-    #     show_mu=show_mu,
-    #     show_zeta=show_zeta,
-    #     show_basis_fields=show_basis_fields,
-    #     show_W_items=show_W_items,
-    #     show_a_items=show_a_items,
-    #     lp_floating=lp_floating,
-    #     lp_floating_traces=lp_floating_traces,
-    #     lp_floating_grid10=lp_floating_grid10,
-    #     lp_anchor_val_grid30=lp_anchor_val_grid30,
-    #     lp_anchor_val_grid28=lp_anchor_val_grid28,
-    #     lp_anchor_val_grid21=lp_anchor_val_grid21,
-    #     lp_anchor_val_grid10=lp_anchor_val_grid10,
-    #     mcmc_img=(mcmc_img if eta_i==1.000 else None),
-    #     lp_random_anchor=lp_random_anchor,
-    #     lp_random_anchor_grid10=lp_random_anchor_grid10,
-    #     lp_anchor_val=lp_anchor_val,
-    #     lp_anchor_test=lp_anchor_test,
-    #     loc_inducing=loc_inducing,
-    #     workdir_png=workdir_png,
-    #     summary_writer=summary_writer,
-    #     suffix=f"_eta_floating_{float(eta_i):.3f}_sigma_a_{prior_hparams_init_vals[0]:.3f}_sigma_w_{prior_hparams_init_vals[1]:.3f}_sigma_K_{prior_hparams_init_vals[-2]:.3f}_ls_K_{prior_hparams_init_vals[-1]:.3f}",
-    #     scatter_kwargs={"alpha": 0.10},
-    # )
+    plot.lalme_plots_arviz(
+        lalme_az=lalme_az_,
+        lalme_dataset=lalme_dataset,
+        step=state_list[0].step,
+        show_mu=show_mu,
+        show_zeta=show_zeta,
+        show_basis_fields=show_basis_fields,
+        show_W_items=show_W_items,
+        show_a_items=show_a_items,
+        lp_floating=lp_floating,
+        lp_floating_traces=lp_floating_traces,
+        lp_floating_grid10=lp_floating_grid10,
+        lp_anchor_val_grid30=lp_anchor_val_grid30,
+        lp_anchor_val_grid28=lp_anchor_val_grid28,
+        lp_anchor_val_grid21=lp_anchor_val_grid21,
+        lp_anchor_val_grid10=lp_anchor_val_grid10,
+        mcmc_img=(mcmc_img if eta_i==1.000 else None),
+        lp_random_anchor=lp_random_anchor,
+        lp_random_anchor_grid10=lp_random_anchor_grid10,
+        lp_anchor_val=lp_anchor_val,
+        lp_anchor_test=lp_anchor_test,
+        loc_inducing=loc_inducing,
+        workdir_png=workdir_png,
+        summary_writer=summary_writer,
+        suffix=f"_eta_floating_{float(eta_i):.3f}_sigma_a_{prior_hparams_init_vals[0]:.3f}_sigma_w_{prior_hparams_init_vals[1]:.3f}_sigma_K_{prior_hparams_init_vals[-2]:.3f}_ls_K_{prior_hparams_init_vals[-1]:.3f}",
+        scatter_kwargs={"alpha": 0.10},
+    )
 
     if show_location_priorhp_compare:
       print('Plotting comparing results...')
@@ -1183,7 +1184,7 @@ def log_images(
 
 
 
-def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
+def train_and_evaluate(config: ConfigDict, workdir: str, config_wandb:Optional[dict]=None) -> None:
   """Execute model training and evaluation loop.
 
   Args:
@@ -1207,6 +1208,38 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   )
 
   # Add some parameters to config
+    # WANDB
+  if config.use_wandb:
+      # if I am NOT tuning hps
+      if config_wandb:
+        wandb.init(
+          # set the wandb project where this run will be logged
+          project=config.wandb_project_name,
+          config=config.fixed_configs_wandb,
+          # config={
+          # "kernel_amplitude":config.kernel_kwargs.amplitude,
+          # "kernel_length_scale":config.kernel_kwargs.length_scale,
+          # "peak_value":config.optim_kwargs.lr_schedule_kwargs.peak_value,
+          # "decay_rate": config.optim_kwargs.lr_schedule_kwargs.decay_rate,
+          # }
+        )
+        config.kernel_kwargs.amplitude = config_wandb.kernel_amplitude
+        config.kernel_kwargs.length_scale = config_wandb.kernel_length_scale
+        config.optim_kwargs.lr_schedule_kwargs.peak_value = config_wandb.peak_value
+        config.optim_kwargs.lr_schedule_kwargs.decay_rate = config_wandb.decay_rate
+      # if I AM tuning hps
+      else:
+        wandb.init(
+          project=config.wandb_project_name,
+        )
+        config.kernel_kwargs.amplitude = wandb.config.kernel_amplitude
+        config.kernel_kwargs.length_scale = wandb.config.kernel_length_scale
+        config.optim_kwargs.lr_schedule_kwargs.peak_value = wandb.config.peak_value
+        config.optim_kwargs.lr_schedule_kwargs.decay_rate = wandb.config.decay_rate
+
+
+
+      
   config.num_profiles = lalme_dataset['num_profiles']
   config.num_profiles_anchor = lalme_dataset['num_profiles_anchor']
   config.num_profiles_floating = lalme_dataset['num_profiles_floating']
@@ -1592,11 +1625,26 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         value=metrics['train_loss'],
         step=state_list[0].step - 1,
     )
+    if config.use_wandb:
+      wandb.log({'learning_rate': getattr(optax, config.optim_kwargs.lr_schedule_name)(
+              **config.optim_kwargs.lr_schedule_kwargs)(state_list[0].step),
+              'train_loss': metrics['train_loss'],
+            },
+        step=state_list[0].step)
 
     if state_list[0].step == 1:
       logging.info("STEP: %5d; training loss: %.3f", state_list[0].step - 1,
                    metrics["train_loss"])
 
+    if config.checkpoint_steps > 0:
+      if state_list[0].step % config.checkpoint_steps == 0:
+        for state, state_name in zip(state_list, state_name_list):
+          save_checkpoint(
+              state=state,
+              checkpoint_dir=f'{checkpoint_dir}/{state_name}',
+              keep=config.checkpoints_keep,
+          )
+          
     # Metrics for evaluation
     if state_list[0].step % config.eval_steps == 0:
       logging.info("STEP: %5d; training loss: %.3f", state_list[0].step - 1,
@@ -1635,6 +1683,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         error_loc_dict[k + '_min_eta'] = eta_eval_grid_[jnp.argmin(v)]
         error_loc_dict[k + '_max'] = jnp.max(v)
         error_loc_dict[k + '_max_eta'] = eta_eval_grid_[jnp.argmax(v)]
+        if config.wandb_evaleta:
+          idx = jnp.where(eta_eval_grid_ == config.wandb_evaleta)[0][0]
+          error_loc_dict[k + f'_eta{config.wandb_evaleta}'] = v[idx]
 
       for k, v in error_loc_dict.items():
         summary_writer.scalar(
@@ -1642,25 +1693,21 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             value=float(v),
             step=state_list[0].step,
         )
+        if config.use_wandb:
+          wandb.log({f'{k}': float(v)},
+                  step=state_list[0].step)
         # Report the metric used by syne-tune
         if k == config.synetune_metric:
           synetune_report(**{k: float(v)})
           # synetune_report(**{k + '_max': float(jnp.max(v))})
 
-    if config.checkpoint_steps > 0:
-      if state_list[0].step % config.checkpoint_steps == 0:
-        for state, state_name in zip(state_list, state_name_list):
-          save_checkpoint(
-              state=state,
-              checkpoint_dir=f'{checkpoint_dir}/{state_name}',
-              keep=config.checkpoints_keep,
-          )
+
 
     # Wait until computations are done before the next step
     # jax.random.normal(jax.random.PRNGKey(0), ()).block_until_ready()
 
     logging.info('Final training step: %i', state_list[0].step)
-
+  
   # Saving checkpoint at the end of the training process
   if save_last_checkpoint:
     for state, state_name in zip(state_list, state_name_list):
@@ -1766,11 +1813,11 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         # show_a_items=lalme_dataset['items'],
         # lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
         # lp_floating_traces=config.lp_floating_grid10,
-        # lp_floating_grid10=config.lp_floating_grid10,
+        lp_floating_grid10=config.lp_floating_grid10,
         # lp_anchor_val_grid30=config.lp_anchor_val_grid30,
         # lp_anchor_val_grid21=config.lp_anchor_val_grid21,
         # lp_anchor_val_grid28=config.lp_anchor_val_grid28,
-        lp_anchor_val_grid10=config.lp_anchor_val_grid10,
+        # lp_anchor_val_grid10=config.lp_anchor_val_grid10,
         # lp_random_anchor=(
         #     lalme_dataset['LP'][:lalme_dataset['num_profiles_anchor']]
         #     if config.include_random_anchor else None),
@@ -1783,7 +1830,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         #     False),
         mcmc_img=(config.path_mcmc_img if config.dataset_id=='coarsen_8_items' else None),
         loc_inducing=train_ds['loc_inducing'],
-        show_location_priorhp_compare=True,
+        show_location_priorhp_compare=False,
         show_eval_metric=False, 
         eta_eval_grid=jnp.linspace(0, 1, 21),
         num_samples_chunk=config.num_samples_chunk_plot,
@@ -1792,6 +1839,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     )
 
     logging.info("...done!")
+  
+  wandb.finish()
 
 
 #####################################################################################

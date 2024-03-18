@@ -1084,12 +1084,12 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
             \\midrule
             WD"""
                 
-        for model in ['VMP', 'VP', 'Additive-VMP']:
+        for model in ['VMP', 'VP', 'ADDITIVE-VMP']:
             wd_value = data[model]['WD']
             ci_lower, ci_upper = data[model]['CI']
             latex_code += f" & {wd_value:.2f}"
-            latex_code += "\\\\\n& " if model == "Additive-VMP" else " "
-        latex_code += "& " + " & ".join(f"({ci_lower:.2f}, {ci_upper:.2f})" for model in ['VMP', 'VP', 'Additive-VMP'] for ci_lower, ci_upper in [data[model]['CI']])
+            latex_code += "\\\\\n& " if model == "ADDITIVE-VMP" else " "
+        latex_code += "& " + " & ".join(f"({ci_lower:.2f}, {ci_upper:.2f})" for model in ['VMP', 'VP', 'ADDITIVE-VMP'] for ci_lower, ci_upper in [data[model]['CI']])
         
         latex_code += """
             \\bottomrule
@@ -1105,12 +1105,12 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         'VMP': {'WD': Wass_dict['VMP'].mean(), 
                 'CI': (Wass_dict['VMP'].mean()-Wass_dict['VMP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)), 
                        Wass_dict['VMP'].mean()+Wass_dict['VMP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)))},
-        'VP': {'WD': Wass_dict['ADDITIVE-VMP'].mean(), 
-                'CI': (Wass_dict['VMP'].mean()-Wass_dict['ADDITIVE-VMP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)), 
-                       Wass_dict['VMP'].mean()+Wass_dict['ADDITIVE-VMP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)))},
-        'Additive-VMP': {'WD': Wass_dict['VP'].mean(), 
-                'CI': (Wass_dict['VMP'].mean()-Wass_dict['VP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)), 
-                       Wass_dict['VMP'].mean()+Wass_dict['VP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)))}
+        'VP': {'WD': Wass_dict['VP'].mean(), 
+                'CI': (Wass_dict['VP'].mean()-Wass_dict['VP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)), 
+                       Wass_dict['VP'].mean()+Wass_dict['VP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)))},
+        'ADDITIVE-VMP': {'WD': Wass_dict['ADDITIVE-VMP'].mean(), 
+                'CI': (Wass_dict['ADDITIVE-VMP'].mean()-Wass_dict['ADDITIVE-VMP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)), 
+                       Wass_dict['ADDITIVE-VMP'].mean()+Wass_dict['ADDITIVE-VMP'].std()*1.96/jnp.sqrt(len(config.lp_floating_grid10)))},
     }
 
     # Generate LaTeX table code

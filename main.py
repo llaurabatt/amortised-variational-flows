@@ -16,7 +16,9 @@ from absl import logging
 
 import jax
 from ml_collections import config_flags
+import shutil
 import tensorflow as tf
+import wandb
 
 import train_flow
 import train_vmp_flow
@@ -28,6 +30,7 @@ import sample_mcmc_blackjax as sample_mcmc
 import sample_mcmc_blackjax_DEBUG as sample_mcmc_debug
 import train_vmp_flow_allhp_smallcondval
 import train_vmp_flow_smallcondvals
+import yaml
 # import sample_mcmc_tfp as sample_mcmc
 
 FLAGS = flags.FLAGS
@@ -57,6 +60,11 @@ def main(_):
   logging.info('JAX local devices: %r', jax.local_devices())
   logging.info('JAX device count: %r', jax.device_count())
 
+  config_yaml = FLAGS.config.to_yaml()
+  # Write the YAML string to the file
+  with open(FLAGS.workdir + '/configs.yaml', 'w') as file:
+      file.write(config_yaml)
+
   if FLAGS.config.method == 'flow':
     train_flow.train_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
   elif FLAGS.config.method == 'vmp_flow':
@@ -65,8 +73,21 @@ def main(_):
     train_vmp_flow_mse.train_and_evaluate(FLAGS.config, FLAGS.workdir)
   elif FLAGS.config.method == 'vmp_flow_hpnokernel':
     train_vmp_flow_hpnokernel.train_and_evaluate(FLAGS.config, FLAGS.workdir)
-  elif FLAGS.config.method == 'vmp_flow_allhp':
+  elif FLAGS.config.method == 'vmp_flow_allhp':  
     train_vmp_flow_allhp_smallcondval.train_and_evaluate(FLAGS.config, FLAGS.workdir)
+   
+  elif FLAGS.config.method == 'hp_opt_vmp_flow_allhp':  
+    train_opt = lambda config_wandb: train_vmp_flow_allhp_smallcondval.train_and_evaluate(
+      config_main=FLAGS.config, 
+      workdir=FLAGS.workdir,
+      config_wandb=config_wandb)
+    
+    sweep_id = wandb.sweep(sweep=FLAGS.config.sweep_configuration, project=FLAGS.config.wandb_project_name)
+    wandb.agent(sweep_id, function=train_opt, count=10)
+
+
+
+
   elif FLAGS.config.method == 'vmp_flow_allhp_randomanchors':
     train_vmp_flow_allhp_randomanchors.train_and_evaluate(FLAGS.config, FLAGS.workdir)
   elif FLAGS.config.method == 'mcmc':
