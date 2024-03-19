@@ -6,8 +6,8 @@ set -x
 REPO_DIR=$PWD
 
 # Directory to save all outputs
-WORK_DIR=$HOME/spatial-smi-output-original
-# WORK_DIR=$HOME/spatial-smi-output-VPeta1-withintegratedsmallcondval/
+# WORK_DIR=$HOME/spatial-smi-output-original
+WORK_DIR=$HOME/HPOPT-spatial-smi-output-VPeta1-withintegratedsmallcondval/
 # WORK_DIR=$HOME/spatial-smi-output-integrated-allhps-40val-smallcondval
 
 # Create output directory and install missing dependencies
@@ -48,12 +48,14 @@ all_eta=('1.000')
 #                           --workdir $WORK_DIR/8_items/nsf/vmp_flow \
 #                           --log_dir $WORK_DIR/8_items/nsf/vmp_flow/log_dir \
 #                           --alsologtostderr
-
-# python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_flow_nsf_vmp_flow.py \
-#                           --config.path_mcmc_img $HOME/my-spatial-smi-oldv/data/5_items_mcmc_floating_eta1.000.png \
-#                           --workdir $WORK_DIR/5_items/nsf/vmp_flow \
-#                           --log_dir $WORK_DIR/5_items/nsf/vmp_flow/log_dir \
-#                           --alsologtostderr
+#
+#--config $REPO_DIR/configs/5_items_hpo_flow_nsf_vmp_flow.py \ 
+# --config $REPO_DIR/configs/5_items_flow_nsf_vmp_flow.py \
+python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_hpo_flow_nsf_vmp_flow.py \
+                          --config.path_mcmc_img $HOME/my-spatial-smi-oldv/data/5_items_mcmc_floating_eta1.000.png \
+                          --workdir $WORK_DIR/5_items/nsf/vmp_flow \
+                          --log_dir $WORK_DIR/5_items/nsf/vmp_flow/log_dir \
+                          --alsologtostderr
 
 # ## MCMC
 ## Single eta
@@ -70,16 +72,16 @@ all_eta=('1.000')
 #                             --alsologtostderr
 # done
 
-VI_path_dict="{'VMP':'/home/llaurabat/spatial-smi-output-integrated-ONLYeta/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc','ADDITIVE-VMP':'/home/llaurabat/spatial-smi-output-original-smallcondval-LASTTRY/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc','VP':'/home/llaurabat/spatial-smi-output-VPeta1-withintegratedsmallcondval/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc'}"
-for eta in "${all_eta[@]}"
-do
-  python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_mcmc.py \
-                            --workdir $WORK_DIR/5_items/mcmc/eta_floating_w500_s15_000_t10_sub100_$eta \
-                            --config.eta_profiles_floating $eta \
-                            --config.path_variational_samples $VI_path_dict\
-                            --log_dir $WORK_DIR/5_items/mcmc/eta_floating_w500_s15_000_t10_sub100_$eta/log_dir \
-                            --alsologtostderr
-done
+# VI_path_dict="{'VMP':'/home/llaurabat/spatial-smi-output-integrated-ONLYeta/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc','ADDITIVE-VMP':'/home/llaurabat/spatial-smi-output-original-smallcondval-LASTTRY/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc','VP':'/home/llaurabat/spatial-smi-output-VPeta1-withintegratedsmallcondval/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc'}"
+# for eta in "${all_eta[@]}"
+# do
+#   python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_mcmc.py \
+#                             --workdir $WORK_DIR/5_items/mcmc/eta_floating_w500_s15_000_t10_sub100_$eta \
+#                             --config.eta_profiles_floating $eta \
+#                             --config.path_variational_samples $VI_path_dict\
+#                             --log_dir $WORK_DIR/5_items/mcmc/eta_floating_w500_s15_000_t10_sub100_$eta/log_dir \
+#                             --alsologtostderr
+# done
 
 
 # ### ALL ITEMS ###

@@ -1184,7 +1184,7 @@ def log_images(
 
 
 
-def train_and_evaluate(config: ConfigDict, workdir: str, config_wandb:Optional[dict]=None) -> None:
+def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   """Execute model training and evaluation loop.
 
   Args:
@@ -1201,17 +1201,22 @@ def train_and_evaluate(config: ConfigDict, workdir: str, config_wandb:Optional[d
   # Initialize random keys
   prng_seq = hk.PRNGSequence(config.seed)
 
-  # Load and process LALME dataset
-  lalme_dataset = load_data(
-      prng_key=jax.random.PRNGKey(0),  # use fixed seed for data loading
-      config=config,
-  )
 
   # Add some parameters to config
     # WANDB
   if config.use_wandb:
+      # if I AM tuning hps
+      if config.sweep:
+        wandb.init(
+          project=config.wandb_project_name,
+        )
+        config.kernel_kwargs.amplitude = wandb.config.kernel_amplitude
+        config.kernel_kwargs.length_scale = wandb.config.kernel_length_scale
+        config.optim_kwargs.lr_schedule_kwargs.peak_value = wandb.config.peak_value
+        config.optim_kwargs.lr_schedule_kwargs.decay_rate = wandb.config.decay_rate
+
       # if I am NOT tuning hps
-      if config_wandb:
+      else:
         wandb.init(
           # set the wandb project where this run will be logged
           project=config.wandb_project_name,
@@ -1223,21 +1228,18 @@ def train_and_evaluate(config: ConfigDict, workdir: str, config_wandb:Optional[d
           # "decay_rate": config.optim_kwargs.lr_schedule_kwargs.decay_rate,
           # }
         )
-        config.kernel_kwargs.amplitude = config_wandb.kernel_amplitude
-        config.kernel_kwargs.length_scale = config_wandb.kernel_length_scale
-        config.optim_kwargs.lr_schedule_kwargs.peak_value = config_wandb.peak_value
-        config.optim_kwargs.lr_schedule_kwargs.decay_rate = config_wandb.decay_rate
-      # if I AM tuning hps
-      else:
-        wandb.init(
-          project=config.wandb_project_name,
-        )
-        config.kernel_kwargs.amplitude = wandb.config.kernel_amplitude
-        config.kernel_kwargs.length_scale = wandb.config.kernel_length_scale
-        config.optim_kwargs.lr_schedule_kwargs.peak_value = wandb.config.peak_value
-        config.optim_kwargs.lr_schedule_kwargs.decay_rate = wandb.config.decay_rate
+        config.kernel_kwargs.amplitude = config.fixed_configs_wandb.kernel_amplitude
+        config.kernel_kwargs.length_scale = config.fixed_configs_wandb.kernel_length_scale
+        config.optim_kwargs.lr_schedule_kwargs.peak_value = config.fixed_configs_wandb.peak_value
+        config.optim_kwargs.lr_schedule_kwargs.decay_rate = config.fixed_configs_wandb.decay_rate
 
 
+
+  # Load and process LALME dataset
+  lalme_dataset = load_data(
+      prng_key=jax.random.PRNGKey(0),  # use fixed seed for data loading
+      config=config,
+  )
 
       
   config.num_profiles = lalme_dataset['num_profiles']
@@ -1563,7 +1565,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str, config_wandb:Optional[d
   # # error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
 
   save_last_checkpoint = False
-  if state_list[0].step < config.training_steps:
+  if ((state_list[0].step < config.training_steps) and (config.save_last_checkpoint == True)):
     logging.info('Training variational posterior...')
     # Reset random keys
     prng_seq = hk.PRNGSequence(config.seed)
@@ -1685,7 +1687,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str, config_wandb:Optional[d
         error_loc_dict[k + '_max_eta'] = eta_eval_grid_[jnp.argmax(v)]
         if config.wandb_evaleta:
           idx = jnp.where(eta_eval_grid_ == config.wandb_evaleta)[0][0]
-          error_loc_dict[k + f'_eta{config.wandb_evaleta}'] = v[idx]
+          error_loc_dict[k + f'_eta{config.wandb_evaleta}'] = float(v[idx])
 
       for k, v in error_loc_dict.items():
         summary_writer.scalar(

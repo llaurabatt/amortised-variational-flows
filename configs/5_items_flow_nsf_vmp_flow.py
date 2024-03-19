@@ -59,23 +59,32 @@ def get_config():
   config.prior_hparams_hparams.kernel_sampling_lengthscale_beta = 0.5
 
   # Number of training steps to run.
-  config.training_steps = 300_000
+  config.training_steps = 10_000 #300_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
   config.optim_kwargs.grad_clip_value = 1.0
   config.optim_kwargs.lr_schedule_name = 'warmup_exponential_decay_schedule'
   config.optim_kwargs.lr_schedule_kwargs = ml_collections.ConfigDict()
-  config.optim_kwargs.lr_schedule_kwargs = {
-      'init_value': 0.,
-      'peak_value': 3e-4,
-      'warmup_steps': 3_000,
-      'transition_steps': 10_000,
-      'decay_rate': 0.5,
-      'transition_begin': 0,
-      'staircase': False,
-      'end_value': None,
-  }
+  config.optim_kwargs.lr_schedule_kwargs.init_value = 0.
+#   config.optim_kwargs.lr_schedule_kwargs.peak_value = 3e-4
+  config.optim_kwargs.lr_schedule_kwargs.warmup_steps = 3_000
+  config.optim_kwargs.lr_schedule_kwargs.transition_steps = 10_000
+#   config.optim_kwargs.lr_schedule_kwargs.decay_rate = 0.5
+  config.optim_kwargs.lr_schedule_kwargs.transition_begin = 0
+  config.optim_kwargs.lr_schedule_kwargs.staircase = False
+  config.optim_kwargs.lr_schedule_kwargs.end_value = None
+
+#   config.optim_kwargs.lr_schedule_kwargs = {
+#       'init_value': 0.,
+#       'peak_value': 3e-4,
+#       'warmup_steps': 3_000,
+#       'transition_steps': 10_000,
+#       'decay_rate': 0.5,
+#       'transition_begin': 0,
+#       'staircase': False,
+#       'end_value': None,
+#   }
   config.cond_hparams_names = []
 
   config.num_lp_anchor_train = 120
@@ -93,14 +102,14 @@ def get_config():
   config.num_samples_gamma_profiles = 5
 
   # How often to evaluate the model.
-  config.eval_steps = config.training_steps // 5
+  config.eval_steps = config.training_steps // 10 #5
   config.num_samples_eval = 100
   config.eval_last = False
 
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
-  config.log_img_steps = config.training_steps // 5
+  config.log_img_steps = 0 #config.training_steps // 5
   config.log_img_at_end = True
   config.save_samples = False
 
@@ -137,7 +146,16 @@ def get_config():
   config.path_mcmc_img = ''
   # Random seed
   config.seed = 1
-  config.use_wandb = False
+
+  config.use_wandb = True
+  config.sweep = False
   config.wandb_project_name = 'LP-example'
+  config.fixed_configs_wandb = {
+                "kernel_amplitude": 0.2,
+                "kernel_length_scale": 0.3,
+                "peak_value":3e-4,
+                "decay_rate":0.5,
+            }
+  config.wandb_evaleta  = 1.0
 
   return config

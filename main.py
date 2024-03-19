@@ -15,10 +15,12 @@ from absl import flags
 from absl import logging
 
 import jax
-from ml_collections import config_flags
+from ml_collections import config_flags, ConfigDict
+import os
 import shutil
 import tensorflow as tf
 import wandb
+import yaml
 
 import train_flow
 import train_vmp_flow
@@ -30,7 +32,7 @@ import sample_mcmc_blackjax as sample_mcmc
 import sample_mcmc_blackjax_DEBUG as sample_mcmc_debug
 import train_vmp_flow_allhp_smallcondval
 import train_vmp_flow_smallcondvals
-import yaml
+
 # import sample_mcmc_tfp as sample_mcmc
 
 FLAGS = flags.FLAGS
@@ -42,9 +44,18 @@ config_flags.DEFINE_config_file(
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 
+def configdict_to_dict(config_dict):
+    """Recursively convert ConfigDict to dict."""
+    if isinstance(config_dict, ConfigDict):
+        # Convert ConfigDict to dict
+        config_dict = {k: configdict_to_dict(v) for k, v in config_dict.items()}
+    elif isinstance(config_dict, list):
+        # Recursively apply to list elements
+        config_dict = [configdict_to_dict(v) for v in config_dict]
+    return config_dict
 
 def main(_):
-
+  os.environ["WANDB_DIR"] = os.path.abspath(FLAGS.workdir)
   # log to a file
   if FLAGS.log_dir:
     if not os.path.exists(FLAGS.log_dir):
@@ -77,16 +88,12 @@ def main(_):
     train_vmp_flow_allhp_smallcondval.train_and_evaluate(FLAGS.config, FLAGS.workdir)
    
   elif FLAGS.config.method == 'hp_opt_vmp_flow_allhp':  
-    train_opt = lambda config_wandb: train_vmp_flow_allhp_smallcondval.train_and_evaluate(
-      config_main=FLAGS.config, 
-      workdir=FLAGS.workdir,
-      config_wandb=config_wandb)
+    train_opt = lambda : train_vmp_flow_allhp_smallcondval.train_and_evaluate(
+      config=FLAGS.config, 
+      workdir=FLAGS.workdir)
     
-    sweep_id = wandb.sweep(sweep=FLAGS.config.sweep_configuration, project=FLAGS.config.wandb_project_name)
+    sweep_id = wandb.sweep(sweep=configdict_to_dict(FLAGS.config.sweep_configuration), project=FLAGS.config.wandb_project_name)
     wandb.agent(sweep_id, function=train_opt, count=10)
-
-
-
 
   elif FLAGS.config.method == 'vmp_flow_allhp_randomanchors':
     train_vmp_flow_allhp_randomanchors.train_and_evaluate(FLAGS.config, FLAGS.workdir)

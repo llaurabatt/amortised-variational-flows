@@ -7,7 +7,7 @@ def get_config():
   """Get the hyperparameter configuration."""
   config = ml_collections.ConfigDict()
 
-  config.method = 'vmp_flow_allhp' # vmp_flow
+  config.method = 'hp_opt_vmp_flow_allhp'#'vmp_flow_allhp' # vmp_flow
 
   # Dataset to use
   config.dataset_id = 'coarsen_8_items'
@@ -61,7 +61,7 @@ def get_config():
   config.prior_hparams_hparams.kernel_sampling_lengthscale_beta = 0.5
 
   # Number of training steps to run.
-  config.training_steps = 300_000
+  config.training_steps = 1_000 #300_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -111,9 +111,9 @@ def get_config():
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
-  config.log_img_steps = config.training_steps // 5
+  config.log_img_steps = 0#config.training_steps // 5
   config.log_img_at_end = False
-  config.save_samples = True
+  config.save_samples = False
 
   # Number of samples used in the plots.
   config.num_samples_plot = 10_000
@@ -132,7 +132,8 @@ def get_config():
   config.eta_plot = [0.001, 0.250, 0.500, 0.750, 1.000]
 
   # How often to save model checkpoints.
-  config.checkpoint_steps = config.training_steps // 5
+  config.checkpoint_steps = 0 #config.training_steps // 5
+  config.save_last_checkpoint = False
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
 
@@ -156,10 +157,15 @@ def get_config():
             "decay_rate":0.5,
         }
 
-  config.wandb_project_name = 'LP-example'
+  
+
+
+  config.wandb_project_name = 'LP-example2'
 
   config.sweep_configuration = ml_collections.ConfigDict()
   config.sweep_configuration.method = "bayes"
+
+  config.sweep = True
   config.wandb_evaleta  = 1.0
   config.sweep_configuration.metric = {"goal": "minimize", "name": f"mean_dist_anchor_val_eta{config.wandb_evaleta}"}
 
