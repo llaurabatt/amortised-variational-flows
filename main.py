@@ -2,10 +2,10 @@
 #%%
 import debugpy
 #%%
-debugpy.listen(5678)
-print('Waiting for debugger')
-debugpy.wait_for_client()
-print('Debugger attached')
+# debugpy.listen(5678)
+# print('Waiting for debugger')
+# debugpy.wait_for_client()
+# print('Debugger attached')
 #%%
 import os
 import warnings
@@ -16,9 +16,12 @@ from absl import logging
 
 import jax
 from ml_collections import config_flags, ConfigDict
+from functools import partial
 import os
 import shutil
+import sys
 import tensorflow as tf
+import traceback
 import wandb
 import yaml
 
@@ -88,12 +91,19 @@ def main(_):
     train_vmp_flow_allhp_smallcondval.train_and_evaluate(FLAGS.config, FLAGS.workdir)
    
   elif FLAGS.config.method == 'hp_opt_vmp_flow_allhp':  
-    train_opt = lambda : train_vmp_flow_allhp_smallcondval.train_and_evaluate(
+    train_opt = partial(train_vmp_flow_allhp_smallcondval.train_and_evaluate,
       config=FLAGS.config, 
       workdir=FLAGS.workdir)
     
+    def pagent():
+      try:
+          train_opt()
+      except Exception as e:
+          print("Exception! Printing stack trace")
+          print(traceback.print_exc(), file=sys.stderr)
+
     sweep_id = wandb.sweep(sweep=configdict_to_dict(FLAGS.config.sweep_configuration), project=FLAGS.config.wandb_project_name)
-    wandb.agent(sweep_id, function=train_opt, count=10)
+    wandb.agent(sweep_id, function=pagent, count=10)
 
   elif FLAGS.config.method == 'vmp_flow_allhp_randomanchors':
     train_vmp_flow_allhp_randomanchors.train_and_evaluate(FLAGS.config, FLAGS.workdir)

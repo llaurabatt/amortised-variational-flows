@@ -4,6 +4,7 @@ import math
 import pathlib
 
 from absl import logging
+import arviz as az
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -17,7 +18,9 @@ from jax import numpy as jnp
 
 import haiku as hk
 import optax
+import ot
 import pickle
+import psutil
 
 from tensorflow_probability.substrates import jax as tfp
 import wandb
@@ -329,6 +332,55 @@ def sample_all_flows(
 
   return q_distr_out
 
+def sample_locations_floating(
+    state_list: List[TrainState],
+    cond_values: Array,
+    # smi_eta: SmiEta,
+    prng_key: PRNGKey,
+    num_samples: float,
+    config: ConfigDict,
+    num_samples_chunk: int = 1_000,
+) -> InferenceData:
+  """Plots to monitor during training."""
+
+  prng_seq = hk.PRNGSequence(prng_key)
+
+
+  locations_sample = []
+
+#   assert all(cond_values.ndim == 2) # what is this line for?
+
+  # Sampling divided into chunks, to avoid OOM on GPU
+  # Split etas into chunks
+  split_idx_ = np.arange(num_samples_chunk, num_samples,
+                        num_samples_chunk).tolist()
+  
+  if cond_values is not None:
+    cond_values_chunked_ = jnp.split(cond_values, split_idx_, axis=0)
+  else:
+    cond_values_chunked_ = [None]*len(split_idx_)
+
+  for cond_val_ in cond_values_chunked_:#,prior_hparams_chunked_):
+    # Sample from variational posterior
+    q_distr_out = sample_all_flows(
+        params_tuple=[state.params for state in state_list],
+        prng_key=next(prng_seq),
+        flow_name=config.flow_name,
+        flow_kwargs=config.flow_kwargs,
+        cond_values=cond_val_,
+        # smi_eta=smi_eta_,
+        include_random_anchor=config.include_random_anchor,
+        num_samples=num_samples_chunk,
+    )
+
+    locations_sample.append(q_distr_out['locations_sample'])
+
+  locations_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+      lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
+      *locations_sample)
+  
+  return locations_sample.loc_floating
+
 
 def sample_lalme_az(
     state_list: List[TrainState],
@@ -473,10 +525,6 @@ def get_cond_values(
     cond_values_init = eta_init[:,None]
   else:
     cond_values_init = cond_prior_hparams_init
-  # cond_values_init = jax.lax.cond((('eta' in cond_hparams_names) & (len(cond_hparams_names)>1)), 
-  #                           jnp.hstack([cond_prior_hparams_init, eta_init[:,None]]),
-  #                           jax.lax.cond('eta' in cond_hparams_names, 
-  #                                         eta_init[:,None], cond_prior_hparams_init))
   return cond_values_init
   
 def elbo_estimate_along_eta(
@@ -1233,7 +1281,26 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         config.optim_kwargs.lr_schedule_kwargs.peak_value = config.fixed_configs_wandb.peak_value
         config.optim_kwargs.lr_schedule_kwargs.decay_rate = config.fixed_configs_wandb.decay_rate
 
+  new_defaults = {'w_prior_scale': config.prior_hparams.w_prior_scale, 
+                  'a_prior_scale': config.prior_hparams.a_prior_scale, 
+                 'mu_prior_concentration': config.prior_hparams.mu_prior_concentration, 
+                 'mu_prior_rate': config.prior_hparams.mu_prior_rate, 
+                 'zeta_prior_a': config.prior_hparams.zeta_prior_a, 
+                 'zeta_prior_b': config.prior_hparams.zeta_prior_b, 
+                 'kernel_amplitude': config.kernel_kwargs.amplitude, 
+                 'kernel_length_scale': config.kernel_kwargs.length_scale}
+  
+  PriorHparams.set_defaults(**new_defaults)
 
+  if (config.path_MCMC_samples != ''):
+      lalme_az_mcmc = az.from_netcdf(config.path_MCMC_samples)
+      loc_samples_mcmc = jnp.vstack(jnp.array(lalme_az_mcmc.posterior[f'loc_floating'].reindex(LP_floating=config.lp_floating_grid10)))
+      # loc_samples_mcmc = loc_samples_mcmc[1000:] # just last 500 samples
+      n_samples_mcmc = loc_samples_mcmc.shape[0]
+      if n_samples_mcmc > config.max_wass_samples:
+          idxs = jax.random.choice(key=next(prng_seq), a=n_samples_mcmc, shape=(config.max_wass_samples,))
+          loc_samples_mcmc = loc_samples_mcmc[idxs]
+          n_samples_mcmc = config.max_wass_samples
 
   # Load and process LALME dataset
   lalme_dataset = load_data(
@@ -1406,53 +1473,54 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   summary_writer = tensorboard.SummaryWriter(workdir)
   summary_writer.hparams(flatten_dict(config))
 
-  # Print a useful summary of the execution of the flows.
-  logging.info('FLOW GLOBAL PARAMETERS:')
-  tabulate_fn_ = hk.experimental.tabulate(
-      f=lambda state, prng_key: hk.transform(q_distr_global).apply(
-          state.params,
-          prng_key,
-          flow_name=config.flow_name,
-          flow_kwargs=config.flow_kwargs,
-          cond_values=cond_values_init,
-        #   eta=smi_eta_init['profiles'],
-        num_samples=config.num_samples_elbo,
-      ),
-      columns=(
-          "module",
-          "owned_params",
-          "params_size",
-          "params_bytes",
-      ),
-      filters=("has_params",),
-  )
-  summary = tabulate_fn_(state_list[0], next(prng_seq))
-  for line in summary.split("\n"):
-    logging.info(line)
+  if not config.sweep:
+    # Print a useful summary of the execution of the flows.
+    logging.info('FLOW GLOBAL PARAMETERS:')
+    tabulate_fn_ = hk.experimental.tabulate(
+        f=lambda state, prng_key: hk.transform(q_distr_global).apply(
+            state.params,
+            prng_key,
+            flow_name=config.flow_name,
+            flow_kwargs=config.flow_kwargs,
+            cond_values=cond_values_init,
+          #   eta=smi_eta_init['profiles'],
+          num_samples=config.num_samples_elbo,
+        ),
+        columns=(
+            "module",
+            "owned_params",
+            "params_size",
+            "params_bytes",
+        ),
+        filters=("has_params",),
+    )
+    summary = tabulate_fn_(state_list[0], next(prng_seq))
+    for line in summary.split("\n"):
+      logging.info(line)
 
-  logging.info('FLOW LOCATION FLOATING PROFILES:')
-  tabulate_fn_ = hk.experimental.tabulate(
-      f=lambda state, prng_key: hk.transform(q_distr_loc_floating).apply(
-          state.params,
-          prng_key,
-          flow_name=config.flow_name,
-          flow_kwargs=config.flow_kwargs,
-          global_params_base_sample=global_sample_base_,
-          cond_values=cond_values_init,
-        #   eta=smi_eta_init['profiles'],
-          name='loc_floating',
-      ),
-      columns=(
-          "module",
-          "owned_params",
-          "params_size",
-          "params_bytes",
-      ),
-      filters=("has_params",),
-  )
-  summary = tabulate_fn_(state_list[1], next(prng_seq))
-  for line in summary.split("\n"):
-    logging.info(line)
+    logging.info('FLOW LOCATION FLOATING PROFILES:')
+    tabulate_fn_ = hk.experimental.tabulate(
+        f=lambda state, prng_key: hk.transform(q_distr_loc_floating).apply(
+            state.params,
+            prng_key,
+            flow_name=config.flow_name,
+            flow_kwargs=config.flow_kwargs,
+            global_params_base_sample=global_sample_base_,
+            cond_values=cond_values_init,
+          #   eta=smi_eta_init['profiles'],
+            name='loc_floating',
+        ),
+        columns=(
+            "module",
+            "owned_params",
+            "params_size",
+            "params_bytes",
+        ),
+        filters=("has_params",),
+    )
+    summary = tabulate_fn_(state_list[1], next(prng_seq))
+    for line in summary.split("\n"):
+      logging.info(line)
 
   if config.include_random_anchor:
     state_list.append(
@@ -1469,30 +1537,30 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             prng_key=next(prng_seq),
             optimizer=make_optimizer(**config.optim_kwargs),
         ))
-
-    logging.info('FLOW RANDOM LOCATION OF ANCHOR PROFILES:')
-    tabulate_fn_ = hk.experimental.tabulate(
-        f=lambda state, prng_key: hk.transform(q_distr_loc_random_anchor).apply(
-            state.params,
-            prng_key,
-            flow_name=config.flow_name,
-            flow_kwargs=config.flow_kwargs,
-            global_params_base_sample=global_sample_base_,
-            cond_values=cond_values_init,
-            # eta=smi_eta_init['profiles'],
-            num_samples=config.num_samples_elbo,
-        ),
-        columns=(
-            "module",
-            "owned_params",
-            "params_size",
-            "params_bytes",
-        ),
-        filters=("has_params",),
-    )
-    summary = tabulate_fn_(state_list[3], next(prng_seq))
-    for line in summary.split("\n"):
-      logging.info(line)
+    if not config.sweep:
+      logging.info('FLOW RANDOM LOCATION OF ANCHOR PROFILES:')
+      tabulate_fn_ = hk.experimental.tabulate(
+          f=lambda state, prng_key: hk.transform(q_distr_loc_random_anchor).apply(
+              state.params,
+              prng_key,
+              flow_name=config.flow_name,
+              flow_kwargs=config.flow_kwargs,
+              global_params_base_sample=global_sample_base_,
+              cond_values=cond_values_init,
+              # eta=smi_eta_init['profiles'],
+              num_samples=config.num_samples_elbo,
+          ),
+          columns=(
+              "module",
+              "owned_params",
+              "params_size",
+              "params_bytes",
+          ),
+          filters=("has_params",),
+      )
+      summary = tabulate_fn_(state_list[3], next(prng_seq))
+      for line in summary.split("\n"):
+        logging.info(line)
 
   profile_is_anchor = jnp.arange(
       train_ds['num_profiles']) < train_ds['num_profiles_anchor']
@@ -1648,9 +1716,11 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           )
           
     # Metrics for evaluation
-    if state_list[0].step % config.eval_steps == 0:
+    if ((state_list[0].step == 1) or (state_list[0].step % config.eval_steps == 0)):
       logging.info("STEP: %5d; training loss: %.3f", state_list[0].step - 1,
                    metrics["train_loss"])
+
+      logging.info(f"Process uses {psutil.Process().memory_info().rss / (1024 * 1024)} MB memory.")
 
       # # Multi-stage ELBO
       # elbo_dict_eval = elbo_validation_jit(
@@ -1664,6 +1734,57 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       #       value=v.mean(),
       #       step=state_list[0].step,
       #   )
+
+      # WD vs MCMC samples
+      if (config.path_MCMC_samples != ''):
+          prior_defaults = PriorHparams()
+          if config.cond_hparams_names:
+            cond_values = get_cond_values(cond_hparams_names=config.cond_hparams_names,
+                            num_samples=config.num_samples_plot,
+                            eta_init=config.wandb_evaleta,
+                            prior_hparams_init=prior_defaults
+                            )
+          else:
+            cond_values = None
+
+
+          posterior_loc_floating = sample_locations_floating(
+              state_list=state_list,
+              cond_values=cond_values,
+            #   smi_eta=smi_eta_,
+              prng_key=next(prng_seq),
+              config=config,
+              num_samples=config.num_samples_plot,
+              num_samples_chunk=config.num_samples_chunk_plot,
+          )
+
+          # Find the indices that would sort a1 according to the order in a3
+          LPs = lalme_dataset['LP'][-lalme_dataset['num_profiles_floating']:]
+          _, index_order = jnp.unique(LPs, return_index=True)
+          _, new_order = jnp.unique(config.lp_floating_grid10, return_index=True)
+          LP_ordered_indices = index_order[new_order.argsort()]
+
+          loc_samples_VI = posterior_loc_floating[:,LP_ordered_indices,:].squeeze() # assume (n_samples, n_locs, 2)
+          n_samples_VI = loc_samples_VI.shape[0]
+          if n_samples_VI > config.max_wass_samples:
+              idxs = jax.random.choice(key=next(prng_seq), a=n_samples_VI, shape=(config.max_wass_samples,))
+              loc_samples_VI = loc_samples_VI[idxs]
+              n_samples_VI = config.max_wass_samples
+          a_mcmc = jnp.ones((n_samples_mcmc,)) / n_samples_mcmc
+          b_VI = jnp.ones((n_samples_VI,)) / n_samples_VI
+          
+          # Need to swap axis from (n_samples, n_locations, ...) to (n_locations, n_samples, ...)
+          WD = jnp.array([ot.emd2(a_mcmc, b_VI, ot.dist(x, y, metric='euclidean')) 
+                                          for (x,y) in zip(loc_samples_mcmc.swapaxes(0,1), loc_samples_VI.swapaxes(0,1))])
+
+          summary_writer.scalar(
+              tag='WD_vs_MCMC',
+              value=float(WD),
+              step=state_list[0].step,
+          )
+          if config.use_wandb:
+            wandb.log({'WD_vs_MCMC': float(WD)},
+                    step=state_list[0].step)
 
       # Estimate posterior distance to true locations
       eta_eval_grid_ = jnp.linspace(0, 1, 21)
@@ -1839,7 +1960,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         summary_writer=summary_writer,
         workdir_png=workdir,
     )
-
+    jax.clear_caches()
     logging.info("...done!")
   
   wandb.finish()
@@ -1871,8 +1992,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       val_idxs = None
 
     prior_defaults = jnp.stack(PriorHparams())
-    prior_hparams_default = jnp.array([5., 10., 1., 0.5, 1., 1., 0.2, 0.3])
-    assert jnp.all(prior_defaults == prior_hparams_default)
     eta_star_default= 1.0
     hp_star_default = jnp.hstack([prior_hparams_default, eta_star_default]) 
 

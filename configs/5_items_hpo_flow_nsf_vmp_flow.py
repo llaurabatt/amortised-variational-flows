@@ -61,7 +61,7 @@ def get_config():
   config.prior_hparams_hparams.kernel_sampling_lengthscale_beta = 0.5
 
   # Number of training steps to run.
-  config.training_steps = 1_000 #300_000
+  config.training_steps = 10_000 #300_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -89,10 +89,10 @@ def get_config():
 #   }
   
 
-  config.num_lp_anchor_train = 120
+  config.num_lp_anchor_train = 80
   config.num_lp_floating_train = 10
   config.num_items_keep = 5 #8
-  config.num_lp_anchor_val = 0
+  config.num_lp_anchor_val = 40
   config.num_lp_anchor_test = 0
   config.remove_empty_forms = True
   config.ad_hoc_val_profiles = False

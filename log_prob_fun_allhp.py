@@ -44,7 +44,7 @@ ModelParamsGammaProfiles = namedtuple(
     ],
     defaults=[None] * 4,
 )
-PriorHparams = namedtuple(
+_BasePriorHparams = namedtuple(
     "prior_hparams",
     field_names=('w_prior_scale', 'a_prior_scale', 
                  'mu_prior_concentration', 'mu_prior_rate', 
@@ -52,6 +52,17 @@ PriorHparams = namedtuple(
                  'kernel_amplitude', 'kernel_length_scale'),
     defaults=(5., 10., 1., 0.5, 1., 1., 0.2, 0.3),
 )
+
+class PriorHparams(_BasePriorHparams):
+    _defaults = {'w_prior_scale': None, 'a_prior_scale': None, 
+                 'mu_prior_concentration': None, 'mu_prior_rate': None, 
+                 'zeta_prior_a': None, 'zeta_prior_b': None, 
+                 'kernel_amplitude': None, 'kernel_length_scale': None}
+
+    @classmethod
+    def set_defaults(cls, **new_defaults):
+        cls._defaults.update(new_defaults)
+        cls.__new__.__defaults__ = tuple(cls._defaults.values())
 
 
 def log_prob_y_equal_1(
