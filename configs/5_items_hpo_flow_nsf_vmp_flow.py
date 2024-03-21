@@ -61,7 +61,7 @@ def get_config():
   config.prior_hparams_hparams.kernel_sampling_lengthscale_beta = 0.5
 
   # Number of training steps to run.
-  config.training_steps = 10_000 #300_000
+  config.training_steps = 50_000 #300_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -146,6 +146,8 @@ def get_config():
   # Metric for Hyperparameter Optimization
   config.synetune_metric = "mean_dist_anchor_val_min"
   config.path_mcmc_img = ''
+  config.path_MCMC_samples = ''
+  config.max_wass_samples = 1000
   # Random seed
   config.seed = 1
 

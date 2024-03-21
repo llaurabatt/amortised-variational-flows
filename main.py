@@ -103,7 +103,7 @@ def main(_):
           print(traceback.print_exc(), file=sys.stderr)
 
     sweep_id = wandb.sweep(sweep=configdict_to_dict(FLAGS.config.sweep_configuration), project=FLAGS.config.wandb_project_name)
-    wandb.agent(sweep_id, function=pagent, count=10)
+    wandb.agent(sweep_id, function=pagent, count=20)
 
   elif FLAGS.config.method == 'vmp_flow_allhp_randomanchors':
     train_vmp_flow_allhp_randomanchors.train_and_evaluate(FLAGS.config, FLAGS.workdir)

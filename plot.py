@@ -17,6 +17,7 @@ from arviz import InferenceData
 from jax import numpy as jnp
 
 from tensorflow_probability.substrates import jax as tfp
+import wandb
 
 from log_prob_fun import (ModelParamsGlobal, ModelParamsLocations,
                           ModelParamsGammaProfiles)
@@ -591,6 +592,7 @@ def lalme_plots_arviz(
     loc_inducing: Optional[Array] = None,
     workdir_png: Optional[str] = None,
     summary_writer: Optional[SummaryWriter] = None,
+    use_wandb: Optional[bool]=False,
     suffix: str = '',
     scatter_kwargs={'alpha': 0.07},
 ):
@@ -916,20 +918,26 @@ def lalme_plots_arviz(
           step=step,
       )
 
-      if mcmc_img is not None:
-        fig, axs = profile_locations_img_level_curves(
-          img = mcmc_img,
-          lalme_az=lalme_az,
-          lalme_dataset=lalme_dataset,
-          profiles_id=lp_floating_grid10,
-          var_name='loc_floating',
-          coord="LP_floating",
-          nrows=2,
-      )
-        if workdir_png:
-          plot_name = "lalme_floating_profiles_grid_mcmc_compare"
-          plot_name += suffix
-          plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    if mcmc_img is not None:
+      fig, axs = profile_locations_img_level_curves(
+        img = mcmc_img,
+        lalme_az=lalme_az,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_floating_grid10,
+        var_name='loc_floating',
+        coord="LP_floating",
+        nrows=2,
+    )
+      if workdir_png:
+        plot_name = "lalme_floating_profiles_grid_mcmc_compare"
+        plot_name += suffix
+        plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+      
+      if use_wandb:
+        image = plot_to_image(fig)
+        images = wandb.Image(image, caption="VI vs MCMC")
+        wandb.log({"VIvsMCMC": images}, step=step)
+
         # image = plot_to_image(fig)
 
         # if summary_writer:

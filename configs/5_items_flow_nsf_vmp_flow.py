@@ -114,8 +114,8 @@ def get_config():
   config.save_samples = False
 
   # Number of samples used in the plots.
-  config.num_samples_plot = 10_000
-  config.num_samples_save = 1_000
+  config.num_samples_plot = 1_000
+  config.num_samples_save = 10_000
   config.num_samples_chunk_plot = 500
 
   # Floating profiles to plot in grid
@@ -134,6 +134,7 @@ def get_config():
   config.checkpoint_steps = config.training_steps // 5
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
+  config.save_last_checkpoint = False
 
   # Number of samples of eta for Meta-Posterior training
   config.eta_sampling_a = 0.5
@@ -144,11 +145,14 @@ def get_config():
   # Metric for Hyperparameter Optimization
   config.synetune_metric = "mean_dist_anchor_val_min"
   config.path_mcmc_img = ''
+  config.path_MCMC_samples = ''
+  config.max_wass_samples = 1000
   # Random seed
   config.seed = 1
 
   config.use_wandb = True
   config.sweep = False
+  config.wandb_evaleta  = 1.0
   config.wandb_project_name = 'LP-example'
   config.fixed_configs_wandb = {
                 "kernel_amplitude": 0.2,
@@ -156,6 +160,5 @@ def get_config():
                 "peak_value":3e-4,
                 "decay_rate":0.5,
             }
-  config.wandb_evaleta  = 1.0
 
   return config

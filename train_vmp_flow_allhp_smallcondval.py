@@ -335,7 +335,7 @@ def sample_all_flows(
 def sample_locations_floating(
     state_list: List[TrainState],
     cond_values: Array,
-    # smi_eta: SmiEta,
+    lalme_dataset: dict,
     prng_key: PRNGKey,
     num_samples: float,
     config: ConfigDict,
@@ -352,7 +352,7 @@ def sample_locations_floating(
 
   # Sampling divided into chunks, to avoid OOM on GPU
   # Split etas into chunks
-  split_idx_ = np.arange(num_samples_chunk, num_samples,
+  split_idx_ = np.arange(num_samples_chunk, num_samples+1,
                         num_samples_chunk).tolist()
   
   if cond_values is not None:
@@ -378,8 +378,36 @@ def sample_locations_floating(
   locations_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
       lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
       *locations_sample)
+
+  # produce az object
+  samples_dict = {'loc_floating':locations_sample._asdict()['loc_floating']}
+  num_chains = samples_dict['loc_floating'].shape[0]
+  num_samples = samples_dict['loc_floating'].shape[1]
+
+  coords_lalme= {"LP_floating":
+            lalme_dataset['LP'][-lalme_dataset['num_profiles_floating']:],
+        "coords": ["x", "y"],
+    }
+
+  assert locations_sample.loc_floating.ndim == 4 and (
+          locations_sample.loc_floating.shape[0] <
+          locations_sample.loc_floating.shape[1]), (
+              "Arrays in model_params_locations" +
+              "are expected to have shapes:" + "(num_chains, num_samples, ...)")
+  dims_lalme = {"loc_floating": ["LP_floating", "coords"]}
+
+  # Remove empty entries in samples_dict
+  for k, v in samples_dict.copy().items():
+    if v is None:
+      del samples_dict[k]
+
+  lalme_az_locations = az.convert_to_inference_data(
+      samples_dict,
+      coords=coords_lalme,
+      dims=dims_lalme,
+  )
   
-  return locations_sample.loc_floating
+  return locations_sample.loc_floating, lalme_az_locations
 
 
 def sample_lalme_az(
@@ -1747,8 +1775,11 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           else:
             cond_values = None
 
+          logging.info(prior_defaults)
 
-          posterior_loc_floating = sample_locations_floating(
+
+          _, az_locations = sample_locations_floating(
+              lalme_dataset=lalme_dataset,
               state_list=state_list,
               cond_values=cond_values,
             #   smi_eta=smi_eta_,
@@ -1759,12 +1790,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           )
 
           # Find the indices that would sort a1 according to the order in a3
-          LPs = lalme_dataset['LP'][-lalme_dataset['num_profiles_floating']:]
-          _, index_order = jnp.unique(LPs, return_index=True)
-          _, new_order = jnp.unique(config.lp_floating_grid10, return_index=True)
-          LP_ordered_indices = index_order[new_order.argsort()]
 
-          loc_samples_VI = posterior_loc_floating[:,LP_ordered_indices,:].squeeze() # assume (n_samples, n_locs, 2)
+          loc_samples_VI = jnp.array(az_locations.posterior[f'loc_floating'].reindex(LP_floating=config.lp_floating_grid10).squeeze())
           n_samples_VI = loc_samples_VI.shape[0]
           if n_samples_VI > config.max_wass_samples:
               idxs = jax.random.choice(key=next(prng_seq), a=n_samples_VI, shape=(config.max_wass_samples,))
@@ -1776,14 +1803,28 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           # Need to swap axis from (n_samples, n_locations, ...) to (n_locations, n_samples, ...)
           WD = jnp.array([ot.emd2(a_mcmc, b_VI, ot.dist(x, y, metric='euclidean')) 
                                           for (x,y) in zip(loc_samples_mcmc.swapaxes(0,1), loc_samples_VI.swapaxes(0,1))])
+          
+          
+          plot.lalme_plots_arviz(
+              lalme_az=az_locations,
+              lalme_dataset=lalme_dataset,
+              step=state_list[0].step,
+              lp_floating_grid10=config.lp_floating_grid10,
+              mcmc_img=(config.path_mcmc_img if config.dataset_id=='coarsen_8_items' else None),
+              workdir_png=workdir,
+              summary_writer=summary_writer,
+              use_wandb=config.use_wandb,
+              suffix=f"eta_{config.wandb_evaleta}",
+              scatter_kwargs={"alpha": 0.10},
+          )
 
           summary_writer.scalar(
               tag='WD_vs_MCMC',
-              value=float(WD),
+              value=float(WD.mean()),
               step=state_list[0].step,
           )
           if config.use_wandb:
-            wandb.log({'WD_vs_MCMC': float(WD)},
+            wandb.log({'WD_vs_MCMC': float(WD.mean())},
                     step=state_list[0].step)
 
       # Estimate posterior distance to true locations
@@ -1896,7 +1937,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       prior_defaults = PriorHparams()
       if config.cond_hparams_names:
         cond_values = get_cond_values(cond_hparams_names=config.cond_hparams_names,
-                        num_samples=config.num_samples_plot,
+                        num_samples=config.num_samples_save,
                         eta_init=eta_i,
                         prior_hparams_init=prior_defaults
                         )
@@ -1913,7 +1954,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           config=config,
           lalme_dataset=lalme_dataset,
           include_gamma=False,
-          num_samples=config.num_samples_plot,
+          num_samples=config.num_samples_save,
           num_samples_chunk=config.num_samples_chunk_plot,
       )
       lalme_az_.to_netcdf(workdir + f'/lalme_az_eta_{float(eta_i):.3f}.nc')
