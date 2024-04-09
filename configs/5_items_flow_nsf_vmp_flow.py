@@ -59,7 +59,7 @@ def get_config():
   config.prior_hparams_hparams.kernel_sampling_lengthscale_beta = 0.5
 
   # Number of training steps to run.
-  config.training_steps = 10_000 #300_000
+  config.training_steps = 300_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -85,7 +85,7 @@ def get_config():
 #       'staircase': False,
 #       'end_value': None,
 #   }
-  config.cond_hparams_names = []
+  config.cond_hparams_names = ['eta']
 
   config.num_lp_anchor_train = 120
   config.num_lp_floating_train = 10
@@ -111,7 +111,7 @@ def get_config():
   # How often to log images to monitor convergence.
   config.log_img_steps = 0 #config.training_steps // 5
   config.log_img_at_end = True
-  config.save_samples = False
+  config.save_samples = True
 
   # Number of samples used in the plots.
   config.num_samples_plot = 1_000
@@ -134,7 +134,7 @@ def get_config():
   config.checkpoint_steps = config.training_steps // 5
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
-  config.save_last_checkpoint = False
+  config.save_last_checkpoint = True
 
   # Number of samples of eta for Meta-Posterior training
   config.eta_sampling_a = 0.5
@@ -153,12 +153,12 @@ def get_config():
   config.use_wandb = True
   config.sweep = False
   config.wandb_evaleta  = 1.0
-  config.wandb_project_name = 'LP-example'
+  config.wandb_project_name = 'LP-VMP-eta'
   config.fixed_configs_wandb = {
                 "kernel_amplitude": 0.2,
                 "kernel_length_scale": 0.3,
-                "peak_value":3e-4,
-                "decay_rate":0.5,
+                "peak_value":9.106e-3,#4.648e-4,
+                "decay_rate":0.6763,#0.7441, #0.5,
             }
 
   return config

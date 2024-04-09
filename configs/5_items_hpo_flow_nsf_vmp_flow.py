@@ -35,7 +35,7 @@ def get_config():
   config.flow_kwargs.loc_y_range = (0., 0.8939394)
 
   # Define priors
-  config.cond_hparams_names = []
+  config.cond_hparams_names = [] #['eta']
 
   config.prior_hparams = ml_collections.ConfigDict()
   config.prior_hparams.mu_prior_concentration = 1.
@@ -46,8 +46,8 @@ def get_config():
   config.prior_hparams.a_prior_scale = 10.
   config.kernel_name = 'ExponentiatedQuadratic'
   config.kernel_kwargs = ml_collections.ConfigDict()
-#   config.kernel_kwargs.amplitude = 0.2
-#   config.kernel_kwargs.length_scale = 0.3
+  config.kernel_kwargs.amplitude = 0.2
+  config.kernel_kwargs.length_scale = 0.3
   config.gp_jitter = 1e-3
 
   config.prior_hparams_hparams = ml_collections.ConfigDict()
@@ -61,7 +61,7 @@ def get_config():
   config.prior_hparams_hparams.kernel_sampling_lengthscale_beta = 0.5
 
   # Number of training steps to run.
-  config.training_steps = 50_000 #300_000
+  config.training_steps = 200_000 #300_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -89,10 +89,10 @@ def get_config():
 #   }
   
 
-  config.num_lp_anchor_train = 80
+  config.num_lp_anchor_train = 120
   config.num_lp_floating_train = 10
   config.num_items_keep = 5 #8
-  config.num_lp_anchor_val = 40
+  config.num_lp_anchor_val = 0
   config.num_lp_anchor_test = 0
   config.remove_empty_forms = True
   config.ad_hoc_val_profiles = False
@@ -153,8 +153,8 @@ def get_config():
 
   config.use_wandb = True
   config.fixed_configs_wandb = {
-            "kernel_amplitude": 0.2,
-            "kernel_length_scale": 0.3,
+            # "kernel_amplitude": 0.2,
+            # "kernel_length_scale": 0.3,
             "peak_value":3e-4,
             "decay_rate":0.5,
         }
@@ -169,11 +169,11 @@ def get_config():
 
   config.sweep = True
   config.wandb_evaleta  = 1.0
-  config.sweep_configuration.metric = {"goal": "minimize", "name": f"mean_dist_anchor_val_eta{config.wandb_evaleta}"}
+  config.sweep_configuration.metric = {"goal": "minimize", "name": "WD_vs_MCMC"} # f"mean_dist_anchor_val_eta{config.wandb_evaleta}"}
 
   config.sweep_configuration.parameters = {
-            "kernel_amplitude": { "min": 0.03, "max": 1.0},
-            "kernel_length_scale": { "min": 0.03, "max": 1.0},
+            # "kernel_amplitude": { "min": 0.03, "max": 1.0},
+            # "kernel_length_scale": { "min": 0.03, "max": 1.0},
             "peak_value":{ "min": 1e-5, "max": 1e-2},
             "decay_rate":{ "min": 0.1, "max": 1.0},
         }

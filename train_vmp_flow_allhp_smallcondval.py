@@ -18,6 +18,7 @@ from jax import numpy as jnp
 
 import haiku as hk
 import optax
+import os
 import ot
 import pickle
 import psutil
@@ -352,7 +353,7 @@ def sample_locations_floating(
 
   # Sampling divided into chunks, to avoid OOM on GPU
   # Split etas into chunks
-  split_idx_ = np.arange(num_samples_chunk, num_samples+1,
+  split_idx_ = np.arange(num_samples_chunk, num_samples,
                         num_samples_chunk).tolist()
   
   if cond_values is not None:
@@ -1286,8 +1287,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         wandb.init(
           project=config.wandb_project_name,
         )
-        config.kernel_kwargs.amplitude = wandb.config.kernel_amplitude
-        config.kernel_kwargs.length_scale = wandb.config.kernel_length_scale
+        # config.kernel_kwargs.amplitude = wandb.config.kernel_amplitude
+        # config.kernel_kwargs.length_scale = wandb.config.kernel_length_scale
         config.optim_kwargs.lr_schedule_kwargs.peak_value = wandb.config.peak_value
         config.optim_kwargs.lr_schedule_kwargs.decay_rate = wandb.config.decay_rate
 
@@ -1297,15 +1298,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           # set the wandb project where this run will be logged
           project=config.wandb_project_name,
           config=config.fixed_configs_wandb,
-          # config={
-          # "kernel_amplitude":config.kernel_kwargs.amplitude,
-          # "kernel_length_scale":config.kernel_kwargs.length_scale,
-          # "peak_value":config.optim_kwargs.lr_schedule_kwargs.peak_value,
-          # "decay_rate": config.optim_kwargs.lr_schedule_kwargs.decay_rate,
-          # }
         )
-        config.kernel_kwargs.amplitude = config.fixed_configs_wandb.kernel_amplitude
-        config.kernel_kwargs.length_scale = config.fixed_configs_wandb.kernel_length_scale
+        # config.kernel_kwargs.amplitude = config.fixed_configs_wandb.kernel_amplitude
+        # config.kernel_kwargs.length_scale = config.fixed_configs_wandb.kernel_length_scale
         config.optim_kwargs.lr_schedule_kwargs.peak_value = config.fixed_configs_wandb.peak_value
         config.optim_kwargs.lr_schedule_kwargs.decay_rate = config.fixed_configs_wandb.decay_rate
 
@@ -1744,7 +1739,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           )
           
     # Metrics for evaluation
-    if ((state_list[0].step == 1) or (state_list[0].step % config.eval_steps == 0)):
+    if ((state_list[0].step == 1) or (state_list[0].step == 10000) or (state_list[0].step % config.eval_steps == 0)):
       logging.info("STEP: %5d; training loss: %.3f", state_list[0].step - 1,
                    metrics["train_loss"])
 
@@ -2013,6 +2008,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   #################################
   # TODO: repeated block, can probably be deleted
   if config.cond_hparams_names:
+    logging.info('Finding best hyperparameters...')
+
     num_profiles_split = train_ds['num_profiles_split']
     LPs = train_ds['LP']
     LPs_split = np.split(
@@ -2032,7 +2029,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     else:
       val_idxs = None
 
-    prior_defaults = jnp.stack(PriorHparams())
+    prior_hparams_default = jnp.stack(PriorHparams()) # check
     eta_star_default= 1.0
     hp_star_default = jnp.hstack([prior_hparams_default, eta_star_default]) 
 
@@ -2045,193 +2042,205 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     optim_mask = jnp.array([1 if i in config.cond_hparams_names else 0 for i in PriorHparams()._fields ] + ([1] if 'eta' in config.cond_hparams_names else [0]))
     print('optim mask:', optim_mask)
     optim_mask_indices = (tuple(i for i, x in enumerate(optim_mask) if x == 0),tuple(i for i, x in enumerate(optim_mask) if x == 1))
-    
-    for init_type, init_val in init_vals.items():
-      
-    
-      hp_star_init = init_val[optim_mask==1]
-      hp_fixed = init_val[optim_mask==0]
-      print(init_type, hp_star_init)
 
-      error_locations_estimate_jit = lambda locations_sample, loc: error_locations_estimate(
-        locations_sample=locations_sample,
-        num_profiles_split=num_profiles_split,
-        loc=loc,
-        floating_anchor_copies=floating_anchor_copies,
-        train_idxs=train_idxs,
-        ad_hoc_val_profiles=ad_hoc_val_profiles,
-        val_idxs=val_idxs,
-      )
-      error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
+    if not os.path.exists(workdir + f'/hparam_tuning'):
+      os.makedirs(workdir + f'/hparam_tuning', exist_ok=True)
 
+    all_optimisers = {'elbo_opt':make_optimizer(**config.optim_kwargs),
+                     'plain_lr1':make_optimizer_hparams(**config.optim_kwargs_hp),  
+                     'plain_lr2':make_optimizer_hparams(**config.optim_kwargs_hp_alternative)}
 
-
-      def mse_fixedhp(
-        hp_params:Array,
-        hp_optim_mask_indices:Tuple,
-        hp_fixed_values:Array,
-        state_list: List[TrainState],
-        batch: Optional[Batch],
-        prng_key: PRNGKey,
-        flow_name: str,
-        flow_kwargs: Dict[str, Any],
-        include_random_anchor:bool,
-        num_samples: int,
-        profile_is_anchor:Array,
-        num_profiles_split:int,
-        config:ConfigDict,
-    ) -> Dict[str, Array]:
-
-        # # Sample eta values
-        # hp_fixed_values = jnp.array(hp_fixed_values)
-        # hp_params_all = jnp.zeros(len(hp_optim_mask_indices[0])+ len(hp_optim_mask_indices[1]))#jnp.zeros(optim_mask.shape)
-        # hp_params_all = hp_params_all.at[(hp_optim_mask_indices[1],)].set(hp_params)
-        # hp_params_all = hp_params_all.at[(hp_optim_mask_indices[0],)].set(hp_fixed_values)
-
+    all_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
+    for optimiser_name, my_optimiser in all_optimisers.items():  
+      for init_type, init_val in init_vals.items():
         
-        # logprobs_rho_dict = logprob_rho(hparams=hp_params_all,
-        #                   w_sampling_scale_alpha=config.prior_hparams_hparams.w_sampling_scale_alpha,
-        #                   w_sampling_scale_beta=config.prior_hparams_hparams.w_sampling_scale_beta,
-        #                   a_sampling_scale_alpha=config.prior_hparams_hparams.a_sampling_scale_alpha,
-        #                   a_sampling_scale_beta=config.prior_hparams_hparams.a_sampling_scale_beta,
-        #                   kernel_sampling_amplitude_alpha=config.prior_hparams_hparams.kernel_sampling_amplitude_alpha,
-        #                   kernel_sampling_amplitude_beta=config.prior_hparams_hparams.kernel_sampling_amplitude_beta,
-        #                   kernel_sampling_lengthscale_alpha=config.prior_hparams_hparams.kernel_sampling_lengthscale_alpha,
-        #                   kernel_sampling_lengthscale_beta=config.prior_hparams_hparams.kernel_sampling_lengthscale_beta,
-        #                   eta_sampling_a=config.eta_sampling_a,
-        #                   eta_sampling_b=config.eta_sampling_b)
-        # logprobs_rho = jnp.array(list(logprobs_rho_dict.values()))
-        # logprobs_rho = logprobs_rho.at[(hp_optim_mask_indices[0],)].set(0.)
-
-        # eta_profiles = jnp.where(
-        #             profile_is_anchor,1.,hp_params_all[-1])#(367)
-        # eta_items = jnp.ones(len(batch['num_forms_tuple'])) #(71)
-
-        # cond_values = jnp.hstack([hp_params_all[:-1],
-        #                           eta_profiles, eta_items,
-        #                           ]) #(n_samples, n_hps+367+71)
-        cond_values = hp_params
-
-        q_distr_out = sample_all_flows(
-            params_tuple=[state.params for state in state_list],
-            prng_key=prng_key,
-            flow_name=flow_name,
-            flow_kwargs=flow_kwargs,
-            cond_values=jnp.broadcast_to(cond_values, (num_samples, len(cond_values))),
-            # smi_eta=smi_eta_,
-            include_random_anchor=include_random_anchor,
-            num_samples=num_samples,
-        )
-
-        error_loc_dict = error_locations_estimate_jit(
-                locations_sample=q_distr_out['locations_sample'],
-                loc=batch['loc'],
-                # num_profiles_split=num_profiles_split,
-                # batch=batch,
-            )
-        return error_loc_dict['mean_dist_anchor_val'] #- logprobs_rho.sum()
       
-      # Jit optimization of hparams 
-        
-      mse_jit = lambda hp_params, batch, prng_key, state_list_vmp,  hp_optim_mask_indices, hp_fixed_values: mse_fixedhp(
-          hp_params=hp_params,
-          hp_optim_mask_indices=hp_optim_mask_indices,
-          hp_fixed_values=hp_fixed_values,
-          state_list=state_list_vmp,
-          batch=batch,
-          prng_key=prng_key,
-          num_samples=config.num_samples_mse,
-          flow_name=config.flow_name,
-          flow_kwargs=config.flow_kwargs,
-          include_random_anchor=config.include_random_anchor,
-          profile_is_anchor=profile_is_anchor,
+        hp_star_init = init_val[optim_mask==1]
+        hp_fixed = init_val[optim_mask==0]
+        print(f"optimiser: {optimiser_name}, init type: {init_type}")
+
+        if jax.process_index() == 0:
+            summary_writer_hp = tensorboard.SummaryWriter(workdir + f'/hparam_tuning/{init_type}_{optimiser_name}')
+            summary_writer_hp.hparams({init_type:hp_star_init, optimiser_name:my_optimiser})
+
+
+        error_locations_estimate_jit = lambda locations_sample, loc: error_locations_estimate(
+          locations_sample=locations_sample,
           num_profiles_split=num_profiles_split,
-          config=config,
-      )
+          loc=loc,
+          floating_anchor_copies=floating_anchor_copies,
+          train_idxs=train_idxs,
+          ad_hoc_val_profiles=ad_hoc_val_profiles,
+          val_idxs=val_idxs,
+        )
+        error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
 
-      mse_jit = jax.jit(mse_jit, static_argnames=('hp_optim_mask_indices'))
 
-      update_hp_star_state = lambda hp_star_state, batch, prng_key: update_state(
-            state=hp_star_state,
+
+        def mse_fixedhp(
+          hp_params:Array,
+          hp_optim_mask_indices:Tuple,
+          hp_fixed_values:Array,
+          state_list: List[TrainState],
+          batch: Optional[Batch],
+          prng_key: PRNGKey,
+          flow_name: str,
+          flow_kwargs: Dict[str, Any],
+          include_random_anchor:bool,
+          num_samples: int,
+          profile_is_anchor:Array,
+          num_profiles_split:int,
+          config:ConfigDict,
+      ) -> Dict[str, Array]:
+
+          # # Sample eta values
+          # hp_fixed_values = jnp.array(hp_fixed_values)
+          # hp_params_all = jnp.zeros(len(hp_optim_mask_indices[0])+ len(hp_optim_mask_indices[1]))#jnp.zeros(optim_mask.shape)
+          # hp_params_all = hp_params_all.at[(hp_optim_mask_indices[1],)].set(hp_params)
+          # hp_params_all = hp_params_all.at[(hp_optim_mask_indices[0],)].set(hp_fixed_values)
+
+          
+          # logprobs_rho_dict = logprob_rho(hparams=hp_params_all,
+          #                   w_sampling_scale_alpha=config.prior_hparams_hparams.w_sampling_scale_alpha,
+          #                   w_sampling_scale_beta=config.prior_hparams_hparams.w_sampling_scale_beta,
+          #                   a_sampling_scale_alpha=config.prior_hparams_hparams.a_sampling_scale_alpha,
+          #                   a_sampling_scale_beta=config.prior_hparams_hparams.a_sampling_scale_beta,
+          #                   kernel_sampling_amplitude_alpha=config.prior_hparams_hparams.kernel_sampling_amplitude_alpha,
+          #                   kernel_sampling_amplitude_beta=config.prior_hparams_hparams.kernel_sampling_amplitude_beta,
+          #                   kernel_sampling_lengthscale_alpha=config.prior_hparams_hparams.kernel_sampling_lengthscale_alpha,
+          #                   kernel_sampling_lengthscale_beta=config.prior_hparams_hparams.kernel_sampling_lengthscale_beta,
+          #                   eta_sampling_a=config.eta_sampling_a,
+          #                   eta_sampling_b=config.eta_sampling_b)
+          # logprobs_rho = jnp.array(list(logprobs_rho_dict.values()))
+          # logprobs_rho = logprobs_rho.at[(hp_optim_mask_indices[0],)].set(0.)
+
+          # eta_profiles = jnp.where(
+          #             profile_is_anchor,1.,hp_params_all[-1])#(367)
+          # eta_items = jnp.ones(len(batch['num_forms_tuple'])) #(71)
+
+          # cond_values = jnp.hstack([hp_params_all[:-1],
+          #                           eta_profiles, eta_items,
+          #                           ]) #(n_samples, n_hps+367+71)
+          cond_values = hp_params
+
+          q_distr_out = sample_all_flows(
+              params_tuple=[state.params for state in state_list],
+              prng_key=prng_key,
+              flow_name=flow_name,
+              flow_kwargs=flow_kwargs,
+              cond_values=jnp.broadcast_to(cond_values, (num_samples, len(cond_values))),
+              # smi_eta=smi_eta_,
+              include_random_anchor=include_random_anchor,
+              num_samples=num_samples,
+          )
+
+          error_loc_dict = error_locations_estimate_jit(
+                  locations_sample=q_distr_out['locations_sample'],
+                  loc=batch['loc'],
+                  # num_profiles_split=num_profiles_split,
+                  # batch=batch,
+              )
+          return error_loc_dict['mean_dist_anchor_val'] #- logprobs_rho.sum()
+        
+        # Jit optimization of hparams 
+          
+        mse_jit = lambda hp_params, batch, prng_key, state_list_vmp,  hp_optim_mask_indices, hp_fixed_values: mse_fixedhp(
+            hp_params=hp_params,
+            hp_optim_mask_indices=hp_optim_mask_indices,
+            hp_fixed_values=hp_fixed_values,
+            state_list=state_list_vmp,
             batch=batch,
             prng_key=prng_key,
-            optimizer=make_optimizer_hparams(**config.optim_kwargs_hp), #make_optimizer(**config.optim_kwargs), 
-            loss_fn=mse_jit,
-            loss_fn_kwargs={
-                'state_list_vmp': state_list,
-                'hp_optim_mask_indices':optim_mask_indices,
-                'hp_fixed_values':hp_fixed,
-            },
+            num_samples=config.num_samples_mse,
+            flow_name=config.flow_name,
+            flow_kwargs=config.flow_kwargs,
+            include_random_anchor=config.include_random_anchor,
+            profile_is_anchor=profile_is_anchor,
+            num_profiles_split=num_profiles_split,
+            config=config,
         )
-      update_hp_star_state = jax.jit(update_hp_star_state)
 
+        mse_jit = jax.jit(mse_jit, static_argnames=('hp_optim_mask_indices'))
 
-      logging.info('Finding best hyperparameters...')
+        update_hp_star_state = lambda hp_star_state, batch, prng_key: update_state(
+              state=hp_star_state,
+              batch=batch,
+              prng_key=prng_key,
+              optimizer=make_optimizer_hparams(**config.optim_kwargs_hp), #make_optimizer(**config.optim_kwargs), 
+              loss_fn=mse_jit,
+              loss_fn_kwargs={
+                  'state_list_vmp': state_list,
+                  'hp_optim_mask_indices':optim_mask_indices,
+                  'hp_fixed_values':hp_fixed,
+              },
+          )
+        update_hp_star_state = jax.jit(update_hp_star_state)
 
-    
-      # Reset random key sequence
-      prng_seq = hk.PRNGSequence(config.seed)
-
-
-      info_dict = {'init':hp_star_init, 'init_type':init_type, 'hp_names':config.cond_hparams_names,
-      'loss':[], 'params':[], 'step':[]}
-
-      # key_search = next(prng_seq)
-
-      # # SGD over elpd for all hparams 
-      hp_star_state = TrainState(
-          params=hp_star_init,
-          opt_state=make_optimizer_hparams(**config.optim_kwargs_hp).init(hp_star_init),
-          step=0,
-      )
-      for _ in range(config.hp_star_steps):
-        hp_star_state, mse = update_hp_star_state(
-            hp_star_state,
-            batch=train_ds,
-            prng_key=next(prng_seq),
-        )
       
-        info_dict['loss'].append(mse["train_loss"])
-        info_dict['params'].append(hp_star_state.params)
-        info_dict['step'].append(hp_star_state.step)
+        # Reset random key sequence
+        prng_seq = hk.PRNGSequence(config.seed)
 
 
-        field_names=('w_prior_scale', 'a_prior_scale', 
-                    # 'mu_prior_concentration', 'mu_prior_rate', 
-                    # 'zeta_prior_a', 'zeta_prior_b', 
-                    'kernel_amplitude', 'kernel_length_scale')
-      
-        
-        if ((hp_star_state.step == 1) or (hp_star_state.step % 100 == 0)):
-          labs = "STEP: %5d; training loss: %.6f " + ' '.join([hp + ':%.3f' for hp in config.cond_hparams_names])
-          logging.info(labs,
-            float(hp_star_state.step),
-          float(mse["train_loss"]), *[float(hp_star_state.params[i]) for i in range(len(config.cond_hparams_names))])
+        info_dict = {'init':hp_star_init, 'init_type':init_type, 'hp_names':config.cond_hparams_names,
+        'loss':[], 'params':[], 'step':[]}
 
-        # Clip eta_star to [0,1] hypercube and hp_star to [0.000001,..]
+        # key_search = next(prng_seq)
+
+        # # SGD over elpd for all hparams 
         hp_star_state = TrainState(
-            params=jnp.hstack([jnp.clip(hp_star_state.params[config.cond_hparams_names.index('w_prior_scale')],0., 10.) if 'w_prior_scale' in config.cond_hparams_names else [],# w_prior_scale
-                              jnp.clip(hp_star_state.params[config.cond_hparams_names.index('a_prior_scale')],3., 19.) if 'a_prior_scale' in config.cond_hparams_names else [],# a_prior_scale
-                              jnp.clip(hp_star_state.params[config.cond_hparams_names.index('kernel_amplitude')],0.1, 0.4) if 'kernel_amplitude' in config.cond_hparams_names else [],# kernel_amplitude
-                              jnp.clip(hp_star_state.params[config.cond_hparams_names.index('kernel_length_scale')],0.2, 0.5) if 'kernel_length_scale' in config.cond_hparams_names else [],# kernel_length_scale
-                              jnp.clip(hp_star_state.params[config.cond_hparams_names.index('eta')], 0., 1.) if 'eta' in config.cond_hparams_names else []]),
-            opt_state=hp_star_state.opt_state,
-            step=hp_star_state.step,
+            params=hp_star_init,
+            opt_state=make_optimizer_hparams(**config.optim_kwargs_hp).init(hp_star_init),
+            step=0,
         )
+        for _ in range(config.hp_star_steps):
+          hp_star_state, mse = update_hp_star_state(
+              hp_star_state,
+              batch=train_ds,
+              prng_key=next(prng_seq),
+          )
+        
+          info_dict['loss'].append(mse["train_loss"])
+          info_dict['params'].append(hp_star_state.params)
+          info_dict['step'].append(hp_star_state.step)
 
-        # summary_writer.scalar(
-        #     tag='rnd_eff_hp_star_neg_elpd',
-        #     value=neg_elpd['train_loss'],
-        #     step=hp_star_state.step - 1,
-        # )
-        # for i, hp_star_i in enumerate(hp_star_state.params):
-        #   summary_writer.scalar(
-        #       tag=f'rnd_eff_eta_star_{i}',
-        #       value=hp_star_i,
-        #       step=hp_star_state.step - 1,
-        #   )
-      with open(workdir + f"/hp_info_{init_type}" + ".sav", 'wb') as f:
-        pickle.dump(info_dict, f)
+
+          field_names=('w_prior_scale', 'a_prior_scale', 
+                      # 'mu_prior_concentration', 'mu_prior_rate', 
+                      # 'zeta_prior_a', 'zeta_prior_b', 
+                      'kernel_amplitude', 'kernel_length_scale')
+        
+          
+          if ((hp_star_state.step == 1) or (hp_star_state.step % 100 == 0)):
+            labs = "STEP: %5d; training loss: %.6f " + ' '.join([hp + ':%.3f' for hp in config.cond_hparams_names])
+            logging.info(labs,
+              float(hp_star_state.step),
+            float(mse["train_loss"]), *[float(hp_star_state.params[i]) for i in range(len(config.cond_hparams_names))])
+
+          # Clip eta_star to [0,1] hypercube and hp_star to [0.000001,..]
+          hp_star_state = TrainState(
+              params=jnp.hstack([jnp.clip(hp_star_state.params[config.cond_hparams_names.index('w_prior_scale')],0., 10.) if 'w_prior_scale' in config.cond_hparams_names else [],# w_prior_scale
+                                jnp.clip(hp_star_state.params[config.cond_hparams_names.index('a_prior_scale')],3., 19.) if 'a_prior_scale' in config.cond_hparams_names else [],# a_prior_scale
+                                jnp.clip(hp_star_state.params[config.cond_hparams_names.index('kernel_amplitude')],0.1, 0.4) if 'kernel_amplitude' in config.cond_hparams_names else [],# kernel_amplitude
+                                jnp.clip(hp_star_state.params[config.cond_hparams_names.index('kernel_length_scale')],0.2, 0.5) if 'kernel_length_scale' in config.cond_hparams_names else [],# kernel_length_scale
+                                jnp.clip(hp_star_state.params[config.cond_hparams_names.index('eta')], 0., 1.) if 'eta' in config.cond_hparams_names else []]),
+              opt_state=hp_star_state.opt_state,
+              step=hp_star_state.step,
+          )
+
+          summary_writer.scalar(
+              tag=f'hp_loss_mse',
+              value=mse['train_loss'],
+              step=hp_star_state.step - 1,
+          )
+          for hp_star_name, hp_star_i in enumerate(hp_star_state.params):
+            summary_writer.scalar(
+                tag=f'hp_opt_{hp_star_name}',
+                value=hp_star_i,
+                step=hp_star_state.step - 1,
+            )
+
+        with open(workdir + f"/hp_info_{'eta' if 'eta' in config.cond_params_names else 'only'}priorhps_{init_type}_{optimiser_name}" + ".sav", 'wb') as f:
+          pickle.dump(info_dict, f)
 
 
 
