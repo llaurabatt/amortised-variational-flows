@@ -528,7 +528,7 @@ def get_cond_values(
     cond_hparams_names: List,
     num_samples: float,
     eta_init: Optional[float],
-    prior_hparams_init: Optional[NamedTuple],
+    prior_hparams_init: Optional[NamedTuple]=None,
     ):
   if 'eta' in cond_hparams_names:
     eta_init = jnp.ones((num_samples, ))*eta_init
@@ -1292,6 +1292,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         config.optim_kwargs.lr_schedule_kwargs.peak_value = wandb.config.peak_value
         config.optim_kwargs.lr_schedule_kwargs.decay_rate = wandb.config.decay_rate
 
+        checkpoint_dir_single_sweep_run = str(pathlib.Path(workdir) / f'checkpoints_{wandb.run.id}')
+        if not os.path.exists(checkpoint_dir_single_sweep_run):
+          os.makedirs(checkpoint_dir_single_sweep_run, exist_ok=True)
+
       # if I am NOT tuning hps
       else:
         wandb.init(
@@ -1418,6 +1422,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
   # Global parameters
   checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints')
+
+
   state_name_list = [
       'global', 'loc_floating', 'loc_floating_aux', 'loc_random_anchor'
   ]
@@ -1864,15 +1870,16 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
     # Wait until computations are done before the next step
     # jax.random.normal(jax.random.PRNGKey(0), ()).block_until_ready()
-
-    logging.info('Final training step: %i', state_list[0].step)
+    logging.info("STEP: %5d terminated; training loss: %.3f", state_list[0].step,
+                   metrics["train_loss"])
+    # logging.info('Final training step: %i', state_list[0].step)
   
   # Saving checkpoint at the end of the training process
   if save_last_checkpoint:
     for state, state_name in zip(state_list, state_name_list):
       save_checkpoint(
           state=state,
-          checkpoint_dir=f'{checkpoint_dir}/{state_name}',
+          checkpoint_dir=f'{checkpoint_dir_single_sweep_run}/{state_name}',
           keep=config.checkpoints_keep,
       )
     del state

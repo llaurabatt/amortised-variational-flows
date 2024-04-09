@@ -8,8 +8,9 @@ REPO_DIR=$PWD
 # Directory to save all outputs
 # WORK_DIR=$HOME/spatial-smi-output-original
 # WORK_DIR=$HOME/HPOPT200k-spatial-smi-output-VPeta1-withintegratedsmallcondval # it is with NOKERNEL
+WORK_DIR=$HOME/HPOPT200k-spatial-smi-output-VPeta1-withintegratedsmallcondval-SALVACHECKPOINT # it is with NOKERNEL
 # WORK_DIR=$HOME/spatial-smi-output-VPeta1-withintegratedsmallcondval-WITHBESTOPTIM
-WORK_DIR=$HOME/spatial-smi-output-integrated-ONLYeta-smallcondval-WITHBESTOPTIM
+# WORK_DIR=$HOME/spatial-smi-output-integrated-ONLYeta-smallcondval-WITHBESTOPTIM
 # WORK_DIR=$HOME/spatial-smi-output-integrated-allhps-40val-smallcondval
 
 # Create output directory and install missing dependencies
@@ -53,18 +54,18 @@ all_eta=('1.000')
 #
 #--config $REPO_DIR/configs/5_items_hpo_flow_nsf_vmp_flow.py \ 
 # --config $REPO_DIR/configs/5_items_flow_nsf_vmp_flow.py \
-# python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_hpo_flow_nsf_vmp_flow.py \
-#                           --config.path_mcmc_img $HOME/my-spatial-smi-oldv/data/5_items_mcmc_floating_eta1.000.png \
-#                           --config.path_MCMC_samples $HOME/spatial-smi-output-original/5_items/mcmc/eta_floating_w500_s15_000_t10_sub100_1.000/lalme_az_10_000s_thinning10.nc \
-#                           --workdir $WORK_DIR/5_items/nsf/vmp_flow \
-#                           --log_dir $WORK_DIR/5_items/nsf/vmp_flow/log_dir \
-#                           --alsologtostderr
-python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_flow_nsf_vmp_flow.py \
+python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_hpo_flow_nsf_vmp_flow.py \
                           --config.path_mcmc_img $HOME/my-spatial-smi-oldv/data/5_items_mcmc_floating_eta1.000.png \
                           --config.path_MCMC_samples $HOME/spatial-smi-output-original/5_items/mcmc/eta_floating_w500_s15_000_t10_sub100_1.000/lalme_az_10_000s_thinning10.nc \
                           --workdir $WORK_DIR/5_items/nsf/vmp_flow \
                           --log_dir $WORK_DIR/5_items/nsf/vmp_flow/log_dir \
                           --alsologtostderr
+# python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_flow_nsf_vmp_flow.py \
+#                           --config.path_mcmc_img $HOME/my-spatial-smi-oldv/data/5_items_mcmc_floating_eta1.000.png \
+#                           --config.path_MCMC_samples $HOME/spatial-smi-output-original/5_items/mcmc/eta_floating_w500_s15_000_t10_sub100_1.000/lalme_az_10_000s_thinning10.nc \
+#                           --workdir $WORK_DIR/5_items/nsf/vmp_flow \
+#                           --log_dir $WORK_DIR/5_items/nsf/vmp_flow/log_dir \
+#                           --alsologtostderr
 # ## MCMC
 ## Single eta
 # multiple VI paths
@@ -81,7 +82,7 @@ python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_flow_nsf_vmp_flow.p
 # done
 
 # VI_path_dict="{'VMP':'/home/llaurabat/spatial-smi-output-integrated-ONLYeta/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc','ADDITIVE-VMP':'/home/llaurabat/spatial-smi-output-original-smallcondval-LASTTRY/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc','VP':'/home/llaurabat/spatial-smi-output-VPeta1-withintegratedsmallcondval/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc'}"
-# VI_path_dict="{'VMP':'/home/llaurabat/spatial-smi-output-integrated-ONLYeta-WITHBESTOPTIM/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc','ADDITIVE-VMP':'/home/llaurabat/spatial-smi-output-original-smallcondval-LASTTRY/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc','VP':'/home/llaurabat/spatial-smi-output-VPeta1-withintegratedsmallcondval-WITHBESTOPTIM/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc'}"
+# VI_path_dict="{'VMP':'/home/llaurabat/spatial-smi-output-integrated-ONLYeta/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc','ADDITIVE-VMP':'/home/llaurabat/spatial-smi-output-original-smallcondval-LASTTRY/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc','VP':'/home/llaurabat/spatial-smi-output-VPeta1-withintegratedsmallcondval-WITHBESTOPTIM/5_items/nsf/vmp_flow/lalme_az_eta_1.000.nc'}"
 
 # for eta in "${all_eta[@]}"
 # do

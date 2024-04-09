@@ -133,7 +133,7 @@ def get_config():
 
   # How often to save model checkpoints.
   config.checkpoint_steps = 0 #config.training_steps // 5
-  config.save_last_checkpoint = False
+  config.save_last_checkpoint = True
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
 
