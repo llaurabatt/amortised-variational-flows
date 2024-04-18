@@ -1443,6 +1443,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           prng_key=next(prng_seq),
           optimizer=make_optimizer(**config.optim_kwargs),
       ))
+  if config.sweep:
+    checkpoint_dir_sweeprun_sub = f'{checkpoint_dir_single_sweep_run}/{state_name_list[0]}'
+    if not os.path.exists(checkpoint_dir_sweeprun_sub):
+          os.makedirs(checkpoint_dir_sweeprun_sub, exist_ok=True)
 
   # Get an initial sample of global parameters
   # (used below to initialize floating locations)
@@ -1471,6 +1475,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           prng_key=next(prng_seq),
           optimizer=make_optimizer(**config.optim_kwargs),
       ))
+  if config.sweep:
+    checkpoint_dir_sweeprun_sub = f'{checkpoint_dir_single_sweep_run}/{state_name_list[1]}'
+    if not os.path.exists(checkpoint_dir_sweeprun_sub):
+          os.makedirs(checkpoint_dir_sweeprun_sub, exist_ok=True)
 
   state_list.append(
       initial_state_ckpt(
@@ -1487,6 +1495,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           prng_key=next(prng_seq),
           optimizer=make_optimizer(**config.optim_kwargs),
       ))
+  if config.sweep:
+    checkpoint_dir_sweeprun_sub = f'{checkpoint_dir_single_sweep_run}/{state_name_list[2]}'
+    if not os.path.exists(checkpoint_dir_sweeprun_sub):
+          os.makedirs(checkpoint_dir_sweeprun_sub, exist_ok=True)
 
   # writer = metric_writers.create_default_writer(
   #     logdir=workdir, just_logging=jax.host_id() != 0)
@@ -1669,6 +1681,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     save_last_checkpoint = True
 
   loss_ = []
+  wd_means = []
+  wd_joints = []
   while state_list[0].step < config.training_steps:
     # step = 0
 
@@ -1818,14 +1832,53 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
               suffix=f"eta_{config.wandb_evaleta}",
               scatter_kwargs={"alpha": 0.10},
           )
+          WD_mean = WD.mean()
+          wd_means.append(WD_mean)
 
           summary_writer.scalar(
               tag='WD_vs_MCMC',
-              value=float(WD.mean()),
+              value=float(WD_mean),
+              step=state_list[0].step,
+          )
+          
+          summary_writer.scalar(
+              tag='min_WD_vs_MCMC',
+              value=float(min(wd_means)),
               step=state_list[0].step,
           )
           if config.use_wandb:
-            wandb.log({'WD_vs_MCMC': float(WD.mean())},
+
+            wandb.log({'WD_vs_MCMC': float(WD_mean)},
+                  step=state_list[0].step)
+            wandb.log({'min_WD_vs_MCMC': float(min(wd_means))},
+                    step=state_list[0].step)
+            
+          mcmc_samples_flat = loc_samples_mcmc.reshape(-1, 2)
+          VI_samples_flat = loc_samples_VI.reshape(-1, 2)
+
+          # Compute the cost matrix between the samples
+          M = ot.dist(mcmc_samples_flat, VI_samples_flat)
+
+          # Compute the WD between the two distributions
+          a_mcmc_flat = jnp.ones((mcmc_samples_flat.shape[0],)) / mcmc_samples_flat.shape[0]
+          b_VI_flat = jnp.ones((VI_samples_flat.shape[0],)) / VI_samples_flat.shape[0]
+          wd_joint = ot.emd2(a_mcmc_flat,b_VI_flat, M)
+          wd_joints.append(wd_joint)
+
+          summary_writer.scalar(
+              tag='WD_joint_vs_MCMC',
+              value=float(wd_joint),
+              step=state_list[0].step,
+          )
+          summary_writer.scalar(
+              tag='min_WD_joint_vs_MCMC',
+              value=float(min(wd_joints)),
+              step=state_list[0].step,
+          )
+          if config.use_wandb:
+            wandb.log({'WD_joint_vs_MCMC': float(wd_joint)},
+                    step=state_list[0].step)
+            wandb.log({'min_WD_joint_vs_MCMC': float(min(wd_joints))},
                     step=state_list[0].step)
 
       # Estimate posterior distance to true locations

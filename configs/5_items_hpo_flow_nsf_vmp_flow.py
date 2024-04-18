@@ -14,6 +14,7 @@ def get_config():
 
   # Defined in `flows.py`.
   config.flow_name = 'meta_nsf'
+  config.cond_hparams_names = ['eta']
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
@@ -35,7 +36,7 @@ def get_config():
   config.flow_kwargs.loc_y_range = (0., 0.8939394)
 
   # Define priors
-  config.cond_hparams_names = [] #['eta']
+  
 
   config.prior_hparams = ml_collections.ConfigDict()
   config.prior_hparams.mu_prior_concentration = 1.
@@ -104,7 +105,7 @@ def get_config():
   config.num_samples_gamma_profiles = 5
 
   # How often to evaluate the model.
-  config.eval_steps = config.training_steps // 5
+  config.eval_steps = config.training_steps // 10 #5
   config.num_samples_eval = 100
   config.eval_last = False
 

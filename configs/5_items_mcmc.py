@@ -49,8 +49,8 @@ def get_config():
 
   config.num_samples_gamma_profiles = 100
 
-  config.num_samples = 15_000 # 10_000, 5_000, 5_000, 100 CHRIS 5_000
-  config.thinning = 10 # Laura
+  config.num_samples =  50_000#15_000 10_000, 5_000, 5_000, 100 CHRIS 5_000
+  config.thinning = 50 # 10 Laura
   # config.num_samples_perchunk_stg1 = 100 # 100, 20 
   config.num_samples_subchain_stg2 = 100 # 300, 100, 100, 10 CHRIS 100
   config.num_samples_perchunk_stg2 = 10 # 100, 100, 20 CHRIS 100

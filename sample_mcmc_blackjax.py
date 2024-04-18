@@ -1032,7 +1032,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   if (config.path_variational_samples != ''):
     Wass_dict = {'LP_order':config.lp_floating_grid10}
     loc_samples_mcmc = jnp.vstack(jnp.array(lalme_az_with_gamma.posterior[f'loc_floating'].reindex(LP_floating=config.lp_floating_grid10)))
-    loc_samples_mcmc = loc_samples_mcmc[1000:] # just last 500 samples
+    # loc_samples_mcmc = loc_samples_mcmc[1000:] # just last 500 samples
     n_samples_mcmc = loc_samples_mcmc.shape[0]
     if n_samples_mcmc > config.max_wass_samples:
         idxs = jax.random.choice(key=next(prng_seq), a=n_samples_mcmc, shape=(config.max_wass_samples,))
@@ -1072,6 +1072,20 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
             scatter_kwargs={"alpha": 0.3},#0.03
             data_labels=["MCMC", "VI"],
         )
+        
+        mcmc_samples_flat = loc_samples_mcmc.reshape(-1, 2)
+        VI_samples_flat = loc_samples_VI.reshape(-1, 2)
+
+        # Compute the cost matrix between the samples
+        M = ot.dist(mcmc_samples_flat, VI_samples_flat)
+
+        # Compute the WD between the two distributions
+        a_mcmc_flat = jnp.ones((mcmc_samples_flat.shape[0],)) / mcmc_samples_flat.shape[0]
+        b_VI_flat = jnp.ones((VI_samples_flat.shape[0],)) / VI_samples_flat.shape[0]
+        wd_joint = ot.emd2(a_mcmc_flat,b_VI_flat, M)
+
+        print(f"WD joint for MCMC vs {VI_name}: {wd_joint}")
+
     def generate_latex_wd_table(data):
         latex_code = """
             \\begin{table}[ht]

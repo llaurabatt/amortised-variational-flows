@@ -14,6 +14,7 @@ def get_config():
 
   # Defined in `flows.py`.
   config.flow_name = 'meta_nsf'
+  config.cond_hparams_names = []
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
@@ -59,7 +60,7 @@ def get_config():
   config.prior_hparams_hparams.kernel_sampling_lengthscale_beta = 0.5
 
   # Number of training steps to run.
-  config.training_steps = 300_000
+  config.training_steps = 200_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -85,7 +86,7 @@ def get_config():
 #       'staircase': False,
 #       'end_value': None,
 #   }
-  config.cond_hparams_names = ['eta']
+
 
   config.num_lp_anchor_train = 120
   config.num_lp_floating_train = 10
@@ -153,7 +154,7 @@ def get_config():
   config.use_wandb = True
   config.sweep = False
   config.wandb_evaleta  = 1.0
-  config.wandb_project_name = 'LP-VMP-eta'
+  config.wandb_project_name = 'LP-example2'
   config.fixed_configs_wandb = {
                 "kernel_amplitude": 0.2,
                 "kernel_length_scale": 0.3,

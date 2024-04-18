@@ -31,7 +31,7 @@ import train_vmp_flow_mse
 import train_vmp_flow_hpnokernel
 import train_vmp_flow_allhp
 import train_vmp_flow_allhp_randomanchors
-import sample_mcmc_blackjax as sample_mcmc
+# import sample_mcmc_blackjax as sample_mcmc
 import sample_mcmc_blackjax_DEBUG as sample_mcmc_debug
 import train_vmp_flow_allhp_smallcondval
 import train_vmp_flow_smallcondvals
@@ -102,9 +102,10 @@ def main(_):
           print("Exception! Printing stack trace")
           print(traceback.print_exc(), file=sys.stderr)
 
-    sweep_id = wandb.sweep(sweep=configdict_to_dict(FLAGS.config.sweep_configuration), project=FLAGS.config.wandb_project_name)
+    sweep_id = wandb.sweep(sweep=configdict_to_dict(FLAGS.config.sweep_configuration))#, project=FLAGS.config.wandb_project_name)
     # "kuf4h4ga"
-    wandb.agent(sweep_id, function=pagent, count=60) #, project=FLAGS.config.wandb_project_name)
+    # "2z6h4k6q"
+    wandb.agent(sweep_id, function=pagent, count=60, project=FLAGS.config.wandb_project_name)
 
   elif FLAGS.config.method == 'vmp_flow_allhp_randomanchors':
     train_vmp_flow_allhp_randomanchors.train_and_evaluate(FLAGS.config, FLAGS.workdir)
