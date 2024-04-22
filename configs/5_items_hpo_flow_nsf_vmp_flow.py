@@ -163,14 +163,14 @@ def get_config():
   
 
 
-  config.wandb_project_name = 'LP-example2'
+  config.wandb_project_name = 'LP-VMP-eta-NEW'
 
   config.sweep_configuration = ml_collections.ConfigDict()
   config.sweep_configuration.method = "bayes"
 
   config.sweep = True
   config.wandb_evaleta  = 1.0
-  config.sweep_configuration.metric = {"goal": "minimize", "name": "WD_vs_MCMC"} # f"mean_dist_anchor_val_eta{config.wandb_evaleta}"}
+  config.sweep_configuration.metric = {"goal": "minimize", "name": "min_WD_joint_vs_MCMC"} # f"mean_dist_anchor_val_eta{config.wandb_evaleta}"}
 
   config.sweep_configuration.parameters = {
             # "kernel_amplitude": { "min": 0.03, "max": 1.0},

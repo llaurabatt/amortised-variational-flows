@@ -1681,8 +1681,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     save_last_checkpoint = True
 
   loss_ = []
-  wd_means = []
-  wd_joints = []
+  mean_dist_anchor_val_min_list = []
+  if (config.path_MCMC_samples != ''):
+    wd_means = []
+    wd_joints = []
   while state_list[0].step < config.training_steps:
     # step = 0
 
@@ -1905,6 +1907,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           idx = jnp.where(eta_eval_grid_ == config.wandb_evaleta)[0][0]
           error_loc_dict[k + f'_eta{config.wandb_evaleta}'] = float(v[idx])
 
+
       for k, v in error_loc_dict.items():
         summary_writer.scalar(
             tag=k,
@@ -1919,6 +1922,15 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           synetune_report(**{k: float(v)})
           # synetune_report(**{k + '_max': float(jnp.max(v))})
 
+      mean_dist_anchor_val_min_list.append(error_loc_dict["mean_dist_anchor_val_min"])
+      summary_writer.scalar(
+          tag='minimum_mean_dist_anchor_val_min',
+          value=float(min(mean_dist_anchor_val_min_list)),
+          step=state_list[0].step,
+      )
+      if config.use_wandb:
+        wandb.log({'minimum_mean_dist_anchor_val_min': float(min(mean_dist_anchor_val_min_list))},
+                step=state_list[0].step)
 
 
     # Wait until computations are done before the next step
@@ -2067,7 +2079,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
   #################################
   # TODO: repeated block, can probably be deleted
-  if config.cond_hparams_names:
+  if config.tune_vmp_hparams:
     logging.info('Finding best hyperparameters...')
 
     num_profiles_split = train_ds['num_profiles_split']
@@ -2211,7 +2223,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             state_list=state_list_vmp,
             batch=batch,
             prng_key=prng_key,
-            num_samples=config.num_samples_mse,
+            num_samples=config.num_samples_hparams_optim,
             flow_name=config.flow_name,
             flow_kwargs=config.flow_kwargs,
             include_random_anchor=config.include_random_anchor,
