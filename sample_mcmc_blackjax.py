@@ -14,6 +14,7 @@ from absl import logging
 import numpy as np
 
 import arviz as az
+from c2st import c2st_scores
 
 import jax
 from jax import numpy as jnp
@@ -1082,9 +1083,18 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
         # Compute the WD between the two distributions
         a_mcmc_flat = jnp.ones((mcmc_samples_flat.shape[0],)) / mcmc_samples_flat.shape[0]
         b_VI_flat = jnp.ones((VI_samples_flat.shape[0],)) / VI_samples_flat.shape[0]
-        wd_joint = ot.emd2(a_mcmc_flat,b_VI_flat, M)
+        wd_joint = ot.emd2(a_mcmc_flat,b_VI_flat, M, numItermax=1000000)
 
         print(f"WD joint for MCMC vs {VI_name}: {wd_joint}")
+
+        var_names_mcmc = list(lalme_az_with_gamma.posterior.data_vars)
+        stacked_array_mcmc = np.hstack([lalme_az_with_gamma.posterior[var_name].values.squeeze().reshape(lalme_az_with_gamma.posterior[var_name].shape[1], -1) for var_name in var_names_mcmc if var_name not in ['gamma_anchor', 'gamma_floating']])
+        
+        var_names_VI = list(lalme_az_variational.posterior.data_vars)
+        stacked_array_VI = np.hstack([lalme_az_variational.posterior[var_name].values.squeeze().reshape(lalme_az_variational.posterior[var_name].shape[1], -1) for var_name in var_names_VI if var_name not in ['gamma_anchor', 'gamma_floating']])
+        c2st, _ = c2st_scores(stacked_array_mcmc, stacked_array_VI)
+        c2st_mean = jnp.array(c2st['accuracy']).mean()
+        print(f"C2ST for MCMC vs {VI_name}: {c2st_mean}")
 
     def generate_latex_wd_table(data):
         latex_code = """
@@ -1133,48 +1143,50 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     # Print the LaTeX code
     print(latex_table_code)
 
+
+
     logging.info("...done!")
 
   logging.info("Plotting results...")
 
-  plot.lalme_plots_arviz(
-      lalme_az=lalme_az_with_gamma,
-      lalme_dataset=lalme_dataset,
-      step=0,
-      show_mu=True,
-      show_zeta=True,
-      show_basis_fields=True,
-      show_W_items=lalme_dataset['items'],
-      show_a_items=lalme_dataset['items'],
-      lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
-      lp_floating_traces=config.lp_floating_grid10,
-      lp_floating_grid10=config.lp_floating_grid10,
-      loc_inducing=train_ds['loc_inducing'],
-      workdir_png=workdir,
-      summary_writer=summary_writer,
-      suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
-      scatter_kwargs={"alpha": 0.05},
-  )
+#   plot.lalme_plots_arviz(
+#       lalme_az=lalme_az_with_gamma,
+#       lalme_dataset=lalme_dataset,
+#       step=0,
+#       show_mu=True,
+#       show_zeta=True,
+#     #   show_basis_fields=True,
+#       show_W_items=lalme_dataset['items'],
+#       show_a_items=lalme_dataset['items'],
+#       lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
+#       lp_floating_traces=config.lp_floating_grid10,
+#       lp_floating_grid10=config.lp_floating_grid10,
+#       loc_inducing=train_ds['loc_inducing'],
+#       workdir_png=workdir,
+#       summary_writer=summary_writer,
+#       suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
+#       scatter_kwargs={"alpha": 0.05},
+#   )
 
-#   del lalme_az
+# #   del lalme_az
 
-  if config.plot_floating_aux:
-    #   if not lalme_stg1_unb_az:
-    #     logging.info("\t Loading samples for stage 1 for aux plot...")
-    #     lalme_stg1_unb_az = az.from_netcdf(samples_path_stg1)
+#   if config.plot_floating_aux:
+#     #   if not lalme_stg1_unb_az:
+#     #     logging.info("\t Loading samples for stage 1 for aux plot...")
+#     #     lalme_stg1_unb_az = az.from_netcdf(samples_path_stg1)
 
-      plot.lalme_plots_arviz(
+#       plot.lalme_plots_arviz(
 
-            lalme_az=lalme_az_with_gamma, #lalme_stg1_unb_az,
-            lalme_dataset=lalme_dataset,
-            step=0,
-            lp_floating_aux_traces=config.lp_floating_grid10,
-            lp_floating_aux_grid10=config.lp_floating_grid10,
-            workdir_png=workdir,
-            summary_writer=summary_writer,
-            suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
-            scatter_kwargs={"alpha": 0.05},
-    )
+#             lalme_az=lalme_az_with_gamma, #lalme_stg1_unb_az,
+#             lalme_dataset=lalme_dataset,
+#             step=0,
+#             lp_floating_aux_traces=config.lp_floating_grid10,
+#             lp_floating_aux_grid10=config.lp_floating_grid10,
+#             workdir_png=workdir,
+#             summary_writer=summary_writer,
+#             suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
+#             scatter_kwargs={"alpha": 0.05},
+#     )
   logging.info("...done!")
 
 

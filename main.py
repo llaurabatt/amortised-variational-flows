@@ -31,7 +31,7 @@ import train_vmp_flow_mse
 import train_vmp_flow_hpnokernel
 import train_vmp_flow_allhp
 import train_vmp_flow_allhp_randomanchors
-# import sample_mcmc_blackjax as sample_mcmc
+import sample_mcmc_blackjax as sample_mcmc
 import sample_mcmc_blackjax_DEBUG as sample_mcmc_debug
 import train_vmp_flow_allhp_smallcondval
 import train_vmp_flow_smallcondvals
@@ -105,13 +105,13 @@ def main(_):
     # sweep_id = wandb.sweep(sweep=configdict_to_dict(FLAGS.config.sweep_configuration), project=FLAGS.config.wandb_project_name)
     # "kuf4h4ga"
     # "2z6h4k6q"
-    wandb.agent("hkg1r3xx", function=pagent, count=60, project=FLAGS.config.wandb_project_name)
+    wandb.agent("3gr5k2nv", function=pagent, count=60, project=FLAGS.config.wandb_project_name)
 
   elif FLAGS.config.method == 'vmp_flow_allhp_randomanchors':
     train_vmp_flow_allhp_randomanchors.train_and_evaluate(FLAGS.config, FLAGS.workdir)
   elif FLAGS.config.method == 'mcmc':
-    with jax.profiler.trace("/home/llaurabat/tmp/jax-trace"):
-        sample_mcmc.sample_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
+    # with jax.profiler.trace("/home/llaurabat/tmp/jax-trace"):
+    sample_mcmc.sample_and_evaluate(config=FLAGS.config, workdir=FLAGS.workdir)
   else:
     raise ValueError(f'Unknown method {FLAGS.config.method}')
 

@@ -14,6 +14,8 @@ def get_config():
 
   # Defined in `flows.py`.
   config.flow_name = 'meta_nsf'
+  config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
+  config.tune_vmp_hparams = True 
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
@@ -66,16 +68,24 @@ def get_config():
   config.optim_kwargs.grad_clip_value = 1.0
   config.optim_kwargs.lr_schedule_name = 'warmup_exponential_decay_schedule'
   config.optim_kwargs.lr_schedule_kwargs = ml_collections.ConfigDict()
-  config.optim_kwargs.lr_schedule_kwargs = {
-      'init_value': 0.,
-      'peak_value': 3e-4,
-      'warmup_steps': 3_000,
-      'transition_steps': 10_000,
-      'decay_rate': 0.6,
-      'transition_begin': 0,
-      'staircase': False,
-      'end_value': None,
-  }
+  config.optim_kwargs.lr_schedule_kwargs.init_value = 0.
+  # config.optim_kwargs.lr_schedule_kwargs.peak_value = 3e-4
+  config.optim_kwargs.lr_schedule_kwargs.warmup_steps = 3_000
+  config.optim_kwargs.lr_schedule_kwargs.transition_steps = 10_000
+  # config.optim_kwargs.lr_schedule_kwargs.decay_rate = 0.6
+  config.optim_kwargs.lr_schedule_kwargs.transition_begin = 0
+  config.optim_kwargs.lr_schedule_kwargs.staircase = False
+  config.optim_kwargs.lr_schedule_kwargs.end_value = None
+  # config.optim_kwargs.lr_schedule_kwargs = {
+  #     'init_value': 0.,
+  #     'peak_value': 3e-4,
+  #     'warmup_steps': 3_000,
+  #     'transition_steps': 10_000,
+  #     'decay_rate': 0.6,
+  #     'transition_begin': 0,
+  #     'staircase': False,
+  #     'end_value': None,
+  # }
 
   # Optimizer for searching hp
   config.optim_kwargs_hp = ml_collections.ConfigDict()
@@ -85,8 +95,7 @@ def get_config():
   config.optim_kwargs_hp_alternative.learning_rate = 1e-2
 
 
-  config.hp_star_steps = 5_000
-  config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale']
+  config.hp_star_steps = 3_000 #5_000
   config.floating_anchor_copies = False # CHECK ALWAYS!!!
   config.num_lp_anchor_train = 80
   config.num_lp_floating_train = 247
@@ -111,13 +120,16 @@ def get_config():
 
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5 
-  config.log_img_at_end = True  
+  config.log_img_at_end = False  
   config.save_samples = False # FLIPPED
+  config.path_MCMC_samples = ''
   config.path_mcmc_img = ''
 
   # Number of samples used in the plots.
   config.num_samples_plot = 10_000 #2_000 for basis fields
+  config.num_samples_save = 1_000 
   config.num_samples_chunk_plot = 500 #100 for basis fields
+  config.num_samples_hparams_optim = 1_000
 
   # Val profiles to plot in grid
   config.lp_anchor_val_grid30 = [88, 104,133, 138,139, 294, 301, 307, 348,  363,
@@ -188,6 +200,7 @@ def get_config():
 
   # How often to save model checkpoints.
   config.checkpoint_steps = config.training_steps // 5
+  config.save_last_checkpoint = True
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
 
@@ -202,5 +215,15 @@ def get_config():
 
   # Random seed
   config.seed = 1
+  config.use_wandb = True
+  config.sweep = False
+  config.wandb_evaleta  = 1.0
+  config.wandb_project_name = 'LP-VMP-all-allitems'
+  config.fixed_configs_wandb = {
+                # "kernel_amplitude": 0.2,
+                # "kernel_length_scale": 0.3,
+                "peak_value":0.001529,
+                "decay_rate":0.5518,
+            }
 
   return config

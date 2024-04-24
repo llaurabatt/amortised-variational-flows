@@ -15,6 +15,7 @@ def get_config():
   # Defined in `flows.py`.
   config.flow_name = 'meta_nsf'
   config.cond_hparams_names = ['eta']
+  config.tune_vmp_hparams = False
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()

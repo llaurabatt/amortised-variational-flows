@@ -5,7 +5,7 @@ import pathlib
 
 from absl import logging
 import arviz as az
-
+from c2st import c2st_scores
 import numpy as np
 from matplotlib import pyplot as plt
 from arviz import InferenceData
@@ -1421,7 +1421,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
 
   # Global parameters
-  checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints')
+  checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints')#_ng26re76')
+  logging.info(f'Checkpoint directory: {checkpoint_dir}')
 
 
   state_name_list = [
@@ -1864,7 +1865,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           # Compute the WD between the two distributions
           a_mcmc_flat = jnp.ones((mcmc_samples_flat.shape[0],)) / mcmc_samples_flat.shape[0]
           b_VI_flat = jnp.ones((VI_samples_flat.shape[0],)) / VI_samples_flat.shape[0]
-          wd_joint = ot.emd2(a_mcmc_flat,b_VI_flat, M)
+          wd_joint = ot.emd2(a_mcmc_flat,b_VI_flat, M, numItermax=1000000)
           wd_joints.append(wd_joint)
 
           summary_writer.scalar(
@@ -1921,16 +1922,16 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         if k == config.synetune_metric:
           synetune_report(**{k: float(v)})
           # synetune_report(**{k + '_max': float(jnp.max(v))})
-
-      mean_dist_anchor_val_min_list.append(error_loc_dict["mean_dist_anchor_val_min"])
-      summary_writer.scalar(
-          tag='minimum_mean_dist_anchor_val_min',
-          value=float(min(mean_dist_anchor_val_min_list)),
-          step=state_list[0].step,
-      )
-      if config.use_wandb:
-        wandb.log({'minimum_mean_dist_anchor_val_min': float(min(mean_dist_anchor_val_min_list))},
-                step=state_list[0].step)
+      # if config.flow_kwargs.num_profiles_anchor > 0:
+      #   mean_dist_anchor_val_min_list.append(error_loc_dict["mean_dist_anchor_val_min"])
+      #   summary_writer.scalar(
+      #       tag='minimum_mean_dist_anchor_val_min',
+      #       value=float(min(mean_dist_anchor_val_min_list)),
+      #       step=state_list[0].step,
+      #   )
+      #   if config.use_wandb:
+      #     wandb.log({'minimum_mean_dist_anchor_val_min': float(min(mean_dist_anchor_val_min_list))},
+      #             step=state_list[0].step)
 
 
     # Wait until computations are done before the next step
@@ -2106,7 +2107,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     hp_star_default = jnp.hstack([prior_hparams_default, eta_star_default]) 
 
     init_vals = {'default':hp_star_default,
-                 'chris_opt':jnp.array([0.75, 4., 1., 0.5, 1., 1., 0.1, 0.2, 0.]),
+                 'mixed':jnp.array([4., 1., 1., 0.5, 1., 1., 0.2, 0.1, 0.75]),
                  'low':jnp.array([1., 4., 1., 0.5, 1., 1., 0.1, 0.2, 0.]),
                  'high':jnp.array([8., 14., 1., 0.5, 1., 1., 0.4, 0.5, 0.5]),}
 
@@ -2118,7 +2119,12 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     if not os.path.exists(workdir + f'/hparam_tuning'):
       os.makedirs(workdir + f'/hparam_tuning', exist_ok=True)
 
-    all_optimisers = {'elbo_opt':make_optimizer(**config.optim_kwargs),
+
+    optim_kwargs_old = config.optim_kwargs.to_dict().copy()
+    optim_kwargs_old['lr_schedule_kwargs']['decay_rate'] = 0.6
+    optim_kwargs_old['lr_schedule_kwargs']['peak_value'] = 3e-4
+    all_optimisers = {'elbo_opt_old':make_optimizer(**optim_kwargs_old), 
+                     'elbo_opt':make_optimizer(**config.optim_kwargs), #note you are using optim kwargs of VMP training
                      'plain_lr1':make_optimizer_hparams(**config.optim_kwargs_hp),  
                      'plain_lr2':make_optimizer_hparams(**config.optim_kwargs_hp_alternative)}
 
@@ -2142,7 +2148,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           loc=loc,
           floating_anchor_copies=floating_anchor_copies,
           train_idxs=train_idxs,
-          ad_hoc_val_profiles=ad_hoc_val_profiles,
+          ad_hoc_val_profiles=ad_hoc_val_profiles, 
           val_idxs=val_idxs,
         )
         error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
@@ -2271,9 +2277,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
               prng_key=next(prng_seq),
           )
         
-          info_dict['loss'].append(mse["train_loss"])
-          info_dict['params'].append(hp_star_state.params)
-          info_dict['step'].append(hp_star_state.step)
+
 
 
           field_names=('w_prior_scale', 'a_prior_scale', 
@@ -2282,7 +2286,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                       'kernel_amplitude', 'kernel_length_scale')
         
           
-          if ((hp_star_state.step == 1) or (hp_star_state.step % 100 == 0)):
+          if ((hp_star_state.step == 0) or (hp_star_state.step == 1) or (hp_star_state.step % 100 == 0)):
             labs = "STEP: %5d; training loss: %.6f " + ' '.join([hp + ':%.3f' for hp in config.cond_hparams_names])
             logging.info(labs,
               float(hp_star_state.step),
@@ -2299,19 +2303,23 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
               step=hp_star_state.step,
           )
 
-          summary_writer.scalar(
+          info_dict['loss'].append(mse["train_loss"])
+          info_dict['params'].append(hp_star_state.params)
+          info_dict['step'].append(hp_star_state.step)
+
+          summary_writer_hp.scalar(
               tag=f'hp_loss_mse',
               value=mse['train_loss'],
               step=hp_star_state.step - 1,
           )
-          for hp_star_name, hp_star_i in enumerate(hp_star_state.params):
-            summary_writer.scalar(
+          for hp_star_name, hp_star_i in zip(config.cond_hparams_names, hp_star_state.params):
+            summary_writer_hp.scalar(
                 tag=f'hp_opt_{hp_star_name}',
                 value=hp_star_i,
                 step=hp_star_state.step - 1,
             )
 
-        with open(workdir + f"/hp_info_{'eta' if 'eta' in config.cond_params_names else 'only'}priorhps_{init_type}_{optimiser_name}" + ".sav", 'wb') as f:
+        with open(workdir + f"/hp_info_{'eta' if 'eta' in config.cond_hparams_names else 'only'}priorhps_{init_type}_{optimiser_name}" + ".sav", 'wb') as f:
           pickle.dump(info_dict, f)
 
 
