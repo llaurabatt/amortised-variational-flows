@@ -16,6 +16,7 @@ def get_config():
   config.flow_name = 'meta_nsf'
   config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
   config.tune_vmp_hparams = True 
+  config.tune_vmp_hparams_fix_eta = True 
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
@@ -189,7 +190,7 @@ def get_config():
   config.lp_random_anchor_10 = None
 
   # eta shown in figures
-  config.eta_plot = [0.42, 1.0]# [0.001, 0.25, 0.42, 0.5, 0.75, 1.0]
+  config.eta_plot = [0.001, 0.25, 0.42, 0.5, 0.75, 1.0]
   config.prior_hparams_plot = [[0.2, 0.2, 1., 0.5, 1., 1., 0.1, 0.5],#optim
                                [5., 10., 1., 0.5, 1., 1., 0.2, 0.3], #optim bound
                                ] # high
@@ -222,8 +223,8 @@ def get_config():
   config.fixed_configs_wandb = {
                 # "kernel_amplitude": 0.2,
                 # "kernel_length_scale": 0.3,
-                "peak_value":0.001529,
-                "decay_rate":0.5518,
+                "peak_value":3e-4,#0.001529,
+                "decay_rate":0.6,#0.5518,
             }
 
   return config
