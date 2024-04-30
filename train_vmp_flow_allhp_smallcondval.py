@@ -27,7 +27,8 @@ from tensorflow_probability.substrates import jax as tfp
 import wandb
 
 import log_prob_fun_allhp
-from log_prob_fun_allhp import ModelParamsGlobal, ModelParamsLocations, PriorHparams, sample_priorhparams_values, logprob_rho
+from log_prob_fun_allhp import (ModelParamsGlobal, ModelParamsLocations, PriorHparams, fix_priorhparams_values,
+                                sample_priorhparams_values, logprob_rho)
 import flows
 import plot
 from train_flow_allhp import (load_data, make_optimizer, get_inducing_points,
@@ -577,6 +578,9 @@ def elbo_estimate_along_eta(
     # kernel_kwargs: Optional[Dict[str, Any]] = None,
     num_samples_gamma_profiles: Optional[int] = 0,
     gp_jitter: Optional[float] = None,
+    eta_fixed: Optional[float] = 1.,
+    training: Optional[bool] = True,
+    cond_hparams_values_evaluation: Optional[Dict] = {},
 ) -> Dict[str, Array]:
   # params_tuple = [state.params for state in state_list]
 
@@ -584,24 +588,31 @@ def elbo_estimate_along_eta(
 
   ## hyperparams for log-joint:
   # Sample hparams
-  # prior_hparams_sample, cond_prior_hparams_values = sample_priorhparams_fn(
-  #     prng_key=next(prng_seq),
-  #     num_samples=num_samples, cond_hparams=cond_hparams,
-  #     **sample_priorhparams_kwargs,
-  # )
-  prior_hparams_sample, cond_prior_hparams_values = sample_priorhparams_fn(
-      prng_seq=prng_seq,
-      num_samples=num_samples, cond_hparams=cond_hparams,
-      **sample_priorhparams_kwargs,
-  )
+
+  if training:
+    prior_hparams_sample, cond_prior_hparams_values = sample_priorhparams_fn(
+        prng_seq=prng_seq,
+        num_samples=num_samples, cond_hparams=cond_hparams,
+        **sample_priorhparams_kwargs,
+    )
 
 
-  # Sample eta values
-  etas_profiles_floating = jax.random.beta(key=next(prng_seq),
-                                           a=eta_sampling_a,
-                                           b=eta_sampling_b,
-                                           shape=(num_samples,)) if 'eta' in cond_hparams else jnp.ones((num_samples,))
-
+    # Sample eta values
+    etas_profiles_floating = jax.random.beta(key=next(prng_seq),
+                                            a=eta_sampling_a,
+                                            b=eta_sampling_b,
+                                            shape=(num_samples,)) if 'eta' in cond_hparams else jnp.ones((num_samples,))*eta_fixed
+  elif not training:
+    # evaluation
+    prior_hparams_sample, cond_prior_hparams_values = fix_priorhparams_values(
+        num_samples=num_samples, 
+        cond_hparams=cond_hparams,
+        cond_hparams_values_evaluation=cond_hparams_values_evaluation,
+    )
+    if 'eta' in cond_hparams:
+      etas_profiles_floating = jnp.ones((num_samples,))*cond_hparams_values_evaluation['eta']
+    else:
+      etas_profiles_floating = jnp.ones((num_samples,))
 
   eta_profiles = jax.vmap(lambda eta_: jnp.where(
               profile_is_anchor,1.,eta_, ))(etas_profiles_floating) #(n_samples, 367)
@@ -1855,8 +1866,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             wandb.log({'min_WD_vs_MCMC': float(min(wd_means))},
                     step=state_list[0].step)
             
-          mcmc_samples_flat = loc_samples_mcmc.reshape(-1, 2)
-          VI_samples_flat = loc_samples_VI.reshape(-1, 2)
+          mcmc_samples_flat = loc_samples_mcmc.reshape(-1, 20)
+          VI_samples_flat = loc_samples_VI.reshape(-1, 20)
 
           # Compute the cost matrix between the samples
           M = ot.dist(mcmc_samples_flat, VI_samples_flat)

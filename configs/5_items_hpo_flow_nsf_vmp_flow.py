@@ -164,7 +164,7 @@ def get_config():
   
 
 
-  config.wandb_project_name = 'LP-VMP-eta-NEW'
+  config.wandb_project_name = 'LP-VMP-eta-LAST'
 
   config.sweep_configuration = ml_collections.ConfigDict()
   config.sweep_configuration.method = "bayes"

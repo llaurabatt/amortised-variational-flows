@@ -1,3 +1,16 @@
+
+#%%
+import debugpy
+#%%
+debugpy.listen(5678)
+print('Waiting for debugger')
+debugpy.wait_for_client()
+print('Debugger attached')
+#%%
+from absl import app
+from absl import flags
+from absl import logging
+
 from functools import partial
 import jax
 from jax import numpy as jnp
@@ -5,20 +18,33 @@ from jax import numpy as jnp
 import haiku as hk
 import math
 import matplotlib.pyplot as plt 
+from ml_collections import config_flags, ConfigDict
 import numpy as np
+import pandas as pd
 import pathlib
-from train_flow_allhp import (load_data, error_locations_estimate)
-from train_vmp_flow_allhp_smallcondval import (sample_all_flows, get_cond_values, PriorHparams, q_distr_global, q_distr_loc_floating, get_inducing_points)
+import re
+from train_flow_allhp import (load_data, error_locations_estimate, make_optimizer)
+from train_vmp_flow_allhp_smallcondval import (sample_all_flows, get_cond_values, loss, PriorHparams, q_distr_global, q_distr_loc_floating, get_inducing_points)
+from log_prob_fun_allhp import sample_priorhparams_values, PriorHparams
 from modularbayes._src.typing import (Any, Array, Batch, Callable, ConfigDict, Dict, List, NamedTuple,
                                       Optional, PRNGKey, SmiEta, SummaryWriter,
                                       Tuple)
-from modularbayes._src.utils import (initial_state_ckpt, make_optimizer)
+from modularbayes import initial_state_ckpt
 from modularbayes._src.utils.training import TrainState
 
+FLAGS = flags.FLAGS
+
+flags.DEFINE_string('workdir', None, 'Directory to store model data.')
+config_flags.DEFINE_config_file(
+    'config',
+    None,
+    'File path to the training hyperparameter configuration.',
+    lock_config=False)
 
 
-
-def amortisation_plot(config: ConfigDict, workdir: str) -> None:
+def amortisation_plot(config: ConfigDict, 
+                      workdir: str,
+                      loss_type: str = 'ELBO') -> None:
     # Remove trailing slash
     workdir = workdir.rstrip("/")
 
@@ -77,20 +103,102 @@ def amortisation_plot(config: ConfigDict, workdir: str) -> None:
     config.flow_kwargs.loc_y_range = tuple(loc_bounds[1])
 
     eta_fixed = 1.
-    if config.cond_prior_hparams:
-        prior_hparams_fixed = PriorHparams(config.prior_hparams_fixed)
-    else:
-        prior_hparams_fixed = None
+    prior_hparams_fixed = PriorHparams(*config.prior_hparams_fixed)
 
     etas = config.etas
-    VMP_dir = str(pathlib.Path(config.workdir_VMP) / 'checkpoints')
-    AdditiveVMP_dir = str(pathlib.Path(config.workdir_AdditiveVMP) / 'checkpoints')
-    VP_dirs = [str(pathlib.Path(workdir) / 'checkpoints') for workdir in config.workdirs_VP]
-    dirs = {f'VP_{k}':v for k,v in zip(etas,VP_dirs)}
-    dirs.update({'VMP':VMP_dir, 'AdditiveVMP':AdditiveVMP_dir})
+    dirs = {}
+    if config.workdir_VMP:
+        VMP_dir = str(pathlib.Path(config.workdir_VMP) / 'checkpoints')
+        dirs['VMP'] = VMP_dir
+    if config.workdir_AdditiveVMP:
+        AdditiveVMP_dir = str(pathlib.Path(config.workdir_AdditiveVMP) / 'checkpoints')
+        dirs['AdditiveVMP'] = AdditiveVMP_dir
+    if config.workdirs_VP:
+        VP_dirs = [str(pathlib.Path(workdir) / 'checkpoints') for workdir in config.workdirs_VP]
+        dirs.update({f'VP_{k}':v for k,v in zip(etas,VP_dirs)})
+    optim_prior_hparams = pd.read_csv(config.optim_prior_hparams_dir + '/fixed_eta_opt.csv', index_col='eta_fixed')
+    optim_prior_hparams =  optim_prior_hparams.to_dict(orient='index')
 
 
-    states = {k:0 for k in dirs.keys()}
+    if loss_type == 'ELBO':
+        partial_ELBO_loss_eval = partial(loss,
+                                        batch=train_ds,
+                                        prng_key=next(prng_seq),
+                                        flow_name=config.flow_name,
+                                        flow_kwargs=config.flow_kwargs,
+                                        include_random_anchor=False,
+                                        num_samples=config.num_samples_amortisation_plot,
+                                        profile_is_anchor=False,
+                                        kernel_name=config.kernel_name,
+                                        sample_priorhparams_fn=sample_priorhparams_values,
+                                        sample_priorhparams_kwargs=config.prior_hparams_hparams,
+                                        num_samples_gamma_profiles=config.num_samples_gamma_profiles,
+                                        gp_jitter=config.gp_jitter,
+                                        num_profiles_anchor=config.num_profiles_anchor,
+                                        num_inducing_points=config.num_inducing_points,
+                                        eta_sampling_a=config.eta_sampling_a,
+                                        eta_sampling_b=config.eta_sampling_b,
+                                        training=False,
+            )
+
+    elif loss_type == 'MSE':
+        error_locations_estimate_jit = lambda locations_sample, loc: error_locations_estimate(
+            locations_sample=locations_sample,
+            num_profiles_split=num_profiles_split,
+            loc=loc,
+            floating_anchor_copies=None,
+            train_idxs=None,
+            ad_hoc_val_profiles=None, 
+            val_idxs=None,
+          )
+        error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
+
+          
+        def mse_fixedhp(
+            hp_params:Array,
+            state_list: List[TrainState],
+            batch: Optional[Batch],
+            prng_key: PRNGKey,
+            flow_name: str,
+            flow_kwargs: Dict[str, Any],
+            include_random_anchor:bool,
+            num_samples: int,
+            eta_fixed:float = None,
+        ) -> Dict[str, Array]:
+
+            if eta_fixed is not None:
+              cond_values = jnp.hstack([hp_params, eta_fixed])
+            else:
+              cond_values = hp_params
+
+            q_distr_out = sample_all_flows(
+                params_tuple=[state.params for state in state_list],
+                prng_key=prng_key,
+                flow_name=flow_name,
+                flow_kwargs=flow_kwargs,
+                cond_values=jnp.broadcast_to(cond_values, (num_samples, len(cond_values))),
+                # smi_eta=smi_eta_,
+                include_random_anchor=include_random_anchor,
+                num_samples=num_samples,
+            )
+
+            error_loc_dict = error_locations_estimate_jit(
+                    locations_sample=q_distr_out['locations_sample'],
+                    loc=batch['loc'],
+                )
+            return error_loc_dict['mean_dist_anchor_val'] #- logprobs_rho.sum()
+          
+        partial_mse_fixedhp = partial(mse_fixedhp, 
+                batch=train_ds,
+                prng_key=next(prng_seq),
+                flow_name=config.flow_name,
+                flow_kwargs=config.flow_kwargs,
+                include_random_anchor=False,
+                num_samples=config.num_samples_amortisation_plot,
+            )
+        partial_mse_fixedhp = jax.jit(partial_mse_fixedhp)
+
+    amortisation_plot_points = {}
 
     for i, (dir_name, dir) in enumerate(dirs.items()):
         # cond values
@@ -98,7 +206,7 @@ def amortisation_plot(config: ConfigDict, workdir: str) -> None:
             cond_values_init = None
         elif ((dir_name=='VMP') or (dir_name=='AdditiveVMP')):
             cond_values_init = get_cond_values(cond_hparams_names=config.cond_hparams_names,
-                                num_samples=config.num_samples_amortisation_plot,
+                                num_samples=config.num_samples_elbo,
                                 eta_init=eta_fixed,
                                 prior_hparams_init=prior_hparams_fixed,
                                 )
@@ -122,7 +230,7 @@ def amortisation_plot(config: ConfigDict, workdir: str) -> None:
                     'flow_kwargs': config.flow_kwargs,
                     'cond_values':cond_values_init,
                     #   'eta': smi_eta_init['profiles'],
-                    'num_samples':config.num_samples_amortisation_plot,
+                    'num_samples':config.num_samples_elbo,
                 },
                 prng_key=next(prng_seq),
                 optimizer=make_optimizer(**config.optim_kwargs),
@@ -137,7 +245,7 @@ def amortisation_plot(config: ConfigDict, workdir: str) -> None:
             flow_kwargs=config.flow_kwargs,
             cond_values=cond_values_init,
             #   eta=smi_eta_init['profiles'],
-            num_samples=config.num_samples_amortisation_plot,
+            num_samples=config.num_samples_elbo,
         )['sample_base']
 
         state_list.append(
@@ -171,84 +279,71 @@ def amortisation_plot(config: ConfigDict, workdir: str) -> None:
                 prng_key=next(prng_seq),
                 optimizer=make_optimizer(**config.optim_kwargs),
             ))
-        states[dir_name] = state_list
 
+        if loss_type == 'ELBO':
+            
+            if ((dir_name=='AdditiveVMP') or (dir_name=='VMP')):
+                amortised_points = []
+                for eta in etas:
+                    cond_hparams_values_evaluation = optim_prior_hparams[eta].copy()
+                    cond_hparams_values_evaluation['eta'] = eta 
+                    amortised_points.append(partial_ELBO_loss_eval(cond_hparams=config.cond_hparams_names,
+                                                        cond_hparams_values_evaluation=cond_hparams_values_evaluation,
+                                                params_tuple=[state.params for state in state_list]))
+                amortisation_plot_points[dir_name] = amortised_points  
 
-    error_locations_estimate_jit = lambda locations_sample, loc: error_locations_estimate(
-        locations_sample=locations_sample,
-        num_profiles_split=num_profiles_split,
-        loc=loc,
-        floating_anchor_copies=None,
-        train_idxs=None,
-        ad_hoc_val_profiles=None,
-        val_idxs=None,
-    )
-    error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
+            elif 'VP' in dir_name:
+                VP_points = []
+                eta = float(re.search(r'\d+(\.\d+)?', dir_name).group())
+                cond_hparams_values_evaluation = optim_prior_hparams[eta].copy()
+                cond_hparams_values_evaluation['eta'] = eta 
+                VP_points.append(partial_ELBO_loss_eval(cond_hparams=[],
+                                                cond_hparams_values_evaluation=cond_hparams_values_evaluation,
+                                            params_tuple=[state.params for state in state_list]))
+                amortisation_plot_points[f'VP_{eta}'] = VP_points
 
+            else:
+                raise ValueError(f"Invalid dir_name: {dir_name}")
+                
+        elif loss_type == 'MSE':
+            if ((dir_name=='AdditiveVMP') or (dir_name=='VMP')):
+                amortised_points = [partial_mse_fixedhp(hp_params=get_cond_values(cond_hparams_names=config.cond_hparams_names,
+                                                                num_samples=1,
+                                                                eta_init=eta,
+                                                                prior_hparams_init=prior_hparams_fixed,
+                                                                ), 
+                                                state_list=state_list) for eta in etas]
+                amortisation_plot_points[dir_name] = amortised_points
+            
+            elif 'VP' in dir_name: 
+                eta = float(re.search(r'\d+(\.\d+)?', dir_name).group()) 
+                VP_points = partial_mse_fixedhp(hp_params=None, state_list=state_list)
+                amortisation_plot_points[f'VP_{eta}'] = VP_points
+            
+            else:
+                raise ValueError(f"Invalid dir_name: {dir_name}") 
+            
+            del state_list
+    return amortisation_plot_points
 
-    def mse_fixedhp(
-            hp_params:Array,
-            state_list: List[TrainState],
-            batch: Optional[Batch],
-            prng_key: PRNGKey,
-            flow_name: str,
-            flow_kwargs: Dict[str, Any],
-            include_random_anchor:bool,
-            num_samples: int,
-        ) -> Dict[str, Array]:
-
-            cond_values = hp_params
-
-            q_distr_out = sample_all_flows(
-                params_tuple=[state.params for state in state_list],
-                prng_key=prng_key,
-                flow_name=flow_name,
-                flow_kwargs=flow_kwargs,
-                cond_values=jnp.broadcast_to(cond_values, (num_samples, len(cond_values))),
-                # smi_eta=smi_eta_,
-                include_random_anchor=include_random_anchor,
-                num_samples=num_samples,
-            )
-
-            error_loc_dict = error_locations_estimate_jit(
-                    locations_sample=q_distr_out['locations_sample'],
-                    loc=batch['loc'],
-                )
-            return error_loc_dict['mean_dist_anchor_val'] 
-
-    mse_fixedhp = jax.jit(mse_fixedhp)
-
-    partial_mse_fixedhp = partial(mse_fixedhp, 
-        batch=train_ds,
-        prng_key=next(prng_seq),
-        flow_name=config.flow_name,
-        flow_kwargs=config.flow_kwargs,
-        include_random_anchor=True,
-        num_samples=config.num_samples_amortisation_plot,
-    )
-
-    VMP_points = [partial_mse_fixedhp(hp_params=get_cond_values(cond_hparams_names=config.cond_hparams_names,
-                                                    num_samples=1,
-                                                    eta_init=eta,
-                                                    prior_hparams_init=prior_hparams_fixed,
-                                                    ), 
-                                      state_list=states['VMP']) for eta in etas]
-    
-    AdditiveVMP_points = [partial_mse_fixedhp(hp_params=get_cond_values(cond_hparams_names=config.cond_hparams_names,
-                                                    num_samples=1,
-                                                    eta_init=eta,
-                                                    prior_hparams_init=prior_hparams_fixed,
-                                                    ), 
-                                              state_list=states['AdditiveVMP']) for eta in etas]
-    
-    VP_points = [partial_mse_fixedhp(hp_params=None, state_list=states[f'VP_{eta}']) for eta in etas]
+def main(_):
+    etas = FLAGS.config.etas
+    # Get the results
+    amortisation_plot_points = amortisation_plot(FLAGS.config, 
+                                                 FLAGS.workdir, 
+                                                 loss_type=FLAGS.config.loss_type)
 
     # Plot the results
     plt.figure(figsize=(10, 5))
-    plt.plot(etas, VMP_points, label='VMP')
-    plt.plot(etas, AdditiveVMP_points, label='AdditiveVMP')
-    plt.plot(etas, VP_points, label='VP')
+    for key, points in amortisation_plot_points.items():
+        plt.plot(etas, points, label=key)
     plt.xlabel('eta')
-    plt.ylabel('MSE')
+    plt.ylabel(FLAGS.config.loss_type)
     plt.legend()
-    plt.savefig(f'{workdir}/mse_vs_eta.png')
+    plt.savefig(f'{FLAGS.workdir}/{FLAGS.config.loss_type}_vs_eta.png')
+
+if __name__ == '__main__':
+    flags.mark_flags_as_required(['config', 'workdir'])
+    app.run(main)
+
+

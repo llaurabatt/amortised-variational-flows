@@ -122,12 +122,16 @@ all_eta=('1.000')
 
 ## Variational Meta-Posterior via VMP-flow
 # Neural Spline Flow
-python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf_vmp_flow.py \
-                          --workdir $WORK_DIR/all_items/nsf/vmp_flow \
-                          --log_dir $WORK_DIR/all_items/nsf/vmp_flow/log_dir \
-                          --alsologtostderr
+# python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf_vmp_flow.py \
+#                           --workdir $WORK_DIR/all_items/nsf/vmp_flow \
+#                           --log_dir $WORK_DIR/all_items/nsf/vmp_flow/log_dir \
+#                           --alsologtostderr
 
 # python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_hpo_flow_nsf_vmp_flow.py \
 #                           --workdir $WORK_DIR/all_items/nsf/vmp_flow \
 #                           --log_dir $WORK_DIR/all_items/nsf/vmp_flow/log_dir \
 #                           --alsologtostderr
+
+python3 $REPO_DIR/amortisation_gap.py --config $REPO_DIR/configs/amortisation_plot_nsf_vmp_flow.py \
+                          --workdir $WORK_DIR/all_items/nsf/vmp_flow \
+                          --alsologtostderr
