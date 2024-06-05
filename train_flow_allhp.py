@@ -4,7 +4,7 @@ import math
 import pathlib
 
 from absl import logging
-import syne_tune
+# import syne_tune
 
 import numpy as np
 import arviz as az
@@ -788,6 +788,7 @@ def error_locations_estimate(
     ad_hoc_val_profiles:bool,
     train_idxs: Optional[Array],
     val_idxs: Optional[Array],
+    return_pointwise: Optional[bool] = False,
     # LPs:Array,
     # batch: Optional[Batch],
 ) -> Dict[str, Array]:
@@ -795,6 +796,8 @@ def error_locations_estimate(
 
 
   error_loc_out = {}
+  if return_pointwise:
+    error_loc_out_pointwise = {}
 
   # Locations of LPs
   # (anchor, anchor_val, anchor_test, floating)
@@ -820,11 +823,15 @@ def error_locations_estimate(
     distances = jnp.linalg.norm(
         pred_floating[0] - targets_all[1][None, ...], ord=2, axis=-1)
     error_loc_out['mean_dist_anchor_val'] = distances.mean()
+    if return_pointwise:
+      error_loc_out_pointwise['dist_anchor_val'] = distances
     error_loc_out['mean_sq_dist_anchor_val'] = (distances**2).mean()
     # Average of distance between true locations and posterior mean
     distances = jnp.linalg.norm(
         pred_floating[0].mean(axis=0) - targets_all[1], ord=2, axis=-1)
     error_loc_out['dist_mean_anchor_val'] = distances.mean()
+    if return_pointwise:
+      error_loc_out_pointwise['dist_mean_anchor_val'] = distances
 
   # Anchor test profiles
   if num_profiles_split[2] > 0:#if batch['num_profiles_split'][2] > 0:
@@ -832,21 +839,29 @@ def error_locations_estimate(
     distances = jnp.linalg.norm(
         pred_floating[1] - targets_all[2][None, ...], ord=2, axis=-1)
     error_loc_out['mean_dist_anchor_test'] = distances.mean()
+    if return_pointwise:
+      error_loc_out_pointwise['dist_anchor_test'] = distances
     error_loc_out['mean_sq_dist_anchor_test'] = (distances**2).mean()
     # Average of distance between true locations and posterior mean
     distances = jnp.linalg.norm(
         pred_floating[1].mean(axis=0) - targets_all[2], ord=2, axis=-1)
     error_loc_out['dist_mean_anchor_test'] = distances.mean()
+    if return_pointwise:
+      error_loc_out_pointwise['dist_mean_anchor_test'] = distances
 
   # Floating profiles
   # Average of Mean posterior distance to Fit-technique locations
   distances = jnp.linalg.norm(
       pred_floating[2] - targets_all[3][None, ...], ord=2, axis=-1)
   error_loc_out['mean_dist_floating'] = distances.mean()
+  if return_pointwise:
+      error_loc_out_pointwise['dist_floating'] = distances
   # Average of distance between Fit-technique locations and posterior mean
   distances = jnp.linalg.norm(
       pred_floating[2].mean(axis=0) - targets_all[3], ord=2, axis=-1)
   error_loc_out['dist_mean_floating'] = distances.mean()
+  if return_pointwise:
+    error_loc_out_pointwise['dist_mean_floating'] = distances
 
   if floating_anchor_copies:
     # if the floating profiles are anchor copies, I want to make sure to use
@@ -860,19 +875,27 @@ def error_locations_estimate(
     distances = jnp.linalg.norm(
       pred_floating[2][:,train_idxs,:] - targets_all[3][train_idxs,:][None, ...], ord=2, axis=-1)
     error_loc_out['mean_dist_floating_copies_only'] = distances.mean()
+    if return_pointwise:
+      error_loc_out_pointwise['dist_floating_copies_only'] = distances
     # Average of distance between Fit-technique locations and posterior mean
     distances = jnp.linalg.norm(
         pred_floating[2][:,train_idxs,:].mean(axis=0) - targets_all[3][train_idxs,:], ord=2, axis=-1)
     error_loc_out['dist_mean_floating_copies_only'] = distances.mean()
+    if return_pointwise:
+      error_loc_out_pointwise['dist_mean_floating_copies_only'] = distances
 
   if ad_hoc_val_profiles:
     distances = jnp.linalg.norm(
     pred_floating[0][:,val_idxs,:] - targets_all[1][val_idxs,:][None, ...], ord=2, axis=-1)
     error_loc_out[f'mean_dist_anchor_val_subset'] = distances.mean()
+    if return_pointwise:
+      error_loc_out_pointwise['dist_anchor_val_subset'] = distances
     # Average of distance between Fit-technique locations and posterior mean
     distances = jnp.linalg.norm(
         pred_floating[0][:,val_idxs,:].mean(axis=0) - targets_all[1][val_idxs,:], ord=2, axis=-1)
     error_loc_out[f'dist_mean_anchor_val_subset'] = distances.mean()
+    if return_pointwise:
+      error_loc_out_pointwise['dist_mean_anchor_val_subset'] = distances
 
 
 
@@ -883,13 +906,20 @@ def error_locations_estimate(
         ord=2,
         axis=-1)
     error_loc_out['mean_dist_random_anchor'] = distances.mean()
+    if return_pointwise:
+      error_loc_out_pointwise['dist_random_anchor'] = distances
     distances = jnp.linalg.norm(
         locations_sample.loc_random_anchor.mean(axis=0) - targets_all[0],
         ord=2,
         axis=-1)
-    error_loc_out['dist_mean_random_anchor'] = distances.mean() 
+    error_loc_out['dist_mean_random_anchor'] = distances.mean()
+    if return_pointwise:
+      error_loc_out_pointwise['dist_mean_random_anchor'] = distances 
 
-  return error_loc_out
+  if return_pointwise:
+    return error_loc_out, error_loc_out_pointwise
+  else:
+    return error_loc_out
 
 
 def train_and_evaluate(config: ConfigDict, workdir: str) -> None:

@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 from arviz import InferenceData
 
 from flax.metrics import tensorboard
-import syne_tune
+# import syne_tune
 
 import jax
 from jax import numpy as jnp
@@ -21,6 +21,7 @@ import optax
 import os
 import ot
 import pickle
+import pandas as pd
 import psutil
 
 from tensorflow_probability.substrates import jax as tfp
@@ -609,7 +610,7 @@ def elbo_estimate_along_eta(
         cond_hparams=cond_hparams,
         cond_hparams_values_evaluation=cond_hparams_values_evaluation,
     )
-    if 'eta' in cond_hparams:
+    if 'eta' in cond_hparams_values_evaluation.keys():
       etas_profiles_floating = jnp.ones((num_samples,))*cond_hparams_values_evaluation['eta']
     else:
       etas_profiles_floating = jnp.ones((num_samples,))
@@ -825,18 +826,6 @@ def error_locations_vector_estimate(
                         )
     else:
       cond_values=None
-    # # eta_i = eta_eval_grid[0]
-    # eta_i_profiles = eta_i * jnp.ones((num_samples, config.num_profiles))
-    # eta_i_profiles = jax.vmap(lambda eta_: jnp.where(
-    #             jnp.arange(config.num_profiles) < config.num_profiles_anchor,
-    #             1.,eta_, ))(eta_i_profiles)
-    
-    # eta_i_items = jnp.ones((num_samples, len(config.num_forms_tuple)))
-    # smi_eta_ = {
-    #     'profiles':eta_i_profiles,
-    #     'items':eta_i_items,
-    # }
-    # cond_values = jnp.hstack([prior_hparams, eta_i_profiles, eta_i_items])
 
     q_distr_out = sample_all_flows(
         params_tuple=[state.params for state in state_list],
@@ -844,7 +833,6 @@ def error_locations_vector_estimate(
         flow_name=config.flow_name,
         flow_kwargs=config.flow_kwargs,
         cond_values=cond_values,
-        # smi_eta=smi_eta_,
         include_random_anchor=config.include_random_anchor,
         num_samples=num_samples,
     )
@@ -1306,6 +1294,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         checkpoint_dir_single_sweep_run = str(pathlib.Path(workdir) / f'checkpoints_{wandb.run.id}')
         if not os.path.exists(checkpoint_dir_single_sweep_run):
           os.makedirs(checkpoint_dir_single_sweep_run, exist_ok=True)
+        checkpoint_dir = checkpoint_dir_single_sweep_run
 
       # if I am NOT tuning hps
       else:
@@ -1319,15 +1308,24 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         config.optim_kwargs.lr_schedule_kwargs.peak_value = config.fixed_configs_wandb.peak_value
         config.optim_kwargs.lr_schedule_kwargs.decay_rate = config.fixed_configs_wandb.decay_rate
 
-  new_defaults = {'w_prior_scale': config.prior_hparams.w_prior_scale, 
-                  'a_prior_scale': config.prior_hparams.a_prior_scale, 
-                 'mu_prior_concentration': config.prior_hparams.mu_prior_concentration, 
-                 'mu_prior_rate': config.prior_hparams.mu_prior_rate, 
-                 'zeta_prior_a': config.prior_hparams.zeta_prior_a, 
-                 'zeta_prior_b': config.prior_hparams.zeta_prior_b, 
-                 'kernel_amplitude': config.kernel_kwargs.amplitude, 
-                 'kernel_length_scale': config.kernel_kwargs.length_scale}
-  
+  if config.optim_prior_hparams_dir_fixed_eta:
+    optim_prior_hparams = pd.read_csv(config.optim_prior_hparams_dir_fixed_eta + '/fixed_eta_opt.csv', index_col='eta_fixed')
+    optim_prior_hparams =  optim_prior_hparams.to_dict(orient='index')
+    new_defaults = optim_prior_hparams[float(config.eta_fixed)]
+    new_defaults.update({'mu_prior_concentration': config.prior_hparams.mu_prior_concentration, 
+                          'mu_prior_rate': config.prior_hparams.mu_prior_rate, 
+                          'zeta_prior_a': config.prior_hparams.zeta_prior_a, 
+                          'zeta_prior_b': config.prior_hparams.zeta_prior_b, })
+  else:
+    new_defaults = {'w_prior_scale': config.prior_hparams.w_prior_scale, 
+                    'a_prior_scale': config.prior_hparams.a_prior_scale, 
+                  'mu_prior_concentration': config.prior_hparams.mu_prior_concentration, 
+                  'mu_prior_rate': config.prior_hparams.mu_prior_rate, 
+                  'zeta_prior_a': config.prior_hparams.zeta_prior_a, 
+                  'zeta_prior_b': config.prior_hparams.zeta_prior_b, 
+                  'kernel_amplitude': config.kernel_kwargs.amplitude, 
+                  'kernel_length_scale': config.kernel_kwargs.length_scale}
+
   PriorHparams.set_defaults(**new_defaults)
 
   if (config.path_MCMC_samples != ''):
@@ -1359,19 +1357,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       k: v for k, v in lalme_dataset.items() if k not in ['items', 'forms']
   }
 
-  # Compute GP covariance between anchor profiles
-  # train_ds['cov_anchor'] = getattr(
-  #     kernels, config.kernel_name)(**config.kernel_kwargs).matrix(
-  #         x1=train_ds['loc'][:train_ds['num_profiles_anchor'], :],
-  #         x2=train_ds['loc'][:train_ds['num_profiles_anchor'], :],
-  #     )
 
   train_ds = get_inducing_points(
       dataset=train_ds,
       inducing_grid_shape=config.flow_kwargs.inducing_grid_shape,
-      # kernel_name=config.kernel_name,
-      # kernel_kwargs=config.kernel_kwargs,
-      # gp_jitter=config.gp_jitter,
   )
 
   LPs = np.split(
@@ -1417,23 +1406,17 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   else:
     cond_values_init = None
 
-#   prior_defaults = jnp.stack(PriorHparams())
-#   prior_hparams=jnp.ones((config.num_samples_elbo, 
-#                                   len(prior_defaults)))*prior_defaults # init params right?
 
-
-#   eta_profiles = jnp.ones((config.num_samples_elbo, train_ds['num_profiles']))
-#   eta_items = jnp.ones((config.num_samples_elbo, len(train_ds['num_forms_tuple'])))
-# #   smi_eta_init = {
-# #       'profiles':eta_profiles,
-# #       'items':eta_items,
-# #   }
-#   cond_values_init = jnp.hstack([prior_hparams, eta_profiles, eta_items])
+  # Checkpoint directory (either sweep directory or global directory)
+  try:
+    checkpoint_dir
+  except NameError:
+    checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints') #_ng26re76')
+  logging.info(f'Checkpoint directory: {checkpoint_dir}')
 
 
   # Global parameters
-  checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints') #_ng26re76')
-  logging.info(f'Checkpoint directory: {checkpoint_dir}')
+
 
 
   state_name_list = [
@@ -1455,10 +1438,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           prng_key=next(prng_seq),
           optimizer=make_optimizer(**config.optim_kwargs),
       ))
-  if config.sweep:
-    checkpoint_dir_sweeprun_sub = f'{checkpoint_dir_single_sweep_run}/{state_name_list[0]}'
-    if not os.path.exists(checkpoint_dir_sweeprun_sub):
-          os.makedirs(checkpoint_dir_sweeprun_sub, exist_ok=True)
+  # if config.sweep:
+  #   checkpoint_dir_sweeprun_sub = f'{checkpoint_dir_single_sweep_run}/{state_name_list[0]}'
+  #   if not os.path.exists(checkpoint_dir_sweeprun_sub):
+  #         os.makedirs(checkpoint_dir_sweeprun_sub, exist_ok=True)
 
   # Get an initial sample of global parameters
   # (used below to initialize floating locations)
@@ -1487,10 +1470,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           prng_key=next(prng_seq),
           optimizer=make_optimizer(**config.optim_kwargs),
       ))
-  if config.sweep:
-    checkpoint_dir_sweeprun_sub = f'{checkpoint_dir_single_sweep_run}/{state_name_list[1]}'
-    if not os.path.exists(checkpoint_dir_sweeprun_sub):
-          os.makedirs(checkpoint_dir_sweeprun_sub, exist_ok=True)
+  # if config.sweep:
+  #   checkpoint_dir_sweeprun_sub = f'{checkpoint_dir_single_sweep_run}/{state_name_list[1]}'
+  #   if not os.path.exists(checkpoint_dir_sweeprun_sub):
+  #         os.makedirs(checkpoint_dir_sweeprun_sub, exist_ok=True)
 
   state_list.append(
       initial_state_ckpt(
@@ -1507,10 +1490,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           prng_key=next(prng_seq),
           optimizer=make_optimizer(**config.optim_kwargs),
       ))
-  if config.sweep:
-    checkpoint_dir_sweeprun_sub = f'{checkpoint_dir_single_sweep_run}/{state_name_list[2]}'
-    if not os.path.exists(checkpoint_dir_sweeprun_sub):
-          os.makedirs(checkpoint_dir_sweeprun_sub, exist_ok=True)
+  # if config.sweep:
+  #   checkpoint_dir_sweeprun_sub = f'{checkpoint_dir_single_sweep_run}/{state_name_list[2]}'
+  #   if not os.path.exists(checkpoint_dir_sweeprun_sub):
+  #         os.makedirs(checkpoint_dir_sweeprun_sub, exist_ok=True)
 
   # writer = metric_writers.create_default_writer(
   #     logdir=workdir, just_logging=jax.host_id() != 0)
@@ -1519,10 +1502,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     summary_writer.hparams(flatten_dict(config))
 
     # Syne-tune for HPO
-    synetune_report = syne_tune.Reporter()
+    # synetune_report = syne_tune.Reporter()
   else:
     summary_writer = None
-    synetune_report = None
+    # synetune_report = None
   summary_writer = tensorboard.SummaryWriter(workdir)
   summary_writer.hparams(flatten_dict(config))
 
@@ -1632,6 +1615,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             'flow_kwargs': config.flow_kwargs,
             'eta_sampling_a': config.eta_sampling_a,
             'eta_sampling_b': config.eta_sampling_b,
+            'eta_fixed': float(config.eta_fixed),
             'cond_hparams':config.cond_hparams_names,
             'include_random_anchor': config.include_random_anchor,
             # 'prior_hparams': config.prior_hparams,
@@ -1929,8 +1913,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           wandb.log({f'{k}': float(v)},
                   step=state_list[0].step)
         # Report the metric used by syne-tune
-        if k == config.synetune_metric:
-          synetune_report(**{k: float(v)})
+        # if k == config.synetune_metric:
+        #   synetune_report(**{k: float(v)})
           # synetune_report(**{k + '_max': float(jnp.max(v))})
       # if config.flow_kwargs.num_profiles_anchor > 0:
       #   mean_dist_anchor_val_min_list.append(error_loc_dict["mean_dist_anchor_val_min"])
@@ -1955,7 +1939,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     for state, state_name in zip(state_list, state_name_list):
       save_checkpoint(
           state=state,
-          checkpoint_dir=f'{checkpoint_dir_single_sweep_run}/{state_name}',
+          checkpoint_dir=f'{checkpoint_dir}/{state_name}',
           keep=config.checkpoints_keep,
       )
     del state
@@ -1990,28 +1974,14 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           step=state_list[0].step,
       )
       # Report the metric used by syne-tune
-      if k == config.synetune_metric and synetune_report is not None:
-        synetune_report(**{k: float(v)})
+      # if k == config.synetune_metric and synetune_report is not None:
+      #   synetune_report(**{k: float(v)})
     logging.info("...done!")
 
   # Save samples from the last state
   if config.save_samples:
     logging.info("Saving samples of VMP...")
     for eta_i in config.eta_plot:
-      # prior_defaults = jnp.stack(PriorHparams())
-      # prior_hparams=jnp.ones((config.num_samples_plot, 
-      #                             len(prior_defaults)))*prior_defaults # init params right?
-      
-      # eta_i_profiles = eta_i * jnp.ones(
-      #     (config.num_samples_plot, config.num_profiles))
-      # eta_i_profiles = jax.vmap(lambda eta_: jnp.where(profile_is_anchor,
-      #             1.,eta_,))(eta_i_profiles)
-      # eta_i_items = jnp.ones((config.num_samples_plot, len(config.num_forms_tuple)))
-      # smi_eta_ = {
-      #     'profiles':eta_i_profiles,
-      #     'items':eta_i_items,
-      # }
-      # cond_values = jnp.hstack([prior_hparams, eta_i_profiles, eta_i_items])
       prior_defaults = PriorHparams()
       if config.cond_hparams_names:
         cond_values = get_cond_values(cond_hparams_names=config.cond_hparams_names,
@@ -2090,8 +2060,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
   #################################
   # TODO: repeated block, can probably be deleted
-  if config.tune_vmp_hparams:
-    logging.info('Finding best hyperparameters...')
+
 
   def tune_vmp_hparams(cond_hparams_names,
                        eta_i:float = None):
@@ -2336,22 +2305,6 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       tune_vmp_hparams(eta_i=eta_i, 
                        cond_hparams_names=[i for i in config.cond_hparams_names if i != 'eta'])
   else:
-    tune_vmp_hparams(cond_hparams_names=config.cond_hparams_names)
-
-#####################################################################################
-# # For debugging
-# config = get_config()
-# workdir = str(pathlib.Path.home() / 'spatial-smi-output-exp/all_items/nsf/vmp_flow')
-# # train_and_evaluate(config, workdir)
-
-# config.checkpoint_steps = -1
-# config.eval_steps = 5000
-# config.kernel_kwargs.amplitude = 0.515
-# config.kernel_kwargs.length_scale = 0.515
-# config.log_img_at_end = False
-# config.log_img_steps = -1
-# config.optim_kwargs.lr_schedule_kwargs.decay_rate = 0.55
-# config.optim_kwargs.lr_schedule_kwargs.peak_value = 0.00031622776601683783
-# config.optim_kwargs.lr_schedule_kwargs.transition_steps = 10000
-# config.synetune_metric = "mean_dist_anchor_val_min"
-# config.training_steps = 30000
+    if config.tune_vmp_hparams:
+      logging.info('Finding best hyperparameters...')
+      tune_vmp_hparams(cond_hparams_names=config.cond_hparams_names)

@@ -19,6 +19,7 @@ import haiku as hk
 import math
 import matplotlib.pyplot as plt 
 from ml_collections import config_flags, ConfigDict
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 import pathlib
@@ -31,6 +32,8 @@ from modularbayes._src.typing import (Any, Array, Batch, Callable, ConfigDict, D
                                       Tuple)
 from modularbayes import initial_state_ckpt
 from modularbayes._src.utils.training import TrainState
+# jax.config.update("jax_enable_x64", True)
+jax.config.update('jax_default_matmul_precision', 'float32')
 
 FLAGS = flags.FLAGS
 
@@ -114,8 +117,8 @@ def amortisation_plot(config: ConfigDict,
         AdditiveVMP_dir = str(pathlib.Path(config.workdir_AdditiveVMP) / 'checkpoints')
         dirs['AdditiveVMP'] = AdditiveVMP_dir
     if config.workdirs_VP:
-        VP_dirs = [str(pathlib.Path(workdir) / 'checkpoints') for workdir in config.workdirs_VP]
-        dirs.update({f'VP_{k}':v for k,v in zip(etas,VP_dirs)})
+        # VP_dirs = [str(pathlib.Path(workdir) / 'checkpoints') for workdir in config.workdirs_VP]
+        dirs.update({f"VP_{float(eta.group(1))}":str(pathlib.Path(dir) / 'checkpoints')  for dir in config.workdirs_VP if (eta := re.search(r'VP_eta_(\d+\.\d+)$', dir))})    
     optim_prior_hparams = pd.read_csv(config.optim_prior_hparams_dir + '/fixed_eta_opt.csv', index_col='eta_fixed')
     optim_prior_hparams =  optim_prior_hparams.to_dict(orient='index')
 
@@ -201,6 +204,7 @@ def amortisation_plot(config: ConfigDict,
     amortisation_plot_points = {}
 
     for i, (dir_name, dir) in enumerate(dirs.items()):
+        print(dir_name)
         # cond values
         if 'VP' in dir_name:
             cond_values_init = None
@@ -217,7 +221,7 @@ def amortisation_plot(config: ConfigDict,
         # Global parameters
         checkpoint_dir = dir
         state_name_list = [
-            'global', 'loc_floating', 'loc_floating_aux', 'loc_random_anchor'
+            'global', 'loc_floating', 'loc_floating_aux',
         ]
         state_list = []
 
@@ -293,14 +297,13 @@ def amortisation_plot(config: ConfigDict,
                 amortisation_plot_points[dir_name] = amortised_points  
 
             elif 'VP' in dir_name:
-                VP_points = []
                 eta = float(re.search(r'\d+(\.\d+)?', dir_name).group())
                 cond_hparams_values_evaluation = optim_prior_hparams[eta].copy()
                 cond_hparams_values_evaluation['eta'] = eta 
-                VP_points.append(partial_ELBO_loss_eval(cond_hparams=[],
+                VP_point = partial_ELBO_loss_eval(cond_hparams=[],
                                                 cond_hparams_values_evaluation=cond_hparams_values_evaluation,
-                                            params_tuple=[state.params for state in state_list]))
-                amortisation_plot_points[f'VP_{eta}'] = VP_points
+                                            params_tuple=[state.params for state in state_list])
+                amortisation_plot_points[dir_name] = VP_point
 
             else:
                 raise ValueError(f"Invalid dir_name: {dir_name}")
@@ -324,6 +327,14 @@ def amortisation_plot(config: ConfigDict,
                 raise ValueError(f"Invalid dir_name: {dir_name}") 
             
             del state_list
+    for eta in etas:
+        is_present = False
+        for i, (dir_name, dir) in enumerate(dirs.items()):
+            if f'VP_{eta}' in dir_name:
+                is_present = True
+                break
+        if is_present is False:
+            amortisation_plot_points[f'VP_{eta}'] = 0. 
     return amortisation_plot_points
 
 def main(_):
@@ -334,13 +345,44 @@ def main(_):
                                                  loss_type=FLAGS.config.loss_type)
 
     # Plot the results
-    plt.figure(figsize=(10, 5))
-    for key, points in amortisation_plot_points.items():
-        plt.plot(etas, points, label=key)
-    plt.xlabel('eta')
-    plt.ylabel(FLAGS.config.loss_type)
-    plt.legend()
-    plt.savefig(f'{FLAGS.workdir}/{FLAGS.config.loss_type}_vs_eta.png')
+    if any('VP' in s for s in list(amortisation_plot_points.keys())):
+        plot_points = {}
+        VP_points = [amortisation_plot_points[f'VP_{eta}'] for eta in etas]
+        plot_points['VP'] = VP_points
+        if 'VMP' in amortisation_plot_points.keys():
+            plot_points['VMP'] = amortisation_plot_points['VMP']
+    else:
+        plot_points = amortisation_plot_points.copy()
+
+    # plt.figure(figsize=(10, 5))
+    # for key, points in plot_points.items():
+    #     plt.plot(etas, points, label=key)
+    # plt.xlabel('eta')
+    # plt.ylabel(FLAGS.config.loss_type)
+    # plt.legend()
+    # plt.savefig(f'{FLAGS.workdir}/{FLAGS.config.loss_type}_vs_eta.png')
+
+
+    # Use a style that is suitable for scientific papers
+    # mpl.style.use('seaborn-v0_8-whitegrid')
+
+    # Increase the default font size and set a readable font, which helps in large formats like conference posters or journals
+    mpl.rcParams['font.size'] = 12
+    # mpl.rcParams['font.family'] = 'serif'
+    mpl.rcParams['axes.labelsize'] = 12
+    mpl.rcParams['xtick.labelsize'] = 10
+    mpl.rcParams['ytick.labelsize'] = 10
+    mpl.rcParams['text.usetex'] = True
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.grid(True, linestyle='--', alpha=0.7)
+    for ix, (key, points) in enumerate(plot_points.items()):
+        ax.plot(etas, points, label=key, marker='o', linestyle='-', markersize=4)  
+    ax.set_xlabel(r'$\eta$ values', fontsize=16)  
+    ylab = 'negative SMI-ELBO' if FLAGS.config.loss_type=='ELBO' else FLAGS.config.loss_type 
+    ax.set_ylabel(ylab, fontsize=14)
+    ax.legend(fontsize=12, loc='best')
+    plt.tight_layout()
+    plt.savefig(f'{FLAGS.workdir}/{FLAGS.config.loss_type}_vs_eta.png', dpi=300)
 
 if __name__ == '__main__':
     flags.mark_flags_as_required(['config', 'workdir'])

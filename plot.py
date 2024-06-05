@@ -21,6 +21,7 @@ import wandb
 
 from log_prob_fun import (ModelParamsGlobal, ModelParamsLocations,
                           ModelParamsGammaProfiles)
+from train_flow_allhp import (error_locations_estimate)
 
 from modularbayes import plot_to_image, normalize_images
 from modularbayes._src.typing import (Any, Array, Dict, List, Mapping, Optional,
@@ -386,6 +387,8 @@ def profile_locations_grid(
     lalme_az_2: Optional[InferenceData] = None,
     lalme_az_list: Optional[List] = None,
     prior_hparams_str_list: Optional[List] = None,
+    MSEs_dict: Optional[Dict] = None,
+
 ):
 
   assert((((lalme_az is not None) or (lalme_az_2 is not None)) and (lalme_az_list is None))
@@ -456,7 +459,9 @@ def profile_locations_grid(
     axs[i // ncols, i % ncols].set_ylim([0, 1])
     axs[i // ncols, i % ncols].set_xlabel("")
     axs[i // ncols, i % ncols].set_ylabel("")
-    axs[i // ncols, i % ncols].set_title(f"Profile: {lp_}" + f", WD {float(wass_dists[lp_]):.2f}" if wass_dists else "")
+    axs[i // ncols, i % ncols].set_title(f"Profile: {lp_}" + \
+                                         (f", MSE {float(MSEs_dict[lp_]):.2f}" if MSEs_dict is not None else "") + \
+                                         (f", WD {float(wass_dists[lp_]):.2f}" if wass_dists is not None else ""))
     if lalme_az_list is not None:
       legend_patches = [Patch(facecolor=colors[j], label=prior_hparams_str_list[j]) for j in jnp.arange(len(prior_hparams_str_list))]
       plt.figlegend(handles=legend_patches, loc='lower center', ncols=3)
@@ -596,6 +601,24 @@ def lalme_plots_arviz(
     suffix: str = '',
     scatter_kwargs={'alpha': 0.07},
 ):
+  
+  # to get per-profile MSEs
+  LPs = np.split(
+      lalme_dataset['LP'],
+      np.cumsum(lalme_dataset['num_profiles_split']),#np.cumsum(batch['num_profiles_split'][1:]),
+  )[:-1]
+
+  _, error_loc_out_pointwise = error_locations_estimate(
+    locations_sample=lalme_az, #Dict[str, Any],
+    num_profiles_split=lalme_dataset['num_profiles_split'],
+    loc=lalme_dataset['loc'],
+    floating_anchor_copies=False,
+    ad_hoc_val_profiles=False,
+    train_idxs=None,
+    val_idxs=None,
+    return_pointwise=True,
+    ) 
+
 
   if show_mu:
     axs = az.plot_trace(
@@ -894,6 +917,11 @@ def lalme_plots_arviz(
 
 
   if lp_floating_grid10 is not None:
+
+    # get per-profile MSEs
+    LP_ixs = jnp.where(LPs==lp_floating_grid10)[0]
+    MSEs = error_loc_out_pointwise['dist_floating'][LP_ixs]
+    MSEs_dict = {lp: mse for lp, mse in zip(lp_floating_grid10, MSEs)}
     fig, axs = profile_locations_grid(
         lalme_az=lalme_az,
         lalme_dataset=lalme_dataset,
@@ -902,6 +930,7 @@ def lalme_plots_arviz(
         coord="LP_floating",
         nrows=2,
         scatter_kwargs=scatter_kwargs,
+        MSEs_dict=MSEs_dict,
     )
     if workdir_png:
       plot_name = "lalme_floating_profiles_grid"
@@ -1045,6 +1074,9 @@ def lalme_plots_arviz(
       )
 
   if lp_anchor_val_grid30 is not None:
+    LP_ixs = jnp.where(LPs==lp_anchor_val_grid30)[0]
+    MSEs = error_loc_out_pointwise['dist_floating'][LP_ixs]
+    MSEs_dict = {lp: mse for lp, mse in zip(lp_floating_grid10, MSEs)}
     # lp_anchor_val = np.setdiff1d(lp_anchor_val, [104, 138, 1198, 1301, 1348])
     fig, axs = profile_locations_grid(
         lalme_az=lalme_az,

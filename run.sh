@@ -13,15 +13,15 @@ REPO_DIR=$PWD
 # WORK_DIR=$HOME/HPOPT200k-spatial-smi-output-VPeta1-withintegratedsmallcondval-SALVACHECKPOINT # it is with NOKERNEL
 # WORK_DIR=$HOME/spatial-smi-output-VPeta1-withintegratedsmallcondval-WITHBESTOPTIM
 # WORK_DIR=$HOME/spatial-smi-output-integrated-ONLYeta-smallcondval-WITHBESTOPTIM
-WORK_DIR=$HOME/spatial-smi-output-integrated-allhps-40val-smallcondval
+WORK_DIR=$HOME/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES
 # WORK_DIR=$HOME/HPOPT-spatial-smi-output-integrated-allhps-40val-smallcondval
 
 # Create output directory and install missing dependencies
 mkdir -p $WORK_DIR
 # pip install -Ur $REPO_DIR/requirements.txt
 
-# all_eta=('0.001' '0.250' '0.500' '0.750' '1.000')
-all_eta=('1.000')
+all_eta=('0.500' '0.750' '1.000' '0.001' '0.05' '0.610') #('0.001' '0.250' '0.420' '0.500' '0.750' '1.000')
+# all_eta=('1.000')
 # ### 8 ITEMS ###
 
 # ## Variational inference
@@ -121,7 +121,17 @@ all_eta=('1.000')
 # done
 
 ## Variational Meta-Posterior via VMP-flow
-# Neural Spline Flow
+# # # Neural Spline Flow
+for eta in "${all_eta[@]}"
+do
+# export JAX_ENABLE_X64=1
+python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf_vmp_flow.py \
+                          --workdir $WORK_DIR/all_items/nsf/vmp_flow/VP_eta_$eta \
+                          --config.eta_fixed $eta \
+                          --log_dir $WORK_DIR/all_items/nsf/vmp_flow/VP_eta_$eta/log_dir \
+                          --alsologtostderr
+done
+
 # python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf_vmp_flow.py \
 #                           --workdir $WORK_DIR/all_items/nsf/vmp_flow \
 #                           --log_dir $WORK_DIR/all_items/nsf/vmp_flow/log_dir \
@@ -130,8 +140,8 @@ all_eta=('1.000')
 # python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_hpo_flow_nsf_vmp_flow.py \
 #                           --workdir $WORK_DIR/all_items/nsf/vmp_flow \
 #                           --log_dir $WORK_DIR/all_items/nsf/vmp_flow/log_dir \
-#                           --alsologtostderr
+# #                           --alsologtostderr
 
-python3 $REPO_DIR/amortisation_gap.py --config $REPO_DIR/configs/amortisation_plot_nsf_vmp_flow.py \
-                          --workdir $WORK_DIR/all_items/nsf/vmp_flow \
-                          --alsologtostderr
+# python3 $REPO_DIR/amortisation_gap.py --config $REPO_DIR/configs/amortisation_plot_nsf_vmp_flow.py \
+#                           --workdir $WORK_DIR/all_items/nsf/vmp_flow \
+#                           --alsologtostderr

@@ -14,9 +14,11 @@ def get_config():
 
   # Defined in `flows.py`.
   config.flow_name = 'meta_nsf'
-  config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
-  config.tune_vmp_hparams = True 
-  config.tune_vmp_hparams_fix_eta = True 
+  config.cond_hparams_names = []#['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
+  config.eta_fixed = ''
+  config.optim_prior_hparams_dir_fixed_eta = '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow'
+  config.tune_vmp_hparams = False 
+  config.tune_vmp_hparams_fix_eta = False 
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
@@ -62,7 +64,7 @@ def get_config():
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 100_000 
+  config.training_steps = 70_000 #100_000 
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -96,7 +98,7 @@ def get_config():
   config.optim_kwargs_hp_alternative.learning_rate = 1e-2
 
 
-  config.hp_star_steps = 3_000 #5_000
+  config.hp_star_steps = 5_000 #3_000
   config.floating_anchor_copies = False # CHECK ALWAYS!!!
   config.num_lp_anchor_train = 80
   config.num_lp_floating_train = 247
@@ -109,8 +111,8 @@ def get_config():
   1327, 1329, 1330, 1332, 1345, 1348]
 
   # Number of posteriors samples to approximate the variational loss (ELBO).
-  config.num_samples_elbo = 3
-  config.num_samples_gamma_profiles = 3
+  config.num_samples_elbo = 50
+  config.num_samples_gamma_profiles = 5
 
   # How often to evaluate the model.
   config.eval_steps = config.training_steps // 5 
@@ -190,7 +192,7 @@ def get_config():
   config.lp_random_anchor_10 = None
 
   # eta shown in figures
-  config.eta_plot = [0.001, 0.25, 0.42, 0.5, 0.75, 1.0]
+  config.eta_plot = [0.001, 0.05, 0.25, 0.42, 0.5, 0.61, 0.75, 1.0]
   config.prior_hparams_plot = [[0.2, 0.2, 1., 0.5, 1., 1., 0.1, 0.5],#optim
                                [5., 10., 1., 0.5, 1., 1., 0.2, 0.3], #optim bound
                                ] # high

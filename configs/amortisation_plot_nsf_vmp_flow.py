@@ -9,12 +9,17 @@ def get_config():
 
   # Dataset to use
   config.dataset_id = 'coarsen_all_items'
-  config.workdir_VMP = '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
+  config.workdir_VMP = '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow'
+  config.workdirs_VP = ['/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.001',
+                        '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.250',
+                        '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.420',
+                        '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.500',
+                        '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.750',
+                        '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_1.000']
   config.workdir_AdditiveVMP = ''
-  config.workdirs_VP = []
-  config.optim_prior_hparams_dir = '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
+  config.optim_prior_hparams_dir = '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow'
   config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
-  config.etas = [0.001, 0.25, 0.42, 0.5, 0.75, 1.]
+  config.etas = [0.001, 0.05, 0.25, 0.42, 0.5, 0.61, 0.75, 1.]
   config.prior_hparams_fixed = [5., 10., 1., 0.5, 1., 1., 0.2, 0.3]
   config.num_samples_amortisation_plot = 50
   config.loss_type = 'ELBO'

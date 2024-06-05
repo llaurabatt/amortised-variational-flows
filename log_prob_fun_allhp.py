@@ -668,7 +668,7 @@ def fix_priorhparams_values(
     cond_hparams_values_evaluation: Optional[Dict] = {},
 ) -> PriorHparams:
   """Generate a sample of the prior hyperparameters values applicable to the model."""
-  assert cond_hparams == list(cond_hparams_values_evaluation.keys())
+  # assert cond_hparams == list(cond_hparams_values_evaluation.keys())
   defaults = PriorHparams()
   priorhps_sample = PriorHparams(
      w_prior_scale = jnp.ones((num_samples,))*cond_hparams_values_evaluation['w_prior_scale'] 

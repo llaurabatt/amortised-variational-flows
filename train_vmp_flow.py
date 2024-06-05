@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from arviz import InferenceData
 
 from flax.metrics import tensorboard
-import syne_tune
+# import syne_tune
 
 import jax
 from jax import numpy as jnp

@@ -4,7 +4,7 @@ import math
 import pathlib
 
 from absl import logging
-import syne_tune
+# import syne_tune
 
 import numpy as np
 import arviz as az

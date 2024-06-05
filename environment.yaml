@@ -1,0 +1,33 @@
+name: spatial-smi-oldv-micromamba
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python >=3.9, <3.11
+  - pip:
+    - jax[tpu]
+  - absl-py
+  - arviz
+  - blackjax =1.0.0
+  - chex >=0.1.82
+  - debugpy
+  - distrax >=0.1.4
+  - dm-haiku >=0.0.10
+  - ipykernel
+  - ipython
+  - matplotlib
+  - ml-collections >=0.1.1
+  - notebook
+  - numpy
+  - optax >=0.1.7
+  - pandas
+  - POT
+  - scikit-learn
+  - scipy
+  - seaborn
+  - tensorboard
+  - tqdm
+  - wandb
+  - pip:
+    # - pre-commit
+    - --editable ./
