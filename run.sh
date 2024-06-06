@@ -20,7 +20,7 @@ WORK_DIR=$HOME/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOS
 mkdir -p $WORK_DIR
 # pip install -Ur $REPO_DIR/requirements.txt
 
-all_eta=('0.500' '0.750' '1.000' '0.001' '0.05' '0.610') #('0.001' '0.250' '0.420' '0.500' '0.750' '1.000')
+all_eta=('0.05' '0.500' '0.750' '1.000' '0.001' '0.610') #('0.001' '0.250' '0.420' '0.500' '0.750' '1.000')
 # all_eta=('1.000')
 # ### 8 ITEMS ###
 

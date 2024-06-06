@@ -425,6 +425,7 @@ def sample_lalme_az(
     lalme_dataset: Dict[str, Any],
     include_gamma: bool = False,
     num_samples_chunk: int = 1_000,
+    return_location_samples: bool = False,
 ) -> InferenceData:
   """Plots to monitor during training."""
 
@@ -523,8 +524,10 @@ def sample_lalme_az(
       model_params_locations=locations_sample,
       model_params_gamma=gamma_sample,
   )
-
-  return lalme_az
+  if return_location_samples:
+    return lalme_az, locations_sample
+  else:
+    return lalme_az
 
 def get_cond_values(
     cond_hparams_names: List,
@@ -940,7 +943,7 @@ def log_images(
     else:
       cond_values = None
     
-    lalme_az_ = sample_lalme_az(
+    lalme_az_, locations_sample = sample_lalme_az(
         state_list=state_list,
         batch=batch,
         cond_values=cond_values,
@@ -952,7 +955,31 @@ def log_images(
         include_gamma=show_basis_fields,
         num_samples=config.num_samples_plot,
         num_samples_chunk=num_samples_chunk,
+        return_location_samples=True,
     )
+
+    locations_sample = jax.tree_map(lambda x: jnp.squeeze(x, axis=0), locations_sample)
+    # get per-profile MSEs
+    _, MSEs_pointwise = error_locations_estimate(
+      locations_sample=locations_sample, #Dict[str, Any],
+      num_profiles_split=lalme_dataset['num_profiles_split'],
+      loc=lalme_dataset['loc'],
+      floating_anchor_copies=False,
+      ad_hoc_val_profiles=False,
+      train_idxs=None,
+      val_idxs=None,
+      return_pointwise=True,
+    )
+
+    LPs = np.split(
+      lalme_dataset['LP'],
+      np.cumsum(lalme_dataset['num_profiles_split']),#np.cumsum(batch['num_profiles_split'][1:]),
+    )[:-1]
+
+    if LPs[1].size != 0:
+      MSEs_anchor_val_dict = {lp: float(mse) for lp, mse in zip(LPs[1], MSEs_pointwise['dist_anchor_val'])}
+    else:
+      MSEs_anchor_val_dict = None
 
     plot.lalme_plots_arviz(
         lalme_az=lalme_az_,
@@ -980,6 +1007,7 @@ def log_images(
         summary_writer=summary_writer,
         suffix=f"_eta_floating_{float(eta_i):.3f}_sigma_a_{prior_hparams_init_vals[0]:.3f}_sigma_w_{prior_hparams_init_vals[1]:.3f}_sigma_K_{prior_hparams_init_vals[-2]:.3f}_ls_K_{prior_hparams_init_vals[-1]:.3f}",
         scatter_kwargs={"alpha": 0.10},
+        MSEs_anchor_val_dict=MSEs_anchor_val_dict,
     )
 
     if show_location_priorhp_compare:
@@ -1699,6 +1727,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             show_mu=True,
             show_zeta=True,
             lp_floating_grid10=config.lp_floating_grid10,
+            lp_anchor_val_grid21=config.lp_anchor_val_grid21,
             lp_random_anchor_grid10=config.lp_random_anchor_10,
             show_eval_metric=True,
             eta_eval_grid=jnp.linspace(0, 1, 21),
@@ -2027,7 +2056,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         # lp_floating_traces=config.lp_floating_grid10,
         lp_floating_grid10=config.lp_floating_grid10,
         # lp_anchor_val_grid30=config.lp_anchor_val_grid30,
-        # lp_anchor_val_grid21=config.lp_anchor_val_grid21,
+        lp_anchor_val_grid21=config.lp_anchor_val_grid21,
         # lp_anchor_val_grid28=config.lp_anchor_val_grid28,
         # lp_anchor_val_grid10=config.lp_anchor_val_grid10,
         # lp_random_anchor=(

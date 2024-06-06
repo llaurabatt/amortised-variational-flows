@@ -11,9 +11,11 @@ def get_config():
   config.dataset_id = 'coarsen_all_items'
   config.workdir_VMP = '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow'
   config.workdirs_VP = ['/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.001',
+                        '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.05',
                         '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.250',
                         '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.420',
                         '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.500',
+                        '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.610',
                         '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.750',
                         '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_1.000']
   config.workdir_AdditiveVMP = ''
