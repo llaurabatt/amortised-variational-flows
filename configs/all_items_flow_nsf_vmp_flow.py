@@ -123,15 +123,15 @@ def get_config():
 
   # How often to log images to monitor convergence.
   config.log_img_steps = config.training_steps // 5 
-  config.log_img_at_end = False  
+  config.log_img_at_end = True  
   config.save_samples = False # FLIPPED
   config.path_MCMC_samples = ''
   config.path_mcmc_img = ''
 
   # Number of samples used in the plots.
-  config.num_samples_plot = 10_000 #2_000 for basis fields
+  config.num_samples_plot = 2_000 #10_000, 2_000 for basis fields
   config.num_samples_save = 1_000 
-  config.num_samples_chunk_plot = 500 #100 for basis fields
+  config.num_samples_chunk_plot = 100 #500, 100 for basis fields
   config.num_samples_hparams_optim = 1_000
 
   # Val profiles to plot in grid
@@ -199,7 +199,7 @@ def get_config():
                               #  [1., 4., 1., 0.5, 1., 1., 0.5, 0.9],
                               #  [8., 15., 1., 0.5, 1., 1., 0.1, 0.05]]
   # config.prior_hparams_plot_optim = [5.5, 11,  1., 0.5, 1., 1., 0.4, 0.2]
-  config.prior_hparams_plot_optim = [0.2, 0.2,  1., 0.5, 1., 1., 0.1, 0.5]
+  config.prior_hparams_plot_optim = [] # [0.2, 0.2,  1., 0.5, 1., 1., 0.1, 0.5]
 
   # How often to save model checkpoints.
   config.checkpoint_steps = config.training_steps // 5

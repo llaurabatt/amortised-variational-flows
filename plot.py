@@ -13,7 +13,7 @@ import seaborn as sns
 
 import arviz as az
 from arviz import InferenceData
-
+from matplotlib import ticker
 from jax import numpy as jnp
 
 from tensorflow_probability.substrates import jax as tfp
@@ -234,6 +234,7 @@ def plot_basis_fields_az(
     lalme_dataset: Dict[str, Any],
     loc_inducing: Array,
     use_gamma_anchor: bool = False,
+    global_legend: bool = True,
 ) -> Tuple[Figure, Axes]:
 
   # Total number of base GPs
@@ -260,39 +261,73 @@ def plot_basis_fields_az(
 
   # Average over samples
   gamma_mean = jnp.mean(gamma, axis=[0, 1])
+  if global_legend:
+    global_min = np.min([np.min(gamma_mean[f]) for f in range(num_basis_gps)])
+    global_max = np.max([np.max(gamma_mean[f]) for f in range(num_basis_gps)])
 
   # Create plotting grid
-  # axs_nrows = int(np.ceil(np.sqrt(num_basis_gps)))
-  # axs_ncols = int(np.ceil(np.sqrt(num_basis_gps)))
-  axs_nrows = 1
-  axs_ncols = num_basis_gps
+
+
+  matplotlib.rcParams['font.size'] = 12
+  matplotlib.rcParams['font.family'] = 'serif'
+  matplotlib.rcParams['axes.labelsize'] = 12
+  matplotlib.rcParams['xtick.labelsize'] = 10
+  matplotlib.rcParams['ytick.labelsize'] = 10
+  matplotlib.rcParams['text.usetex'] = True
+  axs_nrows = 2
+  axs_ncols = num_basis_gps//2 + num_basis_gps % 2
   # fig, ax = plt.subplots()
   fig, axs = plt.subplots(
       nrows=axs_nrows,
       ncols=axs_ncols,
       figsize=(3. * axs_ncols, 2.5 * axs_nrows),
+      sharex=True, sharey=True,
   )
-  fig.suptitle("Basis Fields")
+  # fig.suptitle("Basis Fields")
 
   # For each base GP
   for f, ax in enumerate(axs.reshape(-1)[:num_basis_gps]):
     # Plot the mean of the basis field
     x_plot, y_plot = np.split(loc, 2, axis=-1)
     z_plot = np.round(gamma_mean[f], 2)
-    cntr2 = ax.tricontour(
-        x_plot.squeeze(), y_plot.squeeze(), z_plot, cmap="Greys")
-    if len(cntr2.levels) > 1:
-      fig.colorbar(cntr2, ax=ax)
+    if global_legend:
+      cntr2 = ax.tricontour(
+          x_plot.squeeze(), y_plot.squeeze(), z_plot, 
+          levels=np.linspace(global_min, global_max, 100),  
+          cmap="Greys")
     else:
-      ax.text(
-          x_plot.max(),
-          y_plot.max(),
-          cntr2.levels[0],
-          horizontalalignment='right',
-          verticalalignment='top',
-          transform=ax.transAxes)
-
+      cntr2 = ax.tricontour(
+      x_plot.squeeze(), y_plot.squeeze(), z_plot, 
+      cmap="Greys")
+      if len(cntr2.levels) > 1:
+        fig.colorbar(cntr2, ax=ax)
+      else:
+        ax.text(
+            x_plot.max(),
+            y_plot.max(),
+            cntr2.levels[0],
+            horizontalalignment='right',
+            verticalalignment='top',
+            transform=ax.transAxes)
+        
+    ax.set_title(f"Basis {f+1}")
+        
+  for ax in axs.flatten()[num_basis_gps:]:
+    ax.remove()
+  
   plt.tight_layout()
+
+  fig.subplots_adjust(right=0.9) 
+
+  cbar_ax = fig.add_axes([0.93, 0.15, 0.02, 0.7])  # x, y, width, height
+  cbar = fig.colorbar(cntr2, cax=cbar_ax)
+  
+  cbar.formatter = ticker.FormatStrFormatter('%.2f')
+  cbar.update_ticks()
+  # fig.colorbar(cntr2, ax=axs, orientation='vertical', fraction=.02) 
+  
+
+
   return fig, axs
 
 
@@ -402,6 +437,15 @@ def profile_locations_grid(
     nrows = int(np.sqrt(len(profiles_id)))
   ncols = len(profiles_id) // nrows
   ncols += 1 if len(profiles_id) % nrows else 0
+
+
+  matplotlib.rcParams['font.size'] = 12
+  matplotlib.rcParams['font.family'] = 'serif'
+  matplotlib.rcParams['axes.labelsize'] = 12
+  matplotlib.rcParams['xtick.labelsize'] = 10
+  matplotlib.rcParams['ytick.labelsize'] = 10
+  matplotlib.rcParams['text.usetex'] = True
+  
 
   fig, axs = plt.subplots(
       nrows,

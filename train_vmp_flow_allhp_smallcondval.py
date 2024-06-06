@@ -478,25 +478,46 @@ def sample_lalme_az(
     if include_gamma:
       # Get a sample of the basis GPs on profiles locations
       # conditional on values at the inducing locations.
-      gamma_sample_, _, _ = jax.vmap(
-          lambda key_, global_, locations_: log_prob_fun_allhp.
-          sample_gamma_profiles_given_gamma_inducing(
-              batch=batch,
-              model_params_global=global_,
-              model_params_locations=locations_,
-              prng_key=key_,
-              prior_hparams=PriorHparams(*prior_hparams),#(*prior_hparams_[0]),
-              kernel_name=config.kernel_name,
-              # kernel_kwargs=config.kernel_kwargs,
-              gp_jitter=config.gp_jitter,
-              num_profiles_anchor=config.num_profiles_anchor,
-              num_inducing_points=config.num_inducing_points,
-              include_random_anchor=config.include_random_anchor,
-          ))(
-              jax.random.split(next(prng_seq), cond_val_.shape[0]),
-              q_distr_out['global_sample'],
-              q_distr_out['locations_sample'],
-          )
+      if cond_val_ is not None:
+        gamma_sample_, _, _ = jax.vmap(
+            lambda key_, global_, locations_: log_prob_fun_allhp.
+            sample_gamma_profiles_given_gamma_inducing(
+                batch=batch,
+                model_params_global=global_,
+                model_params_locations=locations_,
+                prng_key=key_,
+                prior_hparams=PriorHparams(*prior_hparams),#(*prior_hparams_[0]),
+                kernel_name=config.kernel_name,
+                # kernel_kwargs=config.kernel_kwargs,
+                gp_jitter=config.gp_jitter,
+                num_profiles_anchor=config.num_profiles_anchor,
+                num_inducing_points=config.num_inducing_points,
+                include_random_anchor=config.include_random_anchor,
+            ))(
+                jax.random.split(next(prng_seq), cond_val_.shape[0]),
+                q_distr_out['global_sample'],
+                q_distr_out['locations_sample'],
+            )
+      else:
+                gamma_sample_, _, _ = jax.vmap(
+            lambda key_, global_, locations_: log_prob_fun_allhp.
+            sample_gamma_profiles_given_gamma_inducing(
+                batch=batch,
+                model_params_global=global_,
+                model_params_locations=locations_,
+                prng_key=key_,
+                prior_hparams=PriorHparams(*prior_hparams),#(*prior_hparams_[0]),
+                kernel_name=config.kernel_name,
+                # kernel_kwargs=config.kernel_kwargs,
+                gp_jitter=config.gp_jitter,
+                num_profiles_anchor=config.num_profiles_anchor,
+                num_inducing_points=config.num_inducing_points,
+                include_random_anchor=config.include_random_anchor,
+            ))(
+                jax.random.split(next(prng_seq), num_samples_chunk),
+                q_distr_out['global_sample'],
+                q_distr_out['locations_sample'],
+            )
 
       gamma_sample.append(gamma_sample_)
 
@@ -1353,8 +1374,14 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                   'zeta_prior_b': config.prior_hparams.zeta_prior_b, 
                   'kernel_amplitude': config.kernel_kwargs.amplitude, 
                   'kernel_length_scale': config.kernel_kwargs.length_scale}
-
+  
   PriorHparams.set_defaults(**new_defaults)
+
+  if 'eta' not in config.cond_hparams_names:
+    if config.eta_fixed:
+      config.eta_plot = [float(config.eta_fixed)]
+    else:
+      config.eta_plot = [1.0]
 
   if (config.path_MCMC_samples != ''):
       lalme_az_mcmc = az.from_netcdf(config.path_MCMC_samples)
@@ -2049,7 +2076,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         cond_hparams_names=config.cond_hparams_names,
         # show_mu=True,
         # show_zeta=True, 
-        show_basis_fields=False,
+        show_basis_fields=True,
         # show_W_items=lalme_dataset['items'],
         # show_a_items=lalme_dataset['items'],
         # lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],

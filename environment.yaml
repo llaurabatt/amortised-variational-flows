@@ -28,6 +28,7 @@ dependencies:
   - tensorboard
   - tqdm
   - wandb
+  - SciencePlots
   - pip:
     # - pre-commit
     - --editable ./
