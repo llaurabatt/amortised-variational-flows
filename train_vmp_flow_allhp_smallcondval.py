@@ -499,7 +499,7 @@ def sample_lalme_az(
                 q_distr_out['locations_sample'],
             )
       else:
-                gamma_sample_, _, _ = jax.vmap(
+        gamma_sample_, _, _ = jax.vmap(
             lambda key_, global_, locations_: log_prob_fun_allhp.
             sample_gamma_profiles_given_gamma_inducing(
                 batch=batch,
@@ -898,6 +898,7 @@ def log_images(
     lp_anchor_val_grid28:Optional[List[int]] = None,
     lp_anchor_val_grid10:Optional[List[int]] = None,
     lp_anchor_val_grid21:Optional[List[int]] = None,
+    lp_anchor_val_grid4:Optional[List[int]] = None,
     mcmc_img: Optional[str] = None,
     lp_random_anchor: Optional[List[int]] = None,
     lp_random_anchor_grid10: Optional[List[int]] = None,
@@ -1002,6 +1003,11 @@ def log_images(
     else:
       MSEs_anchor_val_dict = None
 
+    if LPs[3].size != 0:
+      MSEs_float_dict = {lp: float(mse) for lp, mse in zip(LPs[3], MSEs_pointwise['dist_floating'])}
+    else:
+      MSEs_float_dict = None
+
     plot.lalme_plots_arviz(
         lalme_az=lalme_az_,
         lalme_dataset=lalme_dataset,
@@ -1018,6 +1024,7 @@ def log_images(
         lp_anchor_val_grid28=lp_anchor_val_grid28,
         lp_anchor_val_grid21=lp_anchor_val_grid21,
         lp_anchor_val_grid10=lp_anchor_val_grid10,
+        lp_anchor_val_grid4=lp_anchor_val_grid4,
         mcmc_img=(mcmc_img if eta_i==1.000 else None),
         lp_random_anchor=lp_random_anchor,
         lp_random_anchor_grid10=lp_random_anchor_grid10,
@@ -1029,12 +1036,14 @@ def log_images(
         suffix=f"_eta_floating_{float(eta_i):.3f}_sigma_a_{prior_hparams_init_vals[0]:.3f}_sigma_w_{prior_hparams_init_vals[1]:.3f}_sigma_K_{prior_hparams_init_vals[-2]:.3f}_ls_K_{prior_hparams_init_vals[-1]:.3f}",
         scatter_kwargs={"alpha": 0.10},
         MSEs_anchor_val_dict=MSEs_anchor_val_dict,
+        MSEs_float_dict=MSEs_float_dict,
     )
 
     if show_location_priorhp_compare:
       print('Plotting comparing results...')
       lalme_az_list = []
       prior_hparams_str_list = []
+      MSEs_anchor_val_dict_list = []
       for prior_hparams_i in config.prior_hparams_plot:
         print('Samples per prior hparam set')
 
@@ -1051,8 +1060,9 @@ def log_images(
           cond_values=None
 
         # cond_values = jnp.hstack([prior_hparams_i_samples, eta_i_profiles,eta_i_items])
+        
 
-        lalme_az_ = sample_lalme_az(
+        lalme_az_, locations_sample_ = sample_lalme_az(
             state_list=state_list,
             batch=batch,
             cond_values=cond_values,
@@ -1064,9 +1074,36 @@ def log_images(
             include_gamma=show_basis_fields,
             num_samples=config.num_samples_plot,
             num_samples_chunk=num_samples_chunk,
+            return_location_samples=True,
         )
         lalme_az_list.append(lalme_az_)
         prior_hparams_str_list.append(fr'$\sigma_a$: {prior_hparams_i[0]}, $\sigma_w$: {prior_hparams_i[1]}, $\sigma_K$: {prior_hparams_i[-2]}, $ls_K$: {prior_hparams_i[-1]}')
+
+
+        locations_sample_ = jax.tree_map(lambda x: jnp.squeeze(x, axis=0), locations_sample_)
+        # get per-profile MSEs
+        _, MSEs_pointwise = error_locations_estimate(
+          locations_sample=locations_sample_, #Dict[str, Any],
+          num_profiles_split=lalme_dataset['num_profiles_split'],
+          loc=lalme_dataset['loc'],
+          floating_anchor_copies=False,
+          ad_hoc_val_profiles=False,
+          train_idxs=None,
+          val_idxs=None,
+          return_pointwise=True,
+        )
+
+        LPs = np.split(
+          lalme_dataset['LP'],
+          np.cumsum(lalme_dataset['num_profiles_split']),#np.cumsum(batch['num_profiles_split'][1:]),
+        )[:-1]
+
+        if LPs[1].size != 0:
+          MSEs_anchor_val_dict = {lp: float(mse) for lp, mse in zip(LPs[1], MSEs_pointwise['dist_anchor_val'])}
+        else:
+          MSEs_anchor_val_dict = None
+
+        MSEs_anchor_val_dict_list.append(MSEs_anchor_val_dict)
 
       plot.lalme_priorhparam_compare_plots_arviz(
           lalme_az_list=lalme_az_list,
@@ -1086,6 +1123,7 @@ def log_images(
           summary_writer=summary_writer,
           suffix=f"_eta_floating_{float(eta_i):.3f}_priorhp_compare",
           scatter_kwargs={"alpha": 0.10},
+          MSEs_anchor_val_dict_list=MSEs_anchor_val_dict_list
           )
 
   ### Evaluation metrics ###
@@ -1128,7 +1166,7 @@ def log_images(
       axs.set_ylabel('Mean posterior distance')
       axs.set_title(
           'Error square distance for held-out (validation) anchor profiles\n' +
-          '(Mean distance^2 posterior vs. truth)')
+          '(Mean distance squared posterior vs. truth)')
       fig.tight_layout()
       if workdir_png:
         fig.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
@@ -1466,7 +1504,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   try:
     checkpoint_dir
   except NameError:
-    checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints') #_ng26re76')
+    checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints_rahzlmon')
   logging.info(f'Checkpoint directory: {checkpoint_dir}')
 
 
@@ -1907,7 +1945,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                     step=state_list[0].step)
             
           mcmc_samples_flat = loc_samples_mcmc.reshape(-1, 20)
+          print('mcmc joint WD shape:', mcmc_samples_flat.shape)
           VI_samples_flat = loc_samples_VI.reshape(-1, 20)
+          print('VI joint WD shape:', VI_samples_flat.shape)
 
           # Compute the cost matrix between the samples
           M = ot.dist(mcmc_samples_flat, VI_samples_flat)
@@ -2076,16 +2116,17 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         cond_hparams_names=config.cond_hparams_names,
         # show_mu=True,
         # show_zeta=True, 
-        show_basis_fields=True,
+        show_basis_fields=False,
         # show_W_items=lalme_dataset['items'],
         # show_a_items=lalme_dataset['items'],
         # lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
         # lp_floating_traces=config.lp_floating_grid10,
         lp_floating_grid10=config.lp_floating_grid10,
         # lp_anchor_val_grid30=config.lp_anchor_val_grid30,
-        lp_anchor_val_grid21=config.lp_anchor_val_grid21,
+        # lp_anchor_val_grid21=config.lp_anchor_val_grid21,
         # lp_anchor_val_grid28=config.lp_anchor_val_grid28,
         # lp_anchor_val_grid10=config.lp_anchor_val_grid10,
+        # lp_anchor_val_grid4=config.lp_anchor_val_grid4,
         # lp_random_anchor=(
         #     lalme_dataset['LP'][:lalme_dataset['num_profiles_anchor']]
         #     if config.include_random_anchor else None),

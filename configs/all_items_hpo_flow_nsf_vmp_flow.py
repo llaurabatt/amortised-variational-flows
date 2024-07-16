@@ -188,14 +188,14 @@ def get_config():
   config.lp_random_anchor_10 = None
 
   # eta shown in figures
-  config.eta_plot = [0.42, 1.0]# [0.001, 0.25, 0.42, 0.5, 0.75, 1.0]
+  config.eta_plot = [0.001, 0.61, 1.0]# [0.001, 0.25, 0.42, 0.5, 0.75, 1.0]
   config.prior_hparams_plot = [[0.2, 0.2, 1., 0.5, 1., 1., 0.1, 0.5],#optim
                                [5., 10., 1., 0.5, 1., 1., 0.2, 0.3], #optim bound
                                ] # high
                               #  [1., 4., 1., 0.5, 1., 1., 0.5, 0.9],
                               #  [8., 15., 1., 0.5, 1., 1., 0.1, 0.05]]
   # config.prior_hparams_plot_optim = [5.5, 11,  1., 0.5, 1., 1., 0.4, 0.2]
-  config.prior_hparams_plot_optim = [0.2, 0.2,  1., 0.5, 1., 1., 0.1, 0.5]
+  config.prior_hparams_plot_optim = [5., 10.,  1., 0.5, 1., 1., 0.4, 0.2]
 
   # How often to save model checkpoints.
   config.checkpoint_steps = 0 #config.training_steps // 5

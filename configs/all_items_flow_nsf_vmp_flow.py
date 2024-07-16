@@ -14,9 +14,9 @@ def get_config():
 
   # Defined in `flows.py`.
   config.flow_name = 'meta_nsf'
-  config.cond_hparams_names = []#['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
+  config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
   config.eta_fixed = ''
-  config.optim_prior_hparams_dir_fixed_eta = '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow'
+  config.optim_prior_hparams_dir_fixed_eta = ''# '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
   config.tune_vmp_hparams = False 
   config.tune_vmp_hparams_fix_eta = False 
 
@@ -64,7 +64,7 @@ def get_config():
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 70_000 #100_000 
+  config.training_steps = 100_000 #70_000 
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -111,7 +111,7 @@ def get_config():
   1327, 1329, 1330, 1332, 1345, 1348]
 
   # Number of posteriors samples to approximate the variational loss (ELBO).
-  config.num_samples_elbo = 50
+  config.num_samples_elbo = 3 #50
   config.num_samples_gamma_profiles = 5
 
   # How often to evaluate the model.
@@ -122,16 +122,16 @@ def get_config():
   config.max_steps_nan = 1_000
 
   # How often to log images to monitor convergence.
-  config.log_img_steps = config.training_steps // 5 
+  config.log_img_steps = 0 #config.training_steps // 5 
   config.log_img_at_end = True  
   config.save_samples = False # FLIPPED
   config.path_MCMC_samples = ''
   config.path_mcmc_img = ''
 
   # Number of samples used in the plots.
-  config.num_samples_plot = 2_000 #10_000, 2_000 for basis fields
+  config.num_samples_plot = 10_000 #10_000, 2_000 for basis fields
   config.num_samples_save = 1_000 
-  config.num_samples_chunk_plot = 100 #500, 100 for basis fields
+  config.num_samples_chunk_plot = 500 #500, 100 for basis fields
   config.num_samples_hparams_optim = 1_000
 
   # Val profiles to plot in grid
@@ -155,6 +155,8 @@ def get_config():
   #                                377] # ORIGINAL
   config.lp_anchor_val_grid10 = [104,133, 139, 301, 363, 732, 1125,  1205,
                                  1330,1348]
+  
+  config.lp_anchor_val_grid4 = [301,363, 1330, 1339]
   
   # Floating profiles to plot in grid
   config.lp_floating_grid10 = [
@@ -192,14 +194,14 @@ def get_config():
   config.lp_random_anchor_10 = None
 
   # eta shown in figures
-  config.eta_plot = [0.001, 0.05, 0.25, 0.42, 0.5, 0.61, 0.75, 1.0]
+  config.eta_plot = [0.001, 0.42, 1.0] #[0.001, 0.05, 0.25, 0.42, 0.5, 0.61, 0.75, 1.0]
   config.prior_hparams_plot = [[0.2, 0.2, 1., 0.5, 1., 1., 0.1, 0.5],#optim
                                [5., 10., 1., 0.5, 1., 1., 0.2, 0.3], #optim bound
                                ] # high
                               #  [1., 4., 1., 0.5, 1., 1., 0.5, 0.9],
                               #  [8., 15., 1., 0.5, 1., 1., 0.1, 0.05]]
   # config.prior_hparams_plot_optim = [5.5, 11,  1., 0.5, 1., 1., 0.4, 0.2]
-  config.prior_hparams_plot_optim = [] # [0.2, 0.2,  1., 0.5, 1., 1., 0.1, 0.5]
+  config.prior_hparams_plot_optim = [5., 10.,  1., 0.5, 1., 1., 0.4, 0.2]
 
   # How often to save model checkpoints.
   config.checkpoint_steps = config.training_steps // 5

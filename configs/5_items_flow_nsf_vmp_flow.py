@@ -14,7 +14,8 @@ def get_config():
 
   # Defined in `flows.py`.
   config.flow_name = 'meta_nsf'
-  config.cond_hparams_names = []
+  config.cond_hparams_names = ['eta']
+  config.optim_prior_hparams_dir_fixed_eta = ''
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
@@ -154,7 +155,7 @@ def get_config():
   config.use_wandb = True
   config.sweep = False
   config.wandb_evaleta  = 1.0
-  config.wandb_project_name = 'LP-example2'
+  config.wandb_project_name = 'LP-VMP-eta-RESTART'
   config.fixed_configs_wandb = {
                 "kernel_amplitude": 0.2,
                 "kernel_length_scale": 0.3,

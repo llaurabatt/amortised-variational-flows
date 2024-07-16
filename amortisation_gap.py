@@ -47,12 +47,13 @@ config_flags.DEFINE_config_file(
 
 def amortisation_plot(config: ConfigDict, 
                       workdir: str,
-                      loss_type: str = 'ELBO') -> None:
+                      prng_seq: hk.PRNGSequence,
+                      loss_type: str = 'ELBO',
+                      ) -> None:
     # Remove trailing slash
     workdir = workdir.rstrip("/")
 
-    # Initialize random keys
-    prng_seq = hk.PRNGSequence(config.seed)
+
 
     # Load and process LALME dataset
     lalme_dataset = load_data(
@@ -335,57 +336,87 @@ def amortisation_plot(config: ConfigDict,
                 break
         if is_present is False:
             amortisation_plot_points[f'VP_{eta}'] = 0. 
-    return amortisation_plot_points
+    return amortisation_plot_points, prng_seq
 
 def main(_):
     etas = FLAGS.config.etas
-    # Get the results
-    amortisation_plot_points = amortisation_plot(FLAGS.config, 
-                                                 FLAGS.workdir, 
-                                                 loss_type=FLAGS.config.loss_type)
+    # Initialize random keys
+    prng_seq = hk.PRNGSequence(FLAGS.config.seed)
 
-    # Plot the results
-    if any('VP' in s for s in list(amortisation_plot_points.keys())):
-        plot_points = {}
-        VP_points = [amortisation_plot_points[f'VP_{eta}'] for eta in etas]
-        plot_points['VP'] = VP_points
-        if 'VMP' in amortisation_plot_points.keys():
-            plot_points['VMP'] = amortisation_plot_points['VMP']
-    else:
-        plot_points = amortisation_plot_points.copy()
+    all_plot_points = []
+    for p in range(FLAGS.config.n_amortisation_points):
+        print(p)
+        # Get the results
+        amortisation_plot_points, prng_seq = amortisation_plot(FLAGS.config, 
+                                                    FLAGS.workdir, 
+                                                    loss_type=FLAGS.config.loss_type,
+                                                    prng_seq=prng_seq,)
 
-    # plt.figure(figsize=(10, 5))
-    # for key, points in plot_points.items():
-    #     plt.plot(etas, points, label=key)
-    # plt.xlabel('eta')
-    # plt.ylabel(FLAGS.config.loss_type)
-    # plt.legend()
-    # plt.savefig(f'{FLAGS.workdir}/{FLAGS.config.loss_type}_vs_eta.png')
+        # Plot the results
+        if any('VP' in s for s in list(amortisation_plot_points.keys())):
+            plot_points = {}
+            VP_points = [amortisation_plot_points[f'VP_{eta}'] for eta in etas]
+            plot_points['VP'] = VP_points
+            if 'VMP' in amortisation_plot_points.keys():
+                plot_points['VMP'] = amortisation_plot_points['VMP']
+        else:
+            plot_points = amortisation_plot_points.copy()
+        all_plot_points.append(plot_points)
 
-
-    # Use a style that is suitable for scientific papers
-    # mpl.style.use('seaborn-v0_8-whitegrid')
-
-    # Increase the default font size and set a readable font, which helps in large formats like conference posters or journals
     mpl.rcParams['font.size'] = 12
-    # mpl.rcParams['font.family'] = 'serif'
+    mpl.rcParams['font.family'] = 'serif'
     mpl.rcParams['axes.labelsize'] = 12
     mpl.rcParams['xtick.labelsize'] = 10
     mpl.rcParams['ytick.labelsize'] = 10
     mpl.rcParams['text.usetex'] = True
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.grid(True, linestyle='--', alpha=0.7)
-    for ix, (key, points) in enumerate(plot_points.items()):
-        ax.plot(etas, points, label=key, marker='o', linestyle='-', markersize=4)  
-    ax.set_xlabel(r'$\eta$ values', fontsize=16)  
-    ylab = 'negative SMI-ELBO' if FLAGS.config.loss_type=='ELBO' else FLAGS.config.loss_type 
-    ax.set_ylabel(ylab, fontsize=14)
-    ax.legend(fontsize=12, loc='best')
-    plt.tight_layout()
-    plt.savefig(f'{FLAGS.workdir}/{FLAGS.config.loss_type}_vs_eta.png', dpi=300)
+
+    if len(all_plot_points) == 1:
+        plot_points = all_plot_points[0]
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.grid(True, linestyle='--', alpha=0.7)
+        for ix, (key, points) in enumerate(plot_points.items()):
+            ax.plot(etas, points, label=key, marker='o', linestyle='-', markersize=4)  
+        ax.set_xlabel(r'$\eta$ values', fontsize=16)  
+        ylab = 'negative SMI-ELBO' if FLAGS.config.loss_type=='ELBO' else FLAGS.config.loss_type 
+        ax.set_ylabel(ylab, fontsize=14)
+        ax.legend(fontsize=12, loc='best')
+        plt.tight_layout()
+        plt.savefig(f'{FLAGS.workdir}/{FLAGS.config.loss_type}_vs_eta.png', dpi=300)
+    else:
+        # Extract data for each key across all runs
+        all_VP = np.array([plot_points['VP'] for plot_points in all_plot_points])
+        all_VMP = np.array([plot_points['VMP'] for plot_points in all_plot_points])
+
+        # Compute mean and standard deviation for each eta
+        mean_VP = np.mean(all_VP, axis=0)
+        std_VP = np.std(all_VP, axis=0)
+
+        mean_VMP = np.mean(all_VMP, axis=0)
+        std_VMP = np.std(all_VMP, axis=0)
+
+        # Plotting
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.grid(True, linestyle='--', alpha=0.7)
+
+        # Plot VP with confidence bands
+        ax.plot(etas, mean_VP, label='VP', marker='o', linestyle='-', markersize=4)
+        ax.fill_between(etas, mean_VP - 2*std_VP, mean_VP + 2*std_VP, color='blue', alpha=0.2)
+
+        # Plot VMP with confidence bands
+        ax.plot(etas, mean_VMP, label='VMP', marker='o', linestyle='-', markersize=4)
+        ax.fill_between(etas, mean_VMP - 2*std_VMP, mean_VMP + 2*std_VMP, color='orange', alpha=0.2)
+
+        # Labels and legend
+        ax.set_xlabel(r'$\eta$ values', fontsize=16)
+        ylab = 'negative SMI-ELBO' if FLAGS.config.loss_type == 'ELBO' else FLAGS.config.loss_type
+        ax.set_ylabel(ylab, fontsize=14)
+        ax.legend(fontsize=12, loc='best')
+
+        plt.tight_layout()
+        plt.savefig(f'{FLAGS.workdir}/{FLAGS.config.loss_type}_vs_eta_CI.png', dpi=300)
+        plt.show()
+    
 
 if __name__ == '__main__':
     flags.mark_flags_as_required(['config', 'workdir'])
     app.run(main)
-
-

@@ -439,12 +439,12 @@ def profile_locations_grid(
   ncols += 1 if len(profiles_id) % nrows else 0
 
 
-  matplotlib.rcParams['font.size'] = 12
-  matplotlib.rcParams['font.family'] = 'serif'
-  matplotlib.rcParams['axes.labelsize'] = 12
-  matplotlib.rcParams['xtick.labelsize'] = 10
-  matplotlib.rcParams['ytick.labelsize'] = 10
-  matplotlib.rcParams['text.usetex'] = True
+  # matplotlib.rcParams['font.size'] = 12
+  # matplotlib.rcParams['font.family'] = 'serif'
+  # matplotlib.rcParams['axes.labelsize'] = 12
+  # matplotlib.rcParams['xtick.labelsize'] = 10
+  # matplotlib.rcParams['ytick.labelsize'] = 10
+  # matplotlib.rcParams['text.usetex'] = True
   
 
   fig, axs = plt.subplots(
@@ -634,6 +634,7 @@ def lalme_plots_arviz(
     lp_anchor_val_grid28: Optional[List[int]] = None,
     lp_anchor_val_grid21: Optional[List[int]] = None,
     lp_anchor_val_grid10: Optional[List[int]] = None,
+    lp_anchor_val_grid4: Optional[List[int]] = None,
     lp_random_anchor: Optional[List[int]] = None,
     lp_random_anchor_grid10: Optional[List[int]] = None,
     lp_anchor_val: Optional[List[int]] = None,
@@ -645,6 +646,7 @@ def lalme_plots_arviz(
     suffix: str = '',
     scatter_kwargs={'alpha': 0.07},
     MSEs_anchor_val_dict: Optional[Dict] = None,
+    MSEs_float_dict: Optional[Dict] = None,
 ):
   
 
@@ -954,6 +956,7 @@ def lalme_plots_arviz(
         coord="LP_floating",
         nrows=2,
         scatter_kwargs=scatter_kwargs,
+        MSEs_dict=MSEs_float_dict,
     )
     if workdir_png:
       plot_name = "lalme_floating_profiles_grid"
@@ -1201,6 +1204,35 @@ def lalme_plots_arviz(
 
     if summary_writer:
       plot_name = "lalme_lp_anchor_val_grid10"
+      plot_name += suffix
+      summary_writer.image(
+          tag=plot_name,
+          image=image,
+          step=step,
+      )
+  if lp_anchor_val_grid4 is not None:
+    # LP_ixs = jnp.where(LPs==lp_anchor_val_grid30)[0]
+    # MSEs = error_loc_out_pointwise['dist_floating'][LP_ixs]
+    # MSEs_dict = {lp: mse for lp, mse in zip(lp_floating_grid10, MSEs)}
+    # lp_anchor_val = np.setdiff1d(lp_anchor_val, [104, 138, 1198, 1301, 1348])
+    fig, axs = profile_locations_grid(
+        lalme_az=lalme_az,
+        lalme_dataset=lalme_dataset,
+        profiles_id=lp_anchor_val_grid4,
+        var_name='loc_floating',
+        coord="LP_floating",
+        nrows=1,
+        scatter_kwargs=scatter_kwargs,
+        MSEs_dict=MSEs_anchor_val_dict,
+    )
+    if workdir_png:
+      plot_name = "lalme_lp_anchor_val_grid4"
+      plot_name += suffix
+      plt.savefig(pathlib.Path(workdir_png) / (plot_name + ".png"))
+    image = plot_to_image(fig)
+
+    if summary_writer:
+      plot_name = "lalme_lp_anchor_val_grid4"
       plot_name += suffix
       summary_writer.image(
           tag=plot_name,
@@ -1596,6 +1628,7 @@ def lalme_priorhparam_compare_plots_arviz(
     summary_writer: Optional[SummaryWriter] = None,
     suffix: str = 'priorhp_compare',
     scatter_kwargs={'alpha': 0.07},
+    MSEs_anchor_val_dict_list: Optional[List[Dict[int, float]]] = None,
 ):
 
   if show_basis_fields:
@@ -1703,7 +1736,9 @@ def lalme_priorhparam_compare_plots_arviz(
       )
 
   if lp_anchor_val_grid10:
-    for lalme_az_j, prior_hparams_j in zip(lalme_az_list,prior_hparams_str_list):
+    for lalme_az_j, prior_hparams_j, MSEs_anchor_val_dict_j in zip(lalme_az_list,
+                                                                   prior_hparams_str_list,
+                                                                   MSEs_anchor_val_dict_list):
       fig, axs = profile_locations_grid(
           lalme_az=lalme_az_j,
           lalme_dataset=lalme_dataset,
@@ -1712,6 +1747,7 @@ def lalme_priorhparam_compare_plots_arviz(
           coord="LP_floating",
           nrows=2,
           scatter_kwargs=scatter_kwargs,
+          MSEs_dict=MSEs_anchor_val_dict_j,
       )
       if workdir_png:
         plot_name = f"lalme_val_anchor_profiles_grid_{prior_hparams_j}"
