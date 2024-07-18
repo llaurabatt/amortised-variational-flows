@@ -6,10 +6,10 @@ set -x
 REPO_DIR=$PWD
 
 # Directory to save all outputs
-WORK_DIR=$HOME/spatial-smi-output-original
+# WORK_DIR=$HOME/spatial-smi-output-original
 # WORK_DIR=$HOME/HPOPT200k-spatial-smi-output-VPeta1-withintegratedsmallcondval # it is with NOKERNEL
 # WORK_DIR=$HOME/HPOPT200k-NEW-spatial-smi-output-integrated-ONLYeta-smallcondval-SALVACHECKPOINT 
-# WORK_DIR=$HOME/HPOPT200k-spatial-smi-output-integrated-ONLYeta-smallcondval-SALVACHECKPOINT
+WORK_DIR=$HOME/HPOPT200k-spatial-smi-output-integrated-ONLYeta-smallcondval-SALVACHECKPOINT-RESTART
 # WORK_DIR=$HOME/HPOPT200k-spatial-smi-output-VPeta1-withintegratedsmallcondval-SALVACHECKPOINT
 # WORK_DIR=$HOME/spatial-smi-output-VPeta1-withintegratedsmallcondval-WITHBESTOPTIM
 # WORK_DIR=$HOME/spatial-smi-output-integrated-ONLYeta-smallcondval-WITHBESTOPTIM
@@ -57,12 +57,12 @@ all_eta=('1.000')
 #
 
 # --config.path_MCMC_samples $HOME/spatial-smi-output-original/5_items/mcmc/eta_floating_w500_s15_000_t10_sub100_1.000/lalme_az_10_000s_thinning10.nc \
-# python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_hpo_flow_nsf_vmp_flow.py \
-#                           --config.path_mcmc_img $HOME/my-spatial-smi-oldv/data/5_items_mcmc_floating_eta1.000.png \
-#                           --config.path_MCMC_samples $HOME/spatial-smi-output-original/5_items/mcmc/eta_floating_w500_s50_000_t50_sub100_1.000/lalme_az_10_000s_thinning50.nc \
-#                           --workdir $WORK_DIR/5_items/nsf/vmp_flow \
-#                           --log_dir $WORK_DIR/5_items/nsf/vmp_flow/log_dir \
-#                           --alsologtostderr
+python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_hpo_flow_nsf_vmp_flow.py \
+                          --config.path_mcmc_img $HOME/my-spatial-smi-oldv/data/5_items_mcmc_floating_eta1.000.png \
+                          --config.path_MCMC_samples $HOME/spatial-smi-output-original/5_items/mcmc/eta_floating_w500_s50_000_t50_sub100_1.000/lalme_az_10_000s_thinning50.nc \
+                          --workdir $WORK_DIR/5_items/nsf/vmp_flow \
+                          --log_dir $WORK_DIR/5_items/nsf/vmp_flow/log_dir \
+                          --alsologtostderr
 # python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_flow_nsf_vmp_flow.py \
 #                           --config.path_mcmc_img $HOME/my-spatial-smi-oldv/data/5_items_mcmc_floating_eta1.000.png \
 #                           --config.path_MCMC_samples $HOME/spatial-smi-output-original/5_items/mcmc/eta_floating_w500_s50_000_t50_sub100_1.000/lalme_az_10_000s_thinning50.nc \

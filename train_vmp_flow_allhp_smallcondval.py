@@ -1504,7 +1504,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   try:
     checkpoint_dir
   except NameError:
-    checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints_rahzlmon')
+    checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints') #_rahzlmon')
   logging.info(f'Checkpoint directory: {checkpoint_dir}')
 
 
@@ -1956,6 +1956,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           a_mcmc_flat = jnp.ones((mcmc_samples_flat.shape[0],)) / mcmc_samples_flat.shape[0]
           b_VI_flat = jnp.ones((VI_samples_flat.shape[0],)) / VI_samples_flat.shape[0]
           wd_joint = ot.emd2(a_mcmc_flat,b_VI_flat, M, numItermax=1000000)
+          print('Joint WD:', wd_joint)
           wd_joints.append(wd_joint)
 
           summary_writer.scalar(

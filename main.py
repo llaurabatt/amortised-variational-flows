@@ -2,10 +2,10 @@
 #%%
 import debugpy
 #%%
-debugpy.listen(5678)
-print('Waiting for debugger')
-debugpy.wait_for_client()
-print('Debugger attached')
+# debugpy.listen(5678)
+# print('Waiting for debugger')
+# debugpy.wait_for_client()
+# print('Debugger attached')
 #%%
 import os
 import warnings
@@ -93,10 +93,10 @@ def main(_):
           print("Exception! Printing stack trace")
           print(traceback.print_exc(), file=sys.stderr)
 
-    sweep_id = wandb.sweep(sweep=configdict_to_dict(FLAGS.config.sweep_configuration), project=FLAGS.config.wandb_project_name)
+    # sweep_id = wandb.sweep(sweep=configdict_to_dict(FLAGS.config.sweep_configuration), project=FLAGS.config.wandb_project_name)
     # "kuf4h4ga"
     # "2z6h4k6q"
-    wandb.agent(sweep_id, function=pagent, count=60) #, project=FLAGS.config.wandb_project_name)
+    wandb.agent("xmlzwc8q", function=pagent, count=60, project=FLAGS.config.wandb_project_name)
 
   elif FLAGS.config.method == 'mcmc':
     # with jax.profiler.trace("/home/llaurabat/tmp/jax-trace"):

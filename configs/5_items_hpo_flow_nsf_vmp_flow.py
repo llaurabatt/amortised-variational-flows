@@ -16,6 +16,8 @@ def get_config():
   config.flow_name = 'meta_nsf'
   config.cond_hparams_names = ['eta']
   config.tune_vmp_hparams = False
+  config.optim_prior_hparams_dir_fixed_eta = ''
+  config.eta_fixed = 1.0 # should still optimise eta
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
@@ -164,7 +166,7 @@ def get_config():
   
 
 
-  config.wandb_project_name = 'LP-VMP-eta-LAST'
+  config.wandb_project_name = 'LP-VMP-eta-RESTART'
 
   config.sweep_configuration = ml_collections.ConfigDict()
   config.sweep_configuration.method = "bayes"
