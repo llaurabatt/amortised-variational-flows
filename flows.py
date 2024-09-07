@@ -9,6 +9,9 @@ from tensorflow_probability.substrates import jax as tfp
 
 import modularbayes
 from modularbayes._src.typing import Any, Array, Dict, Sequence, Tuple
+from modularbayes import EtaConditionalMaskedCoupling
+from modularbayes import EtaConditionalMaskedCouplingAdditive
+from modularbayes import EtaConditionalMaskedCouplingIntegrated
 
 from log_prob_fun import ModelParamsGlobal, ModelParamsLocations
 
@@ -364,6 +367,7 @@ def nsf_locations(
 
 
 def meta_nsf_global_params(
+    is_additive_flow: bool,
     num_forms_tuple: Tuple[int, ...],
     num_basis_gps: int,
     num_inducing_points: int,
@@ -420,24 +424,38 @@ def meta_nsf_global_params(
 
   # NSF layers
   for _ in range(num_layers):
-    layer = modularbayes.EtaConditionalMaskedCoupling(
-        mask=mask,
-        bijector=bijector_fn,
-        # TODO: remove conditioner_eta
-        # note default MLP comes with bias
-        conditioner_eta=modularbayes.MLPConditioner(
-            output_dim=math.prod(event_shape),
-            hidden_sizes=hidden_sizes_conditioner_eta,
-            num_bijector_params=num_bijector_params,
-            name='conditioner_eta_global_params',
-        ),
-        conditioner=modularbayes.MLPConditioner(
-            output_dim=math.prod(event_shape),
-            hidden_sizes=hidden_sizes_conditioner,
-            num_bijector_params=num_bijector_params,
-            name='conditioner_global_params',
-        ),
-    )
+    if is_additive_flow:
+      layer = EtaConditionalMaskedCouplingAdditive(
+          mask=mask,
+          bijector=bijector_fn,
+          # TODO: remove conditioner_eta
+          # note default MLP comes with bias
+          conditioner_eta=modularbayes.MLPConditioner(
+              output_dim=math.prod(event_shape),
+              hidden_sizes=hidden_sizes_conditioner_eta,
+              num_bijector_params=num_bijector_params,
+              name='conditioner_eta_global_params',
+          ),
+          conditioner=modularbayes.MLPConditioner(
+              output_dim=math.prod(event_shape),
+              hidden_sizes=hidden_sizes_conditioner,
+              num_bijector_params=num_bijector_params,
+              name='conditioner_global_params',
+          ),
+      )
+    else:
+      layer = EtaConditionalMaskedCouplingIntegrated(
+          mask=mask,
+          bijector=bijector_fn,
+          # note default MLP comes with bias
+          conditioner=modularbayes.MLPConditioner(
+              output_dim=math.prod(event_shape),
+              hidden_sizes=hidden_sizes_conditioner,
+              num_bijector_params=num_bijector_params,
+              name='conditioner_global_params',
+          ),
+      )
+
     flow_layers.append(layer)
     # Flip the mask after each layer.
     mask = jnp.logical_not(mask)
@@ -488,6 +506,7 @@ def meta_nsf_global_params(
 
 
 def meta_nsf_locations(
+    is_additive_flow: bool,
     num_profiles: int,
     num_layers: int,
     hidden_sizes_conditioner: Sequence[int],
@@ -534,22 +553,35 @@ def meta_nsf_locations(
   # for a total of `3 * num_bins + 1` parameters.
 
   for _ in range(num_layers):
-    layer = modularbayes.EtaConditionalMaskedCoupling(
-        mask=mask,
-        bijector=bijector_fn,
-        conditioner_eta=modularbayes.MLPConditioner(
-            output_dim=math.prod(event_shape),
-            hidden_sizes=hidden_sizes_conditioner_eta,
-            num_bijector_params=num_bijector_params,
-            name='conditioner_eta_locations',
-        ),
-        conditioner=modularbayes.MLPConditioner(
-            output_dim=math.prod(event_shape),
-            hidden_sizes=hidden_sizes_conditioner,
-            num_bijector_params=num_bijector_params,
-            name='conditioner_locations',
-        ),
-    )
+    if is_additive_flow:
+      layer = EtaConditionalMaskedCouplingAdditive(
+          mask=mask,
+          bijector=bijector_fn,
+          conditioner_eta=modularbayes.MLPConditioner(
+              output_dim=math.prod(event_shape),
+              hidden_sizes=hidden_sizes_conditioner_eta,
+              num_bijector_params=num_bijector_params,
+              name='conditioner_eta_locations',
+          ),
+          conditioner=modularbayes.MLPConditioner(
+              output_dim=math.prod(event_shape),
+              hidden_sizes=hidden_sizes_conditioner,
+              num_bijector_params=num_bijector_params,
+              name='conditioner_locations',
+          ),
+      )
+    else:
+      layer = EtaConditionalMaskedCouplingIntegrated(
+          mask=mask,
+          bijector=bijector_fn,
+          conditioner=modularbayes.MLPConditioner(
+              output_dim=math.prod(event_shape),
+              hidden_sizes=hidden_sizes_conditioner,
+              num_bijector_params=num_bijector_params,
+              name='conditioner_locations',
+          ),
+      )
+
     flow_layers.append(layer)
     # Flip the mask after each layer.
     mask = jnp.logical_not(mask)

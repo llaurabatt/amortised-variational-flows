@@ -6,7 +6,9 @@ from modularbayes._src.bijectors.blockwise import Blockwise
 from modularbayes._src.bijectors.conditional_bijector import ConditionalBijector
 from modularbayes._src.bijectors.conditional_chain import ConditionalChain
 from modularbayes._src.bijectors.conditional_masked_coupling import ConditionalMaskedCoupling
-from modularbayes._src.bijectors.conditional_masked_coupling_extra import EtaConditionalMaskedCoupling
+from modularbayes._src.bijectors.conditional_masked_coupling_extra_old import EtaConditionalMaskedCoupling
+from modularbayes._src.bijectors.conditional_masked_coupling_extra_additive import EtaConditionalMaskedCouplingAdditive
+from modularbayes._src.bijectors.conditional_masked_coupling_extra_integrated import EtaConditionalMaskedCouplingIntegrated
 
 from modularbayes._src.conditioners.base import MeanFieldConditioner
 from modularbayes._src.conditioners.base import MLPConditioner
@@ -46,6 +48,8 @@ __all__ = (
     'ConditionalChain',
     'ConditionalMaskedCoupling',
     'EtaConditionalMaskedCoupling',
+    'EtaConditionalMaskedCouplingAdditive',
+    'EtaConditionalMaskedCouplingIntegrated',
     'MeanFieldConditioner',
     'MLPConditioner',
     'ConditionalTransformed',

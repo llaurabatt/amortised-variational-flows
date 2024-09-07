@@ -528,10 +528,26 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
   config.num_inducing_points = math.prod(
       config.model_hparams.inducing_grid_shape)
 
-  samples_path_stg1 = workdir + '/lalme_stg1_unb_az_10_000s'+ (f'_thinning{config.thinning}' if config.thinning!=1 else "")+ '.nc'
-  samples_path = workdir + '/lalme_az_10_000s' + (f'_thinning{config.thinning}' if config.thinning!=1 else "")+ '.nc'
+#   samples_path_stg1 = workdir + '/lalme_stg1_unb_az_10_000s'+ (f'_thinning{config.thinning}' if config.thinning!=1 else "")+ '.nc'
+#   samples_path = workdir + '/lalme_az_10_000s' + (f'_thinning{config.thinning}' if config.thinning!=1 else "")+ '.nc'
+  samples_path_stg1 = (
+    workdir + '/lalme_stg1_unb_az' +
+    f'_w{config.num_steps_call_warmup}' + 
+    f'_s{config.num_samples}'+ 
+    (f'_t{config.thinning}' if config.thinning!=1 else "") + 
+    f'_sub{config.num_samples_subchain_stg2}'+  
+    '.nc')
 
-  # For training, we need a Dictionary compatible with jit
+  samples_path = (
+    workdir + '/lalme_az' +
+    f'_w{config.num_steps_call_warmup}' + 
+    f'_s{config.num_samples}'+ 
+    (f'_t{config.thinning}' if config.thinning!=1 else "") + 
+    f'_sub{config.num_samples_subchain_stg2}'+  
+    '.nc')
+
+
+# For training, we need a Dictionary compatible with jit
   # we remove string vectors
   train_ds = {
       k: v for k, v in lalme_dataset.items() if k not in ['items', 'forms']
@@ -1149,44 +1165,44 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
   logging.info("Plotting results...")
 
-#   plot.lalme_plots_arviz(
-#       lalme_az=lalme_az_with_gamma,
-#       lalme_dataset=lalme_dataset,
-#       step=0,
-#       show_mu=True,
-#       show_zeta=True,
-#     #   show_basis_fields=True,
-#       show_W_items=lalme_dataset['items'],
-#       show_a_items=lalme_dataset['items'],
-#       lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
-#       lp_floating_traces=config.lp_floating_grid10,
-#       lp_floating_grid10=config.lp_floating_grid10,
-#       loc_inducing=train_ds['loc_inducing'],
-#       workdir_png=workdir,
-#       summary_writer=summary_writer,
-#       suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
-#       scatter_kwargs={"alpha": 0.05},
-#   )
+  plot.lalme_plots_arviz(
+      lalme_az=lalme_az_with_gamma,
+      lalme_dataset=lalme_dataset,
+      step=0,
+      show_mu=True,
+      show_zeta=True,
+    #   show_basis_fields=True,
+      show_W_items=lalme_dataset['items'],
+      show_a_items=lalme_dataset['items'],
+      lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
+      lp_floating_traces=config.lp_floating_grid10,
+      lp_floating_grid10=config.lp_floating_grid10,
+      loc_inducing=train_ds['loc_inducing'],
+      workdir_png=workdir,
+      summary_writer=summary_writer,
+      suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
+      scatter_kwargs={"alpha": 0.05},
+  )
 
-# #   del lalme_az
+  del lalme_az
 
-#   if config.plot_floating_aux:
-#     #   if not lalme_stg1_unb_az:
-#     #     logging.info("\t Loading samples for stage 1 for aux plot...")
-#     #     lalme_stg1_unb_az = az.from_netcdf(samples_path_stg1)
+  if config.plot_floating_aux:
+    #   if not lalme_stg1_unb_az:
+    #     logging.info("\t Loading samples for stage 1 for aux plot...")
+    #     lalme_stg1_unb_az = az.from_netcdf(samples_path_stg1)
 
-#       plot.lalme_plots_arviz(
+      plot.lalme_plots_arviz(
 
-#             lalme_az=lalme_az_with_gamma, #lalme_stg1_unb_az,
-#             lalme_dataset=lalme_dataset,
-#             step=0,
-#             lp_floating_aux_traces=config.lp_floating_grid10,
-#             lp_floating_aux_grid10=config.lp_floating_grid10,
-#             workdir_png=workdir,
-#             summary_writer=summary_writer,
-#             suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
-#             scatter_kwargs={"alpha": 0.05},
-#     )
+            lalme_az=lalme_az_with_gamma, #lalme_stg1_unb_az,
+            lalme_dataset=lalme_dataset,
+            step=0,
+            lp_floating_aux_traces=config.lp_floating_grid10,
+            lp_floating_aux_grid10=config.lp_floating_grid10,
+            workdir_png=workdir,
+            summary_writer=summary_writer,
+            suffix=f"_eta_floating_{float(config.eta_profiles_floating):.3f}",
+            scatter_kwargs={"alpha": 0.05},
+    )
   logging.info("...done!")
 
 
