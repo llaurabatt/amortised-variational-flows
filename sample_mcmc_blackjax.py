@@ -1090,8 +1090,8 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
             data_labels=["MCMC", "VI"],
         )
         
-        mcmc_samples_flat = loc_samples_mcmc.reshape(-1, 2)
-        VI_samples_flat = loc_samples_VI.reshape(-1, 2)
+        mcmc_samples_flat = loc_samples_mcmc.reshape(-1, 20)
+        VI_samples_flat = loc_samples_VI.reshape(-1, 20)
 
         # Compute the cost matrix between the samples
         M = ot.dist(mcmc_samples_flat, VI_samples_flat)

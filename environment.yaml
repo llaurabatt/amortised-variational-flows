@@ -7,7 +7,7 @@ dependencies:
   - pip:
     - jax[tpu]
   - absl-py
-  - arviz
+  - arviz==0.17.0
   - blackjax =1.0.0
   - chex >=0.1.82
   - debugpy

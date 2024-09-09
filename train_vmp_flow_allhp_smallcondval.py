@@ -1895,7 +1895,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
               num_samples_chunk=config.num_samples_chunk_plot,
           )
 
-          # Find the indices that would sort a1 according to the order in a3
+
 
           loc_samples_VI = jnp.array(az_locations.posterior[f'loc_floating'].reindex(LP_floating=config.lp_floating_grid10).squeeze())
           n_samples_VI = loc_samples_VI.shape[0]
@@ -2078,7 +2078,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   # Save samples from the last state
   if config.save_samples:
     logging.info("Saving samples of VMP...")
-    for eta_i in config.eta_plot:
+    for eta_i in config.eta_save:
       prior_defaults = PriorHparams()
       if config.cond_hparams_names:
         cond_values = get_cond_values(cond_hparams_names=config.cond_hparams_names,

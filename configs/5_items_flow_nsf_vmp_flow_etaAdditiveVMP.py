@@ -16,10 +16,13 @@ def get_config():
   config.flow_name = 'meta_nsf'
   config.cond_hparams_names = ['eta']
   config.optim_prior_hparams_dir_fixed_eta = ''
+  config.eta_fixed = 1.0
+  config.tune_vmp_hparams_fix_eta = False
+  config.tune_vmp_hparams = False
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
-  config.is_additive_flow = False
+  config.flow_kwargs.is_additive_flow = True
   config.flow_kwargs.num_basis_gps = 10
   config.flow_kwargs.inducing_grid_shape = (11, 11)
   # Number of layers to use in the flow.
@@ -105,7 +108,7 @@ def get_config():
   config.num_samples_gamma_profiles = 5
 
   # How often to evaluate the model.
-  config.eval_steps = config.training_steps // 10 #5
+  config.eval_steps = config.training_steps // 5
   config.num_samples_eval = 100
   config.eval_last = False
 
@@ -118,7 +121,8 @@ def get_config():
 
   # Number of samples used in the plots.
   config.num_samples_plot = 1_000
-  config.num_samples_save = 10_000
+  config.num_samples_save = 1_000
+  config.eta_save = [1.0]
   config.num_samples_chunk_plot = 500
 
   # Floating profiles to plot in grid
@@ -149,17 +153,17 @@ def get_config():
   config.synetune_metric = "mean_dist_anchor_val_min"
   config.path_mcmc_img = ''
   config.path_MCMC_samples = ''
-  config.max_wass_samples = 1000
+  config.max_wass_samples = 1_000
   # Random seed
   config.seed = 1
 
   config.use_wandb = True
   config.sweep = False
   config.wandb_evaleta  = 1.0
-  config.wandb_project_name = 'LP-VMP-eta-RESTART'
+  config.wandb_project_name = ''
   config.fixed_configs_wandb = {
-                "kernel_amplitude": 0.2,
-                "kernel_length_scale": 0.3,
+                "kernel_amplitude": config.kernel_kwargs.amplitude, # 0.2,
+                "kernel_length_scale": config.kernel_kwargs.length_scale, # 0.3,
                 "peak_value":9.106e-3,#4.648e-4,
                 "decay_rate":0.6763,#0.7441, #0.5,
             }
