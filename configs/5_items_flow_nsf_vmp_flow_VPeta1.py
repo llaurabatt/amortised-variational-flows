@@ -164,8 +164,8 @@ def get_config():
   config.fixed_configs_wandb = {
                 "kernel_amplitude": config.kernel_kwargs.amplitude, # 0.2,
                 "kernel_length_scale": config.kernel_kwargs.length_scale, # 0.3,
-                "peak_value":9.106e-3,#4.648e-4,
-                "decay_rate":0.6763,#0.7441, #0.5,
+                "peak_value":3e-4, #9.106e-3, #4.648e-4,
+                "decay_rate":0.5 #0.6763,#0.7441, #0.5,
             }
 
   return config

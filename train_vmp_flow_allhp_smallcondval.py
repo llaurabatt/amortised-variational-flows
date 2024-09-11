@@ -446,7 +446,7 @@ def sample_lalme_az(
   if cond_values is not None:
     cond_values_chunked_ = jnp.split(cond_values, split_idx_, axis=0)
   else:
-    cond_values_chunked_ = [None]*len(split_idx_)
+    cond_values_chunked_ = [None]*(len(split_idx_)+1)
   # prior_hparams_chunked_ = jax.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
   #                                  prior_hparams)
 
