@@ -31,14 +31,15 @@ MCMC_5_ITEMS_DIR=$HOME/mount/vmp-output/lp-small/5_items/mcmc/w500_s50_000_t50_s
 # Run the three scripts below if you want to do VI HPO
 ## HPO AdditiveVMP eta only
 
-python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_hpo_flow_nsf_vmp_flow_etaAdditiveVMP.py \
-                          --config.path_mcmc_img $MCMC_5_ITEMS_DIR/lalme_floating_profiles_grid_eta_floating_1.000.png \
-                          --config.path_MCMC_samples $MCMC_5_ITEMS_DIR/lalme_az_w500_s50000_t50_sub100.nc \
-                          --config.wandb_project_name "LP-5items-HPO-AdditiveVMP-eta" \
-                          --config.n_sweep_runs 10 \
-                          --workdir $WORK_DIR/5_items/additive_vmp_eta/hpo \
-                          --log_dir $WORK_DIR/5_items/additive_vmp_eta/hpo/log_dir \
-                          --alsologtostderr
+# python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_hpo_flow_nsf_vmp_flow_etaAdditiveVMP.py \
+#                           --config.path_mcmc_img $MCMC_5_ITEMS_DIR/lalme_floating_profiles_grid_eta_floating_1.000.png \
+#                           --config.path_MCMC_samples $MCMC_5_ITEMS_DIR/lalme_az_w500_s50000_t50_sub100.nc \
+#                           --config.wandb_project_name "LP-5items-HPO-AdditiveVMP-eta" \
+#                           --config.n_sweep_runs 10 \
+#                           --config.sweep_id 'h83gnw24' \
+#                           --workdir $WORK_DIR/5_items/additive_vmp_eta/hpo \
+#                           --log_dir $WORK_DIR/5_items/additive_vmp_eta/hpo/log_dir \
+#                           --alsologtostderr
 # ## HPO VMP eta only
 
 # python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_hpo_flow_nsf_vmp_flow_etaVMP.py \
@@ -63,13 +64,14 @@ python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_hpo_flow_nsf_vmp_fl
 
 # ## RUN AdditiveVMP eta only
 
-# python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_flow_nsf_vmp_flow_etaAdditiveVMP.py \
-#                           --config.path_mcmc_img $MCMC_5_ITEMS_DIR/lalme_floating_profiles_grid_eta_floating_1.000.png \
-#                           --config.path_MCMC_samples $MCMC_5_ITEMS_DIR/lalme_az_w500_s50000_t50_sub100.nc \
-#                           --config.wandb_project_name "LP-5items-AdditiveVMP-eta" \
-#                           --workdir $WORK_DIR/5_items/additive_vmp_eta \
-#                           --log_dir $WORK_DIR/5_items/additive_vmp_eta/log_dir \
-#                           --alsologtostderr
+python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_flow_nsf_vmp_flow_etaAdditiveVMP.py \
+                          --config.path_mcmc_img $MCMC_5_ITEMS_DIR/lalme_floating_profiles_grid_eta_floating_1.000.png \
+                          --config.path_MCMC_samples $MCMC_5_ITEMS_DIR/lalme_az_w500_s50000_t50_sub100.nc \
+                          --config.wandb_project_name "LP-5items-AdditiveVMP-eta" \
+                          --config.checkpoint_dir_path $WORK_DIR/5_items/additive_vmp_eta/hpo/checkpoints_p9c5icp0 \
+                          --workdir $WORK_DIR/5_items/additive_vmp_eta \
+                          --log_dir $WORK_DIR/5_items/additive_vmp_eta/log_dir \
+                          --alsologtostderr
 
 # ## RUN VMP eta only
 

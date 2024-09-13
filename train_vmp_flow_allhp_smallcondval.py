@@ -1504,7 +1504,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   try:
     checkpoint_dir
   except NameError:
-    checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints') #_rahzlmon')
+    if config.checkpoint_dir_path:
+      checkpoint_dir = config.checkpoint_dir_path
+    else:
+      checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints') #_rahzlmon')
   logging.info(f'Checkpoint directory: {checkpoint_dir}')
 
 
@@ -1818,11 +1821,19 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
     loss_.append(float(metrics['train_loss']))
     if len(loss_) >= config.max_steps_nan:
-      loss_ = loss_[-config.max_steps_nan:]
-      if jnp.isnan(jnp.array(loss_).astype(float)).all():
+      loss_nan = loss_[-config.max_steps_nan:].copy()
+      if jnp.isnan(jnp.array(loss_nan).astype(float)).all():
         logging.warning('Training stopped, %d steps with NaN loss',
                         config.max_steps_nan)
         break
+
+    if config.max_steps_inf:
+      if len(loss_) >= config.max_steps_inf:
+        loss_inf = loss_[-config.max_steps_inf:].copy()
+        if jnp.isinf(jnp.array(loss_inf).astype(float)).all():
+          logging.warning('Training stopped, %d steps with inf loss',
+                          config.max_steps_inf)
+          break
 
     summary_writer.scalar(
         tag='train_loss',

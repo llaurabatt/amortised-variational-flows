@@ -16,6 +16,7 @@ def get_config():
   config.flow_name = 'meta_nsf'
   config.cond_hparams_names = []
   config.optim_prior_hparams_dir_fixed_eta = ''
+  config.checkpoint_dir_path = ''
   config.eta_fixed = 1.0
   config.tune_vmp_hparams_fix_eta = False
   config.tune_vmp_hparams = False
