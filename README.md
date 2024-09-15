@@ -10,7 +10,7 @@ micromamba create -f environment.yaml
 micromamba activate <name-environment>
 ```
 This will automatically install the ModularBayes package together with its dependencies and all the other packages required to run the experiments in the paper.
-If you want to additionally install JAX in the environment, please follow the instructions in the official JAX website (see [JAX installation](https://jax.readthedocs.io/en/latest/installation.html)).
+To additionally install JAX in the environment, please follow the instructions for the chosen installation option in the official JAX website (see [JAX installation](https://jax.readthedocs.io/en/latest/installation.html)).
 
 # Reproduce paper experiments
 
