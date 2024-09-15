@@ -1,3 +1,19 @@
+
+# Set up the environment
+
+Environment requirements to run the paper experiments can be found in the environment.yaml file. This file can be used to set up an environment with any environment manager e.g., venv, Conda, Mamba, Micromamba. With Micromamba, you can create and activate the environment as follows:
+```
+micromamba create -f environment.yaml
+
+micromamba activate <name-environment>
+```
+
+
+# LP small dataset
+
+
+
+# OLDDD #
 # Simultaneous Reconstruction of Spatial Frequency Fields and Sample Locations via Bayesian Semi-Modular Inference
 
 <!-- badges: start -->
