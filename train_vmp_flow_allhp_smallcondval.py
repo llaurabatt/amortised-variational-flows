@@ -1394,6 +1394,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         # config.kernel_kwargs.length_scale = config.fixed_configs_wandb.kernel_length_scale
         config.optim_kwargs.lr_schedule_kwargs.peak_value = config.fixed_configs_wandb.peak_value
         config.optim_kwargs.lr_schedule_kwargs.decay_rate = config.fixed_configs_wandb.decay_rate
+        print('WANDB CONFIGS:', config.fixed_configs_wandb)
 
   if config.optim_prior_hparams_dir_fixed_eta:
     optim_prior_hparams = pd.read_csv(config.optim_prior_hparams_dir_fixed_eta + '/fixed_eta_opt.csv', index_col='eta_fixed')
@@ -1605,7 +1606,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   summary_writer = tensorboard.SummaryWriter(workdir)
   summary_writer.hparams(flatten_dict(config))
 
-  if not config.sweep:
+  if not config.use_wandb:
     # Print a useful summary of the execution of the flows.
     logging.info('FLOW GLOBAL PARAMETERS:')
     tabulate_fn_ = hk.experimental.tabulate(

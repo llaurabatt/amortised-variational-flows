@@ -163,13 +163,13 @@ def get_config():
   config.sweep = False
   config.wandb_evaleta  = 1.0
   config.wandb_project_name = ''
-  config.optim_peak_value = ''
-  config.optim_decay_rate = ''  
+  config.optim_peak_value = 0.002183519604905916
+  config.optim_decay_rate = 0.4320802364123229   
   config.fixed_configs_wandb = {
                 "kernel_amplitude": config.kernel_kwargs.amplitude, # 0.2,
                 "kernel_length_scale": config.kernel_kwargs.length_scale, # 0.3,
-                "peak_value":config.optim_peak_value, #9.106e-3, #4.648e-4,
-                "decay_rate":config.optim_decay_rate #0.6763,#0.7441, #0.5,
+                "peak_value":float(config.optim_peak_value), #9.106e-3, #4.648e-4,
+                "decay_rate":float(config.optim_decay_rate), #0.6763,#0.7441, #0.5,
             }
 
   return config
