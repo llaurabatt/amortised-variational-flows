@@ -361,7 +361,7 @@ def sample_locations_floating(
   if cond_values is not None:
     cond_values_chunked_ = jnp.split(cond_values, split_idx_, axis=0)
   else:
-    cond_values_chunked_ = [None]*len(split_idx_)
+    cond_values_chunked_ = [None]*(len(split_idx_)+1)
 
   for cond_val_ in cond_values_chunked_:#,prior_hparams_chunked_):
     # Sample from variational posterior
@@ -1985,6 +1985,15 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                     step=state_list[0].step)
             wandb.log({'min_WD_joint_vs_MCMC': float(min(wd_joints))},
                     step=state_list[0].step)
+
+          if config.save_best_checkpoint:
+            if float(wd_joint) == float(min(wd_joints)): 
+              for state, state_name in zip(state_list, state_name_list):
+                save_checkpoint(
+                    state=state,
+                    checkpoint_dir=f'{checkpoint_dir}/{state_name}',
+                    keep=config.checkpoints_keep,
+                )
 
       # Estimate posterior distance to true locations
       eta_eval_grid_ = jnp.linspace(0, 1, 21)
