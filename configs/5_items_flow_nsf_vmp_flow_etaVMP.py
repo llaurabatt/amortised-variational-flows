@@ -143,6 +143,7 @@ def get_config():
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
   config.save_last_checkpoint = True
+  config.save_best_checkpoint = False
 
   # Number of samples of eta for Meta-Posterior training
   config.eta_sampling_a = 0.5

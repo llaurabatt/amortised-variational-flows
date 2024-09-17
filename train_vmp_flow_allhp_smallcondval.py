@@ -1896,7 +1896,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           logging.info(prior_defaults)
 
 
-          _, az_locations = sample_locations_floating(
+          lalme_az_VI_for_mcmc, az_locations = sample_locations_floating(
               lalme_dataset=lalme_dataset,
               state_list=state_list,
               cond_values=cond_values,
@@ -1995,6 +1995,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                     checkpoint_dir=f'{checkpoint_dir}/{state_name}',
                     keep=config.checkpoints_keep,
                 )
+              lalme_az_VI_for_mcmc.to_netcdf(workdir + f'/lalme_az_VI_for_mcmc_{checkpoint_dir}_{state_list[0].step}.nc')
+              az_locations.to_netcdf(workdir + f'/az_locations_{checkpoint_dir}_{state_list[0].step}.nc')
 
       # Estimate posterior distance to true locations
       eta_eval_grid_ = jnp.linspace(0, 1, 21)

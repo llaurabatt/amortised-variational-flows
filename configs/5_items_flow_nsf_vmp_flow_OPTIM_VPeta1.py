@@ -14,7 +14,7 @@ def get_config():
 
   # Defined in `flows.py`.
   config.flow_name = 'meta_nsf'
-  config.cond_hparams_names = ['eta']
+  config.cond_hparams_names = []
   config.optim_prior_hparams_dir_fixed_eta = ''
   config.checkpoint_dir_path = ''
   config.eta_fixed = 1.0
@@ -23,7 +23,7 @@ def get_config():
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
-  config.flow_kwargs.is_additive_flow = True
+  config.flow_kwargs.is_additive_flow = False
   config.flow_kwargs.num_basis_gps = 10
   config.flow_kwargs.inducing_grid_shape = (11, 11)
   # Number of layers to use in the flow.
@@ -66,7 +66,7 @@ def get_config():
   config.prior_hparams_hparams.kernel_sampling_lengthscale_beta = 0.5
 
   # Number of training steps to run.
-  config.training_steps = 202_000
+  config.training_steps = 120_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -109,7 +109,7 @@ def get_config():
   config.num_samples_gamma_profiles = 5
 
   # How often to evaluate the model.
-  config.eval_steps = 200001#config.training_steps // 5
+  config.eval_steps = config.training_steps // 5
   config.num_samples_eval = 100
   config.eval_last = False
 
@@ -136,14 +136,14 @@ def get_config():
   config.lp_random_anchor_10 = None
 
   # eta shown in figures
-  config.eta_plot = [0.001, 0.250, 0.500, 0.750, 1.000]
+  config.eta_plot = [1.0]
   config.prior_hparams_plot_optim = ''
 
   # How often to save model checkpoints.
   config.checkpoint_steps = config.training_steps // 5
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
-  config.save_last_checkpoint = True
+  config.save_last_checkpoint = False
   config.save_best_checkpoint = False
 
   # Number of samples of eta for Meta-Posterior training
@@ -164,13 +164,13 @@ def get_config():
   config.sweep = False
   config.wandb_evaleta  = 1.0
   config.wandb_project_name = ''
-  config.optim_peak_value = 0.0024370422195697772
-  config.optim_decay_rate = 0.983056106334634  
+  config.optim_peak_value = 0.003560312315980011
+  config.optim_decay_rate = 0.3944065896700314
+
   config.fixed_configs_wandb = {
                 "kernel_amplitude": config.kernel_kwargs.amplitude, # 0.2,
                 "kernel_length_scale": config.kernel_kwargs.length_scale, # 0.3,
                 "peak_value":config.optim_peak_value, #3e-4 9.106e-3, #4.648e-4,
                 "decay_rate":config.optim_decay_rate, #0.6763,#0.7441, #0.5,
             }
-
   return config
