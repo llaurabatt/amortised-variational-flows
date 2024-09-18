@@ -109,7 +109,7 @@ def get_config():
   config.num_samples_gamma_profiles = 5
 
   # How often to evaluate the model.
-  config.eval_steps = 200001#config.training_steps // 5
+  config.eval_steps = config.training_steps // 5
   config.num_samples_eval = 100
   config.eval_last = False
 
@@ -164,8 +164,8 @@ def get_config():
   config.sweep = False
   config.wandb_evaleta  = 1.0
   config.wandb_project_name = ''
-  config.optim_peak_value = 0.0024370422195697772
-  config.optim_decay_rate = 0.983056106334634  
+  config.optim_peak_value = 0.00997418981745241
+  config.optim_decay_rate = 0.18863373517804227
   config.fixed_configs_wandb = {
                 "kernel_amplitude": config.kernel_kwargs.amplitude, # 0.2,
                 "kernel_length_scale": config.kernel_kwargs.length_scale, # 0.3,

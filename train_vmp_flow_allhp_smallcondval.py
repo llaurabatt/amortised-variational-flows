@@ -1895,21 +1895,35 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
           logging.info(prior_defaults)
 
+          myseed = next(prng_seq)
+          # _, az_locations = sample_locations_floating(
+          #     lalme_dataset=lalme_dataset,
+          #     state_list=state_list,
+          #     cond_values=cond_values,
+          #   #   smi_eta=smi_eta_,
+          #     prng_key=myseed, #next(prng_seq),
+          #     config=config,
+          #     num_samples=config.num_samples_plot,
+          #     num_samples_chunk=config.num_samples_chunk_plot,
+          # )
 
-          _, az_locations = sample_locations_floating(
-              lalme_dataset=lalme_dataset,
+          lalme_az_full = sample_lalme_az(
               state_list=state_list,
+              batch=train_ds,
               cond_values=cond_values,
+              prior_hparams=jnp.stack(PriorHparams()),#prior_hparams,
             #   smi_eta=smi_eta_,
-              prng_key=next(prng_seq),
+              prng_key=myseed,
               config=config,
-              num_samples=config.num_samples_plot,
+              lalme_dataset=lalme_dataset,
+              include_gamma=False,
+              num_samples=config.num_samples_save,
               num_samples_chunk=config.num_samples_chunk_plot,
           )
 
-
-
-          loc_samples_VI = jnp.array(az_locations.posterior[f'loc_floating'].reindex(LP_floating=config.lp_floating_grid10).squeeze())
+  
+          loc_samples_VI = jnp.array(lalme_az_full.posterior[f'loc_floating'].reindex(LP_floating=config.lp_floating_grid10).squeeze())
+          
           n_samples_VI = loc_samples_VI.shape[0]
           if n_samples_VI > config.max_wass_samples:
               idxs = jax.random.choice(key=next(prng_seq), a=n_samples_VI, shape=(config.max_wass_samples,))
@@ -1924,7 +1938,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           
           
           plot.lalme_plots_arviz(
-              lalme_az=az_locations,
+              lalme_az=lalme_az_full,
               lalme_dataset=lalme_dataset,
               step=state_list[0].step,
               lp_floating_grid10=config.lp_floating_grid10,
@@ -1995,7 +2009,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                     checkpoint_dir=f'{checkpoint_dir}/{state_name}',
                     keep=config.checkpoints_keep,
                 )
-              az_locations.to_netcdf(workdir + f'/az_locations_{checkpoint_dir}_{state_list[0].step}.nc')
+              lalme_az_full.to_netcdf(workdir + f'/lalme_az_run_{wandb.run.id}_step{state_list[0].step}.nc')
 
       # Estimate posterior distance to true locations
       eta_eval_grid_ = jnp.linspace(0, 1, 21)

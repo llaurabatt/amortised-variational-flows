@@ -66,7 +66,7 @@ def get_config():
   config.prior_hparams_hparams.kernel_sampling_lengthscale_beta = 0.5
 
   # Number of training steps to run.
-  config.training_steps = 120_000
+  config.training_steps = 200_000
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -164,8 +164,8 @@ def get_config():
   config.sweep = False
   config.wandb_evaleta  = 1.0
   config.wandb_project_name = ''
-  config.optim_peak_value = 0.003560312315980011
-  config.optim_decay_rate = 0.3944065896700314
+  config.optim_peak_value = 0.00997418981745241
+  config.optim_decay_rate = 0.18863373517804227
 
   config.fixed_configs_wandb = {
                 "kernel_amplitude": config.kernel_kwargs.amplitude, # 0.2,
