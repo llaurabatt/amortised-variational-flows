@@ -34,9 +34,8 @@ MCMC_5_ITEMS_DIR=$HOME/mount/vmp-output/lp-small/5_items/mcmc/w500_s50_000_t50_s
 # python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_hpo_flow_nsf_vmp_flow_etaAdditiveVMP.py \
 #                           --config.path_mcmc_img $MCMC_5_ITEMS_DIR/lalme_floating_profiles_grid_eta_floating_1.000.png \
 #                           --config.path_MCMC_samples $MCMC_5_ITEMS_DIR/lalme_az_w500_s50000_t50_sub100.nc \
-#                           --config.wandb_project_name "LP-5items-HPO-AdditiveVMP-eta" \
+#                           --config.wandb_project_name "LP-5items-HPO-AdditiveVMP-eta2" \
 #                           --config.n_sweep_runs 10 \
-#                           --config.sweep_id 'h83gnw24' \
 #                           --workdir $WORK_DIR/5_items/additive_vmp_eta/hpo \
 #                           --log_dir $WORK_DIR/5_items/additive_vmp_eta/hpo/log_dir \
 #                           --alsologtostderr
@@ -127,11 +126,11 @@ MCMC_5_ITEMS_DIR=$HOME/mount/vmp-output/lp-small/5_items/mcmc/w500_s50_000_t50_s
 
 ## MCMC WD comparisons
 
-# VI_path_dict="{'VMP':'$WORK_DIR/5_items/vmp_eta/lalme_az_eta_1.000.nc','ADDITIVE-VMP':'$WORK_DIR/5_items/additive_vmp_eta_optim/lalme_az_eta_1.000.nc','VP':'$WORK_DIR/5_items/vp_eta1_optim/lalme_az_eta_1.000_bhmsxeif_step200000.nc'}"
-# eta_mcmc=1.0
-# python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_mcmc.py \
-#                         --workdir $WORK_DIR/5_items/mcmc/w500_s50_000_t50_sub100_eta_floating_$eta_mcmc \
-#                         --config.path_variational_samples $VI_path_dict \
-#                         --config.eta_profiles_floating "$eta_mcmc" \
-#                         --log_dir $WORK_DIR/5_items/mcmc/w500_s50_000_t50_sub100_eta_floating_$eta_mcmc/log_dir \
-#                         --alsologtostderr
+VI_path_dict="{'VMP':'$WORK_DIR/5_items/vmp_eta/lalme_az_eta_1.000.nc','Additive-VMP':'$WORK_DIR/5_items/additive_vmp_eta/lalme_az_eta_1.000.nc','VP':'$WORK_DIR/5_items/vp_eta1_optim/lalme_az_eta_1.000_bhmsxeif_step200000.nc'}"
+eta_mcmc=1.0
+python3 $REPO_DIR/main.py --config $REPO_DIR/configs/5_items_mcmc.py \
+                        --workdir $WORK_DIR/5_items/mcmc/w500_s50_000_t50_sub100_eta_floating_$eta_mcmc \
+                        --config.path_variational_samples $VI_path_dict \
+                        --config.eta_profiles_floating "$eta_mcmc" \
+                        --log_dir $WORK_DIR/5_items/mcmc/w500_s50_000_t50_sub100_eta_floating_$eta_mcmc/log_dir \
+                        --alsologtostderr

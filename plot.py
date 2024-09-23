@@ -1330,8 +1330,10 @@ def posterior_samples_compare(
     max_ = float(
         max(lalme_az_1.posterior.mu.max(), lalme_az_2.posterior.mu.max()))
     max_ = 40.
-    for axs_i in axs[0]:
+    for axs_i_ix, axs_i in enumerate(axs[0]):
       axs_i.set_xlim([0, max_])
+      mystr = fr'$\mu_{axs_i_ix+1}$'+ ': ' + axs_i.get_title().split('\n')[1]
+      axs_i.set_title(mystr, fontsize=15)
     plt.tight_layout()
     if workdir_png:
       plot_name = "lalme_mu_compare"
@@ -1358,8 +1360,11 @@ def posterior_samples_compare(
         hdi_prob=1.0,
         shade=0.2,
     )
-    for axs_i in axs[0]:
+
+    for axs_i_ix, axs_i in enumerate(axs[0]):
       axs_i.set_xlim([0, 1])
+      mystr = fr'$\zeta_{axs_i_ix+1}$'+ ': ' + axs_i.get_title().split('\n')[1]
+      axs_i.set_title(mystr, fontsize=15)
     plt.tight_layout()
     if workdir_png:
       plot_name = "lalme_zeta_compare"
