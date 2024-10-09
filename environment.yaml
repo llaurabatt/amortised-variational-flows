@@ -29,6 +29,8 @@ dependencies:
   - tqdm
   - wandb
   - SciencePlots
+  - sympy
+  - texlive-core
   - pip:
     # - pre-commit
     - --editable ./
