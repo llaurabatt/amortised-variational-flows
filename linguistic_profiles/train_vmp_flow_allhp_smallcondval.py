@@ -2160,7 +2160,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         # lp_floating_traces=config.lp_floating_grid10,
         lp_floating_grid10=config.lp_floating_grid10,
         # lp_anchor_val_grid30=config.lp_anchor_val_grid30,
-        # lp_anchor_val_grid21=config.lp_anchor_val_grid21,
+        lp_anchor_val_grid21=config.lp_anchor_val_grid21,
         # lp_anchor_val_grid28=config.lp_anchor_val_grid28,
         # lp_anchor_val_grid10=config.lp_anchor_val_grid10,
         # lp_anchor_val_grid4=config.lp_anchor_val_grid4,
@@ -2438,7 +2438,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       logging.info(f'Finding best hyperparameters for eta={eta_i}...')
       tune_vmp_hparams(eta_i=eta_i, 
                        cond_hparams_names=[i for i in config.cond_hparams_names if i != 'eta'])
-  else:
-    if config.tune_vmp_hparams:
+      
+  if config.tune_vmp_hparams:
       logging.info('Finding best hyperparameters...')
       tune_vmp_hparams(cond_hparams_names=config.cond_hparams_names)

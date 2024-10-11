@@ -5,14 +5,23 @@ import matplotlib.pyplot as plt
 import numpy as np
 import itertools
 import matplotlib as mpl
+from absl import flags
+import sys
 #%%
-path = '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
+
+FLAGS = flags.FLAGS
+flags.DEFINE_string('path', None, 'Path to hyperparameter optimisation results.')
+flags.mark_flags_as_required(['path'])
+FLAGS(sys.argv)
+#%%
+# path = '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
 
 # eta_vals = [0.000001, 0.001000, 0.300000, 0.500000, 0.700000, 1.000000]
 
 
 #########################################################################################################################################################
 #%%
+path = FLAGS.path
 init_names = ['default', 'mixed','low', 'high']
 optimisers = [ 'elbo_opt', 'plain_lr1', 'plain_lr2']
 init_eta_vals = [1.00, 0.50, 0.00]
