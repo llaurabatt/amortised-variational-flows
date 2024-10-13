@@ -14,14 +14,16 @@ def get_config():
 
   # Defined in `flows.py`.
   config.flow_name = 'meta_nsf'
-  config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
+  config.cond_hparams_names = []
   config.eta_fixed = ''
+  config.checkpoint_dir_path = ''
   config.optim_prior_hparams_dir_fixed_eta = ''# '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
   config.tune_vmp_hparams = False 
   config.tune_vmp_hparams_fix_eta = False 
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
+  config.flow_kwargs.is_additive_flow = False
   config.flow_kwargs.num_basis_gps = 10
   config.flow_kwargs.inducing_grid_shape = (11, 11)
   # Number of layers to use in the flow.
@@ -123,8 +125,8 @@ def get_config():
 
   # How often to log images to monitor convergence.
   config.log_img_steps = 0 #config.training_steps // 5 
-  config.log_img_at_end = True  
-  config.save_samples = False # FLIPPED
+  config.log_img_at_end = False 
+  config.save_samples = False 
   config.path_MCMC_samples = ''
   config.path_mcmc_img = ''
 

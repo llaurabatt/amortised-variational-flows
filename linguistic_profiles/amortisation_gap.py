@@ -1,11 +1,11 @@
 
 #%%
 import debugpy
-#%%
-debugpy.listen(5678)
-print('Waiting for debugger')
-debugpy.wait_for_client()
-print('Debugger attached')
+# #%%
+# debugpy.listen(5678)
+# print('Waiting for debugger')
+# debugpy.wait_for_client()
+# print('Debugger attached')
 #%%
 from absl import app
 from absl import flags
@@ -21,9 +21,11 @@ import matplotlib.pyplot as plt
 from ml_collections import config_flags, ConfigDict
 import matplotlib as mpl
 import numpy as np
+import os
 import pandas as pd
 import pathlib
 import re
+import importlib.util
 from train_flow_allhp import (load_data, error_locations_estimate, make_optimizer)
 from train_vmp_flow_allhp_smallcondval import (sample_all_flows, get_cond_values, loss, PriorHparams, q_distr_global, q_distr_loc_floating, get_inducing_points)
 from log_prob_fun_allhp import sample_priorhparams_values, PriorHparams
@@ -112,14 +114,14 @@ def amortisation_plot(config: ConfigDict,
     etas = config.etas
     dirs = {}
     if config.workdir_VMP:
-        VMP_dir = str(pathlib.Path(config.workdir_VMP) / 'checkpoints')
+        VMP_dir = f'{config.workdir_VMP}/checkpoints'
         dirs['VMP'] = VMP_dir
-    if config.workdir_AdditiveVMP:
-        AdditiveVMP_dir = str(pathlib.Path(config.workdir_AdditiveVMP) / 'checkpoints')
+    if config.workdir_AdditiveVMP: 
+        AdditiveVMP_dir = f'{config.workdir_AdditiveVMP}/checkpoints'
         dirs['AdditiveVMP'] = AdditiveVMP_dir
     if config.workdirs_VP:
         # VP_dirs = [str(pathlib.Path(workdir) / 'checkpoints') for workdir in config.workdirs_VP]
-        dirs.update({f"VP_{float(eta.group(1))}":str(pathlib.Path(dir) / 'checkpoints')  for dir in config.workdirs_VP if (eta := re.search(r'VP_eta_(\d+\.\d+)$', dir))})    
+        dirs.update({f"VP_{float(eta.group(1))}":f'{workdir}/{dirr}/checkpoints'  for dirr in config.workdirs_VP if (eta := re.search(r'VP_eta_(\d+\.\d+)$', dirr))})    
     optim_prior_hparams = pd.read_csv(config.optim_prior_hparams_dir + '/fixed_eta_opt.csv', index_col='eta_fixed')
     optim_prior_hparams =  optim_prior_hparams.to_dict(orient='index')
 
@@ -205,7 +207,11 @@ def amortisation_plot(config: ConfigDict,
     amortisation_plot_points = {}
 
     for i, (dir_name, dir) in enumerate(dirs.items()):
+
         print(dir_name)
+        if not os.path.exists(dir):
+            raise FileNotFoundError(f"The specified path does not exist: {dir}")
+        
         # cond values
         if 'VP' in dir_name:
             cond_values_init = None

@@ -9,28 +9,17 @@ def get_config():
   config.n_amortisation_points = 10
   # Dataset to use
   config.dataset_id = 'coarsen_all_items'
-  config.workdir_VMP = '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
-  config.workdirs_VP = ['/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow/VP_eta_0.05',
-                        '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow/VP_eta_0.250',
-                        '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow/VP_eta_0.420',
-                        '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.500',
-                        # '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow/VP_eta_0.610',
-                        '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow/VP_eta_0.750',
-                        '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow/VP_eta_1.000']
-  # config.workdir_VMP = '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow'
-  # # config.workdirs_VP = ['/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.001',
-  # config.workdirs_VP = ['/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.05',
-  #                       '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.250',
-  #                       '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.420',
-  #                       '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.500',
-  #                       '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.610',
-  #                       '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_0.750',
-  #                       '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow/VP_eta_1.000']
+  config.workdir_VMP = ''
+  config.workdirs_VP = ['VP_eta_0.05',
+                        'VP_eta_0.250',
+                        'VP_eta_0.500',
+                        'VP_eta_0.610',
+                        'VP_eta_0.750',
+                        'VP_eta_1.000']
   config.workdir_AdditiveVMP = ''
-  config.optim_prior_hparams_dir = '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
-  # config.optim_prior_hparams_dir = '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval-MOREELBOSAMPLES/all_items/nsf/vmp_flow'
+  config.optim_prior_hparams_dir = ''
   config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
-  config.etas = [0.05, 0.25, 0.42, 0.5, 0.75, 1.]
+  config.etas = [0.05, 0.25, 0.5, 0.61, 0.75, 1.]
   config.prior_hparams_fixed = [5., 10., 1., 0.5, 1., 1., 0.2, 0.3]
   config.num_samples_amortisation_plot = 50
   config.loss_type = 'ELBO'
@@ -39,6 +28,7 @@ def get_config():
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
+  config.flow_kwargs.is_additive_flow = False
   config.flow_kwargs.num_basis_gps = 10
   config.flow_kwargs.inducing_grid_shape = (11, 11)
   # Number of layers to use in the flow.
