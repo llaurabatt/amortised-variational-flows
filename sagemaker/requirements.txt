@@ -1,8 +1,0 @@
-boto3
-sagemaker
-sagemaker-studio-image-build
-git+https://github.com/awslabs/syne-tune.git
-# syne-tune installed from git requires additional packages:
-autograd
-botocore
-xgboost

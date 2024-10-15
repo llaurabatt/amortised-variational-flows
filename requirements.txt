@@ -1,7 +1,0 @@
-arviz
-# git+https://github.com/blackjax-devs/blackjax
-git+https://github.com/awslabs/syne-tune.git
-# modularbayes
-scikit-learn
-seaborn
-POT
