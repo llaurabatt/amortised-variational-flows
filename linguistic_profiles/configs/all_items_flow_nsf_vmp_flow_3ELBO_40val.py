@@ -18,8 +18,8 @@ def get_config():
   config.checkpoint_dir_path = ''
   config.eta_fixed = ''
   config.optim_prior_hparams_dir_fixed_eta = ''# '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
-  config.tune_vmp_hparams = True 
-  config.tune_vmp_hparams_fix_eta = True 
+  config.tune_vmp_hparams = False 
+  config.tune_vmp_hparams_fix_eta = False
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
@@ -122,6 +122,7 @@ def get_config():
   config.num_samples_mse = 2_000
   config.eval_last = False 
   config.max_steps_nan = 1_000
+  config.max_steps_inf = False
 
   # How often to log images to monitor convergence.
   config.log_img_steps = 0 #config.training_steps // 5 

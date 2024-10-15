@@ -122,6 +122,7 @@ def get_config():
   config.num_samples_mse = 2_000
   config.eval_last = False 
   config.max_steps_nan = 1_000
+  config.max_steps_inf = False
 
   # How often to log images to monitor convergence.
   config.log_img_steps = 0 #config.training_steps // 5 
