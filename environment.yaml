@@ -33,4 +33,4 @@ dependencies:
   - texlive-core
   - pip:
     # - pre-commit
-    - --editable ./
+    - --editable ./ModularBayesIntegrated/

@@ -33,24 +33,24 @@ for n_val in "${N_VAL_SAMPLES[@]}"; do
         # python3 $REPO_DIR/hp_convergence_plots_NEW.py --path=$WORK_DIR
 
         # VP at different etas on optimised prior hyperparameters
-        etas="${all_etas[$n_elbo]}"
-        IFS=' ' read -r -a eta_array <<< "$etas"
-        for eta in "${eta_array[@]}"; do
-          echo "Processing eta: $eta"
-          python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf_vp_flow_${n_elbo}_${n_val}.py \
-                                    --workdir $WORK_DIR/VP_eta_$eta \
-                                    --config.eta_fixed $eta \
-                                    --config.optim_prior_hparams_dir_fixed_eta $WORK_DIR \
-                                    --log_dir $WORK_DIR/VP_eta_$eta/log_dir \
-                                    --alsologtostderr
-        done
+        # etas="${all_etas[$n_elbo]}"
+        # IFS=' ' read -r -a eta_array <<< "$etas"
+        # for eta in "${eta_array[@]}"; do
+        #   echo "Processing eta: $eta"
+        #   python3 $REPO_DIR/main.py --config $REPO_DIR/configs/all_items_flow_nsf_vp_flow_${n_elbo}_${n_val}.py \
+        #                             --workdir $WORK_DIR/VP_eta_$eta \
+        #                             --config.eta_fixed $eta \
+        #                             --config.optim_prior_hparams_dir_fixed_eta $WORK_DIR \
+        #                             --log_dir $WORK_DIR/VP_eta_$eta/log_dir \
+        #                             --alsologtostderr
+        # done
 
         # Amortisation gap
-        # WORK_DIR_TEMP="/home/llaurabat/mount/old-disk/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow"
-        # python3 $REPO_DIR/amortisation_gap.py --config $REPO_DIR/configs/amortisation_plot_nsf_vmp_flow_${n_elbo}_${n_val}.py \
-        #                         --config.workdir_VMP $WORK_DIR \
-        #                         --config.optim_prior_hparams_dir $WORK_DIR \
-        #                         --workdir $WORK_DIR \
-        #                         --alsologtostderr
+        WORK_DIR_TEMP="/home/llaurabat/mount/old-disk/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow"
+        python3 $REPO_DIR/amortisation_gap.py --config $REPO_DIR/configs/amortisation_plot_nsf_vmp_flow_${n_elbo}_${n_val}.py \
+                                --config.workdir_VMP $WORK_DIR \
+                                --config.optim_prior_hparams_dir $WORK_DIR \
+                                --workdir $WORK_DIR \
+                                --alsologtostderr
     done
 done
