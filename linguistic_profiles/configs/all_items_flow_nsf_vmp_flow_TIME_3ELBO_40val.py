@@ -1,6 +1,7 @@
 """Hyperparameter configuration."""
 
 import ml_collections
+import jax.numpy as jnp
 
 
 def get_config():
@@ -14,12 +15,12 @@ def get_config():
 
   # Defined in `flows.py`.
   config.flow_name = 'meta_nsf'
-  config.cond_hparams_names = []
-  config.eta_fixed = 1.0
+  config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
   config.checkpoint_dir_path = ''
+  config.eta_fixed = 1.0
   config.optim_prior_hparams_dir_fixed_eta = ''# '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
   config.tune_vmp_hparams = False 
-  config.tune_vmp_hparams_fix_eta = False 
+  config.tune_vmp_hparams_fix_eta = False
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
@@ -66,7 +67,7 @@ def get_config():
   config.gp_jitter = 1e-3
 
   # Number of training steps to run.
-  config.training_steps = 70_000 
+  config.training_steps = 100_000 #70_000 
 
   # Optimizer.
   config.optim_kwargs = ml_collections.ConfigDict()
@@ -113,11 +114,11 @@ def get_config():
   1327, 1329, 1330, 1332, 1345, 1348]
 
   # Number of posteriors samples to approximate the variational loss (ELBO).
-  config.num_samples_elbo = 50 #50
+  config.num_samples_elbo = 3 #50
   config.num_samples_gamma_profiles = 5
 
   # How often to evaluate the model.
-  config.eval_steps = config.training_steps // 5 
+  config.eval_steps = jnp.inf #config.training_steps // 5 
   config.num_samples_eval = 500
   config.num_samples_mse = 2_000
   config.eval_last = False 
@@ -127,7 +128,7 @@ def get_config():
   # How often to log images to monitor convergence.
   config.log_img_steps = 0 #config.training_steps // 5 
   config.log_img_at_end = False 
-  config.save_samples = False 
+  config.save_samples = False # FLIPPED
   config.path_MCMC_samples = ''
   config.path_mcmc_img = ''
 
@@ -207,7 +208,7 @@ def get_config():
   config.prior_hparams_plot_optim = [5., 10.,  1., 0.5, 1., 1., 0.4, 0.2]
 
   # How often to save model checkpoints.
-  config.checkpoint_steps = config.training_steps // 5
+  config.checkpoint_steps = 0 # config.training_steps // 5
   config.save_last_checkpoint = True
   # How many checkpoints to keep.
   config.checkpoints_keep = 1
@@ -226,7 +227,7 @@ def get_config():
   config.use_wandb = True
   config.sweep = False
   config.wandb_evaleta  = 1.0
-  config.wandb_project_name = 'LP-VMP-all-allitems'
+  config.wandb_project_name = 'LP-VMP-allitems-TIME'
   config.fixed_configs_wandb = {
                 # "kernel_amplitude": 0.2,
                 # "kernel_length_scale": 0.3,

@@ -16,7 +16,7 @@ def get_config():
   config.flow_name = 'meta_nsf'
   config.cond_hparams_names = ['w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta']
   config.checkpoint_dir_path = ''
-  config.eta_fixed = ''
+  config.eta_fixed = 1.0
   config.optim_prior_hparams_dir_fixed_eta = ''# '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
   config.tune_vmp_hparams = False 
   config.tune_vmp_hparams_fix_eta = False

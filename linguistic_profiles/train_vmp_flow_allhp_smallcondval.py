@@ -23,6 +23,7 @@ import ot
 import pickle
 import pandas as pd
 import psutil
+import time
 
 from tensorflow_probability.substrates import jax as tfp
 import wandb
@@ -1364,7 +1365,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   # Initialize random keys
   prng_seq = hk.PRNGSequence(config.seed)
 
-
+  
   # Add some parameters to config
     # WANDB
   if config.use_wandb:
@@ -1510,6 +1511,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
     else:
       checkpoint_dir = str(pathlib.Path(workdir) / 'checkpoints') #_rahzlmon')
   logging.info(f'Checkpoint directory: {checkpoint_dir}')
+
 
 
   # Global parameters
@@ -1766,7 +1768,12 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   # # TODO: This doesn't work after jitting.
   # # error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
 
+  start_time = time.perf_counter()
+  save_time_info = False
   save_last_checkpoint = False
+ 
+  if (state_list[0].step < config.training_steps):
+    save_time_info = True
   if ((state_list[0].step < config.training_steps) and (config.save_last_checkpoint == True)):
     logging.info('Training variational posterior...')
     # Reset random keys
@@ -1862,7 +1869,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           )
           
     # Metrics for evaluation
-    if ((state_list[0].step == 1) or (state_list[0].step == 10000) or (state_list[0].step % config.eval_steps == 0)):
+    if ((state_list[0].step % config.eval_steps == 0)):
       logging.info("STEP: %5d; training loss: %.3f", state_list[0].step - 1,
                    metrics["train_loss"])
 
@@ -2076,7 +2083,29 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           keep=config.checkpoints_keep,
       )
     del state
+ 
+ # End the timer
+  end_time = time.perf_counter()
+  elapsed_time = end_time - start_time
 
+  hours, rem = divmod(elapsed_time, 3600)  # Divide by 3600 to get hours and remainder
+  minutes, seconds = divmod(rem, 60)  # Divide remainder by 60 to get minutes and seconds
+
+  # Prepare the output strings
+  elapsed_time_str = f"Total elapsed time: {elapsed_time:.4f} seconds\n"
+  formatted_time_str = f"Elapsed time: {int(hours)} hours, {int(minutes)} minutes, {seconds:.2f} seconds\n"
+
+  # Print to console
+  print(elapsed_time_str)
+  print(formatted_time_str)
+
+  # Save to file
+  if save_time_info: 
+    print("Saving timing info to file...")
+    with open(workdir + "/timing_info.txt", "w") as file:
+        file.write(elapsed_time_str)
+        file.write(formatted_time_str)
+  
   # Estimate posterior distance to true locations
   if config.eval_last and summary_writer is not None:
     logging.info("Logging distance error on last state...")
