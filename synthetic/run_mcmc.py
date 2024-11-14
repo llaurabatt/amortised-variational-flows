@@ -197,13 +197,27 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
   times_data['end_sampling'] = time.perf_counter()
 
+  log_str = ""
   logging.info("Sampling times:")
+  log_str += "Sampling times:\n"  
+  total_time = times_data['end_sampling'] - times_data['start_sampling']
   logging.info("\t Total: %s",
-               str(times_data['end_sampling'] - times_data['start_sampling']))
+                 str(total_time))
+  log_str += f"\t Total: {total_time}\n" 
+
+  mcmc_time = times_data['end_mcmc'] - times_data['start_mcmc'] 
   logging.info(
-      "\t Stg 1: %s",
-      str(times_data['end_mcmc'] - times_data['start_mcmc']))
-  
+          "\t MCMC time: %s",
+          str(mcmc_time))
+  log_str += f"\t MCMC time: {mcmc_time}\n" 
+
+  print("Saving timing info to file...")
+  with open(f"{workdir}/timing_info.txt", "w") as file:
+            file.write(log_str)
+
+
+
+
   logging.info("Saving samples...")
   with open(workdir + f"/mcmc_samples_true_hparams.sav", 'wb') as f:
        pickle.dump(posterior_sample_dict, f)

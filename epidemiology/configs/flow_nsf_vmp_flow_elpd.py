@@ -20,11 +20,11 @@ def get_config():
   config.flow_kwargs.num_layers = 4
   # Hidden sizes
   # Hidden sizes of the MLP conditioner.
-  config.flow_kwargs.hidden_sizes_conditioner = [5] * 3 #??
+  config.flow_kwargs.hidden_sizes_conditioner = [5] * 3
   # Hidden sizes of the MLP conditioner for eta.
-  config.flow_kwargs.hidden_sizes_conditioner_eta = [5] * 3 #??
+  config.flow_kwargs.hidden_sizes_conditioner_eta = [5] * 3
   # Hidden sizes of the MLP conditioner for prior.
-  config.flow_kwargs.hidden_sizes_conditioner_prior = [5] * 3 #??
+  config.flow_kwargs.hidden_sizes_conditioner_prior = [5] * 3
   # Number of bins to use in the rational-quadratic spline.
   config.flow_kwargs.num_bins = 10
   # the lower bound of the spline's range

@@ -11,22 +11,22 @@ def get_config():
   config.method = 'vmp_flow_elpd_integrated'
 
   config.cond_hparams_names = ['mu_prior_mean_m', 'mu_prior_scale_s', 'sigma_prior_concentration', 'sigma_prior_scale']
-  config.opt_cond_hparams_values = [0.4, 0.85, 1.05, 0.43] # 10 groups 8 obs
+  config.opt_cond_hparams_values = [0.01, 0.98, 1.42, 0.5]# 50 groups 50 obs
   # config.alternative_cond_hparams_values = [0., 10000, 0.01, 0.01]
   config.alternative_cond_hparams_values = []#[2., 2., 0.5, 1.5] 
   config.checkpoint_dir_comparison = ml_collections.ConfigDict()
   config.checkpoint_dir_comparison.alternative = ''
-  config.checkpoint_dir_comparison.true = '/home/llaurabat/mount/vmp-output/synthetic/vp-true-ng10-nobs8/checkpoints'
-  config.checkpoint_dir_comparison.opt = '/home/llaurabat/mount/vmp-output/synthetic/vmp-ng10-nobs8/checkpoints'
-  config.mcmc_samples_true_hparams_path = '/home/llaurabat/mount/vmp-output/synthetic/mcmc-ng10-nobs8/mcmc_samples_10groups_8obs_true_hparams.sav'
+  config.checkpoint_dir_comparison.true = '/home/llaurabat/mount/vmp-output/synthetic/vp-true-ng50-nobs50/checkpoints'
+  config.checkpoint_dir_comparison.opt = '/home/llaurabat/mount/vmp-output/synthetic/vmp-ng50-nobs50/checkpoints'
+  config.mcmc_samples_true_hparams_path = '/home/llaurabat/mount/vmp-output/synthetic/mcmc-ng50-nobs50/mcmc_samples_50groups_50obs_true_hparams.sav'
   config.true_hparams = [0., 1., 1.5, 0.5]
   config.train_hyperparameters = False
 
   # synthetic data settings
   
   
-  config.synth_n_groups = 10
-  config.synth_n_obs = 8
+  config.synth_n_groups = 50 #10, 50
+  config.synth_n_obs = 50 #8, 50
   # config.mask_Y = np.ones((config.synth_n_obs, config.synth_n_groups))
   config.mask_Y = np.ones((config.synth_n_obs*config.synth_n_groups,))
 
@@ -45,7 +45,7 @@ def get_config():
   # Hidden sizes of the MLP conditioner for eta.
   config.flow_kwargs.hidden_sizes_conditioner_eta = [5] * 3 
   # Hidden sizes of the MLP conditioner for prior.
-  config.flow_kwargs.hidden_sizes_conditioner_prior = [5] * 3 
+  config.flow_kwargs.hidden_sizes_conditioner_prior = [5] * 3
   # Number of bins to use in the rational-quadratic spline.
   config.flow_kwargs.num_bins = 10
   # the lower bound of the spline's range
@@ -93,7 +93,7 @@ def get_config():
 
 
   # How often to evaluate the model.
-  config.eval_steps = config.training_steps / 20#10
+  config.eval_steps = np.inf #config.training_steps / 20#10
   config.num_samples_eval = 5_000
   config.num_modules = 2
 
@@ -103,7 +103,7 @@ def get_config():
   config.seed_synth = 3
 
   # How often to log images to monitor convergence.
-  config.log_img_steps = config.training_steps / 10
+  config.log_img_steps = np.inf #config.training_steps / 10
 
   # Number of posteriors samples used in the plots.
   config.num_samples_plot = 10_000
@@ -116,7 +116,7 @@ def get_config():
 # [0.073, 3.72][1., 1.][5.108, 4.375]
 # [0.778, 15.000][1., 1.][5.741, 15.000]
   # How often to save model checkpoints.
-  config.checkpoint_steps = config.training_steps / 4
+  config.checkpoint_steps = np.inf #config.training_steps / 4
 
   # How many checkpoints to keep.
   config.checkpoints_keep = 1

@@ -18,6 +18,7 @@ import pickle
 import pandas as pd
 import seaborn as sns
 import scipy
+import time
 
 from flax.metrics import tensorboard
 
@@ -907,10 +908,16 @@ def log_images(
     #     images.append(plot_to_image(fig_theta_loglambda))
 
     # produce phi plots
+    with open(workdir_mcmc + f'/mcmc_eta_0.87_c1_13.04_c2_15.00/mcmc_eta_0.87_c1_13.04_c2_15.00.sav', 'rb') as fr:
+        mcmc_phis_eta1 = pickle.load(fr)['phi']
+    with open(workdir_mcmc + f'/mcmc_eta_0.02_c1_0.97_c2_14.00/mcmc_eta_0.02_c1_0.97_c2_14.00.sav', 'rb') as fr:
+        mcmc_phis_eta0 = pickle.load(fr)['phi']
+    posterior_mcmc_dict = {'eta_bayes':mcmc_phis_eta1, 'eta_cut':mcmc_phis_eta0}
     for eta_ix, (eta_k, eta_v) in enumerate(smi_etas.items()):
         fig_phi = plot_all.plot_posterior_phi_hprange(
           plot_two=config.plot_two,
           posterior_sample_dict=posterior_sample_dict,
+          mcmc_posterior_phis=posterior_mcmc_dict,
           eta = (eta_k,eta_v),
           priorhps = priorhps,
           priorhp_main = priorhp_main,
@@ -1457,12 +1464,18 @@ def train_and_evaluate(config: ConfigDict, workdir: str, workdir_mcmc: Optional[
 
   ############################################################################################################################
 
+  start_time = time.perf_counter()
+  save_time_info = False
   save_after_training = False
+
+
   loss_stages_plot = False
   if loss_stages_plot:
     info_dict = {'lambda_training_loss':[], 
                'elbo_stage1':[], 'elbo_stage2':[]}
 
+  if (state_list[0].step < config.training_steps):
+    save_time_info = True
 
   if state_list[0].step < config.training_steps:
     save_after_training = True
@@ -1563,6 +1576,28 @@ def train_and_evaluate(config: ConfigDict, workdir: str, workdir_mcmc: Optional[
 
 
   logging.info('Final training step: %i', state_list[0].step)
+  
+   # End the timer
+  end_time = time.perf_counter()
+  elapsed_time = end_time - start_time
+
+  hours, rem = divmod(elapsed_time, 3600)  # Divide by 3600 to get hours and remainder
+  minutes, seconds = divmod(rem, 60)  # Divide remainder by 60 to get minutes and seconds
+
+  # Prepare the output strings
+  elapsed_time_str = f"Total elapsed time: {elapsed_time:.4f} seconds\n"
+  formatted_time_str = f"Elapsed time: {int(hours)} hours, {int(minutes)} minutes, {seconds:.2f} seconds\n"
+
+  # Print to console
+  print(elapsed_time_str)
+  print(formatted_time_str)
+
+  # Save to file
+  if save_time_info: 
+    print("Saving timing info to file...")
+    with open(workdir + "/timing_info.txt", "w") as file:
+        file.write(elapsed_time_str)
+        file.write(formatted_time_str)
 
   if loss_stages_plot:
      fig_two_stages = plot_all.lambda_loss_two_stages(

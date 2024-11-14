@@ -264,17 +264,35 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     times_data['end_sampling'] = time.perf_counter()
 
+    log_str = ""
     logging.info("Sampling times:")
+    log_str += "Sampling times:\n"    
+    total_time = times_data['end_sampling'] - times_data['start_sampling']
     logging.info("\t Total: %s",
-                str(times_data['end_sampling'] - times_data['start_sampling']))
-    logging.info(
-        "\t Stg 1: %s",
-        str(times_data['end_mcmc_stg_1'] - times_data['start_mcmc_stg_1']))
+                 str(total_time))
+    log_str += f"\t Total: {total_time}\n"
+
+    if ('end_mcmc_stg_1' in times_data):
+      stg1_time = times_data['end_mcmc_stg_1'] - times_data['start_mcmc_stg_1'] 
+      logging.info(
+          "\t Stg 1: %s",
+          str(stg1_time))
+      log_str += f"\t Stg 1: {stg1_time}\n"
+
     if smi_eta is not None:
+        stg2_time = times_data['end_mcmc_stg_2'] - times_data['start_mcmc_stg_2']
+
         logging.info(
             "\t Stg 2: %s",
-            str(times_data['end_mcmc_stg_2'] - times_data['start_mcmc_stg_2']))
-        
+            str(stg2_time))
+        log_str += f"\t Stg 2: {stg2_time}\n"
+
+    if ('end_mcmc_stg_1' in times_data) and ('end_mcmc_stg_2' in times_data): 
+        print("Saving timing info to file...")
+        with open(f"{workdir}/timing_info.txt", "w") as file:
+                    file.write(log_str)
+
+
     with open(workdir + f"/mcmc_eta_{config.smi_eta:.2f}_c1_{config.c1:.2f}_c2_{config.c2:.2f}.sav", 'wb') as f:
        pickle.dump(posterior_sample_dict, f)
         

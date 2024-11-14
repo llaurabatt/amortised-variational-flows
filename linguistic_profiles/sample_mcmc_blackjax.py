@@ -986,17 +986,40 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
     times_data['end_sampling'] = time.perf_counter()
 
+    log_str = ""
     logging.info("Sampling times:")
+    log_str += "Sampling times:\n"
+
+    total_time = times_data['end_sampling'] - times_data['start_sampling']
     logging.info("\t Total: %s",
-                 str(times_data['end_sampling'] - times_data['start_sampling']))
-    if ('start_mcmc_stg_1' in times_data) and ('end_mcmc_stg_1' in times_data):
+                 str(total_time))
+    log_str += f"\t Total: {total_time}\n"
+
+
+    if ('end_mcmc_stg_1' in times_data):
+      stg1_time = times_data['end_mcmc_stg_1'] - times_data['start_sampling'] 
       logging.info(
           "\t Stg 1: %s",
-          str(times_data['end_mcmc_stg_1'] - times_data['start_mcmc_stg_1']))
-    if ('start_mcmc_stg_2' in times_data) and ('end_mcmc_stg_2' in times_data):
+          str(stg1_time))
+      log_str += f"\t Stg 1: {stg1_time}\n"
+      
+    
+    if ('end_mcmc_stg_2' in times_data):
+      try:
+         start_time = times_data['end_mcmc_stg_1']
+      except:
+         start_time = times_data['start_sampling'] 
+      stg2_time = times_data['end_mcmc_stg_2'] - start_time
+
       logging.info(
           "\t Stg 2: %s",
-          str(times_data['end_mcmc_stg_2'] - times_data['start_mcmc_stg_2']))
+          str(stg2_time))
+      log_str += f"\t Stg 2: {stg2_time}\n"
+
+    if ('end_mcmc_stg_1' in times_data) and ('end_mcmc_stg_2' in times_data): 
+        print("Saving timing info to file...")
+        with open(f"{workdir}/timing_info.txt", "w") as file:
+                    file.write(log_str)
 
   # Get a sample of the basis GPs on profiles locations
   # conditional on values at the inducing locations.

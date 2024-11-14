@@ -93,7 +93,7 @@ def get_config():
 
 
   # How often to evaluate the model.
-  config.eval_steps = config.training_steps / 20#10
+  config.eval_steps = np.inf #config.training_steps / 20#10
   config.num_samples_eval = 5_000
   config.num_modules = 2
 
@@ -103,7 +103,7 @@ def get_config():
   config.seed_synth = 3
 
   # How often to log images to monitor convergence.
-  config.log_img_steps = config.training_steps / 10
+  config.log_img_steps = np.inf #config.training_steps / 10
 
   # Number of posteriors samples used in the plots.
   config.num_samples_plot = 10_000
@@ -116,7 +116,7 @@ def get_config():
 # [0.073, 3.72][1., 1.][5.108, 4.375]
 # [0.778, 15.000][1., 1.][5.741, 15.000]
   # How often to save model checkpoints.
-  config.checkpoint_steps = config.training_steps / 4
+  config.checkpoint_steps = np.inf #config.training_steps / 4
 
   # How many checkpoints to keep.
   config.checkpoints_keep = 1

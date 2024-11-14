@@ -316,6 +316,7 @@ def plot_posterior_phi_hprange(
       posterior_sample_dict,
       eta,
       priorhps,
+      mcmc_posterior_phis: Optional[Mapping[str, Array]] = None,
       priorhp_main: Optional[Mapping[str, Mapping]] = 
       {'main': {'eta_bayes': 'priorhp_converged_bayes',
                 'eta_cut': 'priorhp_converged_cut'},
@@ -324,10 +325,11 @@ def plot_posterior_phi_hprange(
 ):
     mpl.rcParams['font.size'] = 12
     mpl.rcParams['font.family'] = 'serif'
+    mpl.rcParams['mathtext.fontset'] = 'stix'
     mpl.rcParams['axes.labelsize'] = 12
     mpl.rcParams['xtick.labelsize'] = 16
     mpl.rcParams['ytick.labelsize'] = 16
-    mpl.rcParams['text.usetex'] = True
+    mpl.rcParams['text.usetex'] = False
     mpl.rcParams['legend.fontsize'] = 16
 
     colors = ['green', 'black', 'red', 'orange', 'pink']
@@ -335,7 +337,7 @@ def plot_posterior_phi_hprange(
     eta_v = eta[1]
     if plot_two:
                 # Phis
-        fig_phi, ax_phi = plt.subplots(1,2, figsize=(10, 7), sharex=True)
+        fig_phi, ax_phi = plt.subplots(1,2, figsize=(10, 9), sharex=True)
         ax_phi_flattened = ax_phi.flatten()
         priorhps_red = {k:v for k,v in priorhps.items() if k not in ['priorhp_ones']}
         for p_ix, (priorhp_k, priorhp_v) in enumerate(priorhps_red.items()):
@@ -350,10 +352,19 @@ def plot_posterior_phi_hprange(
                 ax_phi_flattened[phi_ix].set_xlabel(fr'$\delta_{{{phi_no+1}}}$', fontsize=15)
                 ax_phi_flattened[phi_ix].set_ylabel(fr'Density', fontsize=15)  
                 ax_phi_flattened[phi_ix].xaxis.set_tick_params(which='both', labelbottom=True)
+
         labels = [fr'$c_1$: {priorhps_red[k][0]}, $c_2$: {priorhps_red[k][1]}' for k in priorhps_red.keys()]
 
+        if mcmc_posterior_phis is not None:
+            for phi_ix, phi_no in enumerate([2,9]):
+                sns.kdeplot(mcmc_posterior_phis[eta_k][:,phi_no], ax=ax_phi_flattened[phi_ix], 
+                            color='blue', linestyle='dashed')
+            # labels.append(fr"MCMC")
+            labels.append(f"MCMC at $c_1$: {priorhps_red[priorhp_main['main'][eta_k]][0]}, $c_2$: {priorhps_red[priorhp_main['main'][eta_k]][1]}")
+
+
         fig_phi.legend(labels,
-            loc='lower center', ncol=4, fontsize=11)
+            loc='lower center', ncol=3, fontsize=15)
 
         fig_phi.tight_layout()
 

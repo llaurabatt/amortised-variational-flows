@@ -6,6 +6,7 @@ set -x
 WORK_DIR_MAIN=$PWD
 
 # Directory to save all outputs
+
 WORK_DIR_mcmc=$HOME/mount/vmp-output/epidemiology/mcmc
 CONFIG_DIR_mcmc=$HOME/my-spatial-smi-oldv/epidemiology/configs/mcmc 
 WORK_DIR_bayes=$HOME/mount/vmp-output/epidemiology/vmp-bayes
@@ -20,7 +21,7 @@ WORK_DIR_smi=$HOME/mount/vmp-output/epidemiology/vmp-smi
 #                                                  --log_dir $WORK_DIR_mcmc/$CONFIG_BASENAME/log_dir \
 #                                                  --alsologtostderr
 # done
-
+ 
 # # # ## LOOCV Variational Meta-Posterior INTEGRATED via VMP-flow with beta hyperparameter tuning
 hpv_no_obs=13
 
@@ -112,22 +113,23 @@ hpv_no_obs=13
 
 # Full VMP Bayes with hyperparameter tuning
 
-python3 $WORK_DIR_MAIN/epidemiology/main.py --config=$WORK_DIR_MAIN/epidemiology/configs/flow_nsf_vmp_flow_bayes.py \
-                                               --workdir=$WORK_DIR_bayes \
-                                               --workdir_mcmc $WORK_DIR_mcmc \
-                                               --log_dir $WORK_DIR_bayes/log_dir \
-                                              --alsologtostderr 
+# python3 $WORK_DIR_MAIN/epidemiology/main.py --config=$WORK_DIR_MAIN/epidemiology/configs/flow_nsf_vmp_flow_bayes.py \
+#                                                --workdir=$WORK_DIR_bayes \
+#                                                --workdir_mcmc $WORK_DIR_mcmc \
+#                                                --log_dir $WORK_DIR_bayes/log_dir \
+#                                               --alsologtostderr 
 
 # Full VMP SMI with hyperparameter tuning
 
-# python3 $WORK_DIR_MAIN/epidemiology/main.py --config=$WORK_DIR_MAIN/epidemiology/configs/flow_nsf_vmp_flow_smi.py \
-#                                                --workdir=$WORK_DIR_smi \
-#                                                --workdir_mcmc $WORK_DIR_mcmc \
-#                                                --log_dir $WORK_DIR_smi/log_dir \
-#                                               --alsologtostderr 
+python3 $WORK_DIR_MAIN/epidemiology/main.py --config=$WORK_DIR_MAIN/epidemiology/configs/flow_nsf_vmp_flow_smi.py \
+                                               --workdir=$WORK_DIR_smi \
+                                               --workdir_mcmc $WORK_DIR_mcmc \
+                                               --log_dir $WORK_DIR_smi/log_dir \
+                                              --alsologtostderr
+
 
 # Plot hyperparameter tuning results
 
-python3 $WORK_DIR_MAIN/epidemiology/hp_convergence_new.py --path_smi=$WORK_DIR_smi \
-                                                   --path_bayes=$WORK_DIR_bayes
+# python3 $WORK_DIR_MAIN/epidemiology/hp_convergence_new.py --path_smi=$WORK_DIR_smi \
+#                                                    --path_bayes=$WORK_DIR_bayes
 

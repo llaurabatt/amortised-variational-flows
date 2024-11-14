@@ -17,6 +17,7 @@ import pickle
 import pandas as pd
 import seaborn as sns
 import scipy
+import time
 
 from flax.metrics import tensorboard
 
@@ -883,11 +884,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str, workdir_mcmc: Optional[
   # update_eta_star_state = jax.jit(update_eta_star_state)
 
   ############################################################################################################################
-
+  start_time = time.perf_counter()
+  save_time_info = False
   save_after_training = False
-  loss_stages_plot = False
-  if loss_stages_plot:
-    info_dict = {'lambda_training_loss':[], 'elbo_stage2':[]}
 
   if jax.process_index() == 0:
     summary_writer = tensorboard.SummaryWriter(workdir)
@@ -896,6 +895,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str, workdir_mcmc: Optional[
     summary_writer = None
 
   if state_list[0].step < config.training_steps:
+    save_time_info = True
     save_after_training = True
     logging.info('Training Variational Meta-Posterior (VMP-flow)...')
 
@@ -1045,7 +1045,28 @@ def train_and_evaluate(config: ConfigDict, workdir: str, workdir_mcmc: Optional[
 
 
   logging.info('Final training step: %i', state_list[0].step)
+   # End the timer
+  end_time = time.perf_counter()
+  elapsed_time = end_time - start_time
 
+  hours, rem = divmod(elapsed_time, 3600)  # Divide by 3600 to get hours and remainder
+  minutes, seconds = divmod(rem, 60)  # Divide remainder by 60 to get minutes and seconds
+
+  # Prepare the output strings
+  elapsed_time_str = f"Total elapsed time: {elapsed_time:.4f} seconds\n"
+  formatted_time_str = f"Elapsed time: {int(hours)} hours, {int(minutes)} minutes, {seconds:.2f} seconds\n"
+
+  # Print to console
+  print(elapsed_time_str)
+  print(formatted_time_str)
+
+  # Save to file
+  if save_time_info: 
+    print("Saving timing info to file...")
+    with open(workdir + "/timing_info.txt", "w") as file:
+        file.write(elapsed_time_str)
+        file.write(formatted_time_str)
+        
 #########################################################################
   # Saving checkpoint at the end of the training process
   # (in case training_steps is not multiple of checkpoint_steps)
@@ -1059,52 +1080,52 @@ def train_and_evaluate(config: ConfigDict, workdir: str, workdir_mcmc: Optional[
 
   # Last plot of posteriors
   
-  
-  state_lists = {'true':[], 'opt':[], 'save':[]} #, 'alternative':[]}
-  for state_list_name, v in state_lists.items():
-    if state_list_name != 'save':
-        chkpt = config.checkpoint_dir_comparison.to_dict()[state_list_name]
-        if chkpt:
-            if chkpt == checkpoint_dir:
-                state_lists[state_list_name] = state_list
-                state_lists['save'] = state_list
-            else:
-                if 'VP' in chkpt:
-                    cond_values_init = None 
+  if config.log_img_steps != np.inf: 
+    state_lists = {'true':[], 'opt':[], 'save':[]} #, 'alternative':[]}
+    for state_list_name, v in state_lists.items():
+        if state_list_name != 'save':
+            chkpt = config.checkpoint_dir_comparison.to_dict()[state_list_name]
+            if chkpt:
+                if chkpt == checkpoint_dir:
+                    state_lists[state_list_name] = state_list
+                    state_lists['save'] = state_list
                 else:
-                    cond_values_init = get_cond_values(cond_hparams_names=['mu_prior_mean_m', 'mu_prior_scale_s', 'sigma_prior_concentration', 'sigma_prior_scale'],
-                                        num_samples=config.num_samples_eval,
-                                        prior_hparams_init=prior_hparams_init
-                                        )    
-                state_lists[state_list_name].append(
-                    initial_state_ckpt(
-                        checkpoint_dir=chkpt + '/mu_sigma',
-                        forward_fn=hk.transform(q_distr_mu_sigma),
-                        forward_fn_kwargs={
-                            'flow_name': config.flow_name,
-                            'flow_kwargs': config.flow_kwargs,
-                            'cond_values': cond_values_init, 
-                            'num_samples':config.num_samples_eval,
-                        },
-                        prng_key=next(prng_seq),
-                        optimizer=make_optimizer(**config.optim_kwargs),
-                    ))
+                    if 'VP' in chkpt:
+                        cond_values_init = None 
+                    else:
+                        cond_values_init = get_cond_values(cond_hparams_names=['mu_prior_mean_m', 'mu_prior_scale_s', 'sigma_prior_concentration', 'sigma_prior_scale'],
+                                            num_samples=config.num_samples_eval,
+                                            prior_hparams_init=prior_hparams_init
+                                            )    
+                    state_lists[state_list_name].append(
+                        initial_state_ckpt(
+                            checkpoint_dir=chkpt + '/mu_sigma',
+                            forward_fn=hk.transform(q_distr_mu_sigma),
+                            forward_fn_kwargs={
+                                'flow_name': config.flow_name,
+                                'flow_kwargs': config.flow_kwargs,
+                                'cond_values': cond_values_init, 
+                                'num_samples':config.num_samples_eval,
+                            },
+                            prng_key=next(prng_seq),
+                            optimizer=make_optimizer(**config.optim_kwargs),
+                        ))
 
-  if config.mcmc_samples_true_hparams_path:
-    with open(config.mcmc_samples_true_hparams_path, 'rb') as f:
-        mcmc_samples = pickle.load(f)
-  else:
-    mcmc_samples = {'mu': None, 'sigma': None}
-    
-  log_images(
-      state_lists=state_lists,
-      true_params=true_params,
-      prng_key=next(prng_seq),
-      config=config,
-      summary_writer=summary_writer,
-      workdir_png=workdir,
-      mcmc_samples=mcmc_samples,
-  )
+    if config.mcmc_samples_true_hparams_path:
+        with open(config.mcmc_samples_true_hparams_path, 'rb') as f:
+            mcmc_samples = pickle.load(f)
+    else:
+        mcmc_samples = {'mu': None, 'sigma': None}
+        
+    log_images(
+        state_lists=state_lists,
+        true_params=true_params,
+        prng_key=next(prng_seq),
+        config=config,
+        summary_writer=summary_writer,
+        workdir_png=workdir,
+        mcmc_samples=mcmc_samples,
+    )
 
 # #########################################################################
   ## Find best eta ###
