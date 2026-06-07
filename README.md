@@ -17,7 +17,7 @@ To additionally install JAX in the environment, please follow the instructions f
 
 Clone this repository locally
 ```bash
-git clone https://github.com/llaurabatt/my-spatial-smi-oldv.git
+git clone https://github.com/llaurabatt/amortised-variational-flows.git
 ```
 For reproducing the experiments, run the following files:
 
