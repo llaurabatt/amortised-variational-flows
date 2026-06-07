@@ -1,4 +1,4 @@
-This repo contain the implementation of the experiments in the article *Amortising Variational Bayesian Inference over prior hyperparameters with a Normalising Flow*.
+This repo contain the implementation of the experiments in the article *Amortising over hyperparameters in Generalised Bayesian Inference*.
 
 # Set up the environment
 
