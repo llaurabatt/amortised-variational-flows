@@ -1,4 +1,7 @@
 #%%
+import os
+# env TeX Live is incomplete (no latex.fmt); use the working SYSTEM TeX at /usr/bin
+os.environ['PATH'] = '/usr/bin:' + os.environ.get('PATH', '')
 import pickle
 import matplotlib.pyplot as plt
 # import jax.numpy as jnp
@@ -38,7 +41,7 @@ mpl.rcParams['font.family'] = 'serif'
 mpl.rcParams['axes.labelsize'] = 12
 mpl.rcParams['xtick.labelsize'] = 13
 mpl.rcParams['ytick.labelsize'] = 13
-mpl.rcParams['text.usetex'] = True
+mpl.rcParams['text.usetex'] = True  # uses SYSTEM /usr/bin latex (PATH set at top)
 
 names_latex = {'eta': '$\eta$',
                'w_prior_scale':'$\sigma_w$',

@@ -18,8 +18,12 @@ def get_config():
   config.checkpoint_dir_path = ''
   config.eta_fixed = 1.0
   config.optim_prior_hparams_dir_fixed_eta = ''# '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
-  config.tune_vmp_hparams = False 
+  config.tune_vmp_hparams = True
   config.tune_vmp_hparams_fix_eta = False
+  # Map the held-out PMSE objective on a grid of hyperparameters (no SGD) to
+  # diagnose flat (unidentified) vs sharp (identified) directions. Independent
+  # of tune_vmp_hparams; restores the checkpoint and evaluates the frozen flow.
+  config.scan_loss_surface = False
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
@@ -126,7 +130,7 @@ def get_config():
 
   # How often to log images to monitor convergence.
   config.log_img_steps = 0 #config.training_steps // 5 
-  config.log_img_at_end = True  
+  config.log_img_at_end = False
   config.save_samples = False # FLIPPED
   config.path_MCMC_samples = ''
   config.path_mcmc_img = ''
@@ -226,7 +230,7 @@ def get_config():
   config.use_wandb = True
   config.sweep = False
   config.wandb_evaleta  = 1.0
-  config.wandb_project_name = 'LP-VMP-all-allitems'
+  config.wandb_project_name = 'LP-VMP-all-allitems-AoAS'
   config.fixed_configs_wandb = {
                 # "kernel_amplitude": 0.2,
                 # "kernel_length_scale": 0.3,

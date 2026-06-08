@@ -379,7 +379,7 @@ def sample_locations_floating(
 
     locations_sample.append(q_distr_out['locations_sample'])
 
-  locations_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+  locations_sample = jax.tree_util.tree_map(  # pylint: disable=no-value-for-parameter
       lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
       *locations_sample)
 
@@ -448,12 +448,12 @@ def sample_lalme_az(
     cond_values_chunked_ = jnp.split(cond_values, split_idx_, axis=0)
   else:
     cond_values_chunked_ = [None]*(len(split_idx_)+1)
-  # prior_hparams_chunked_ = jax.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
+  # prior_hparams_chunked_ = jax.tree_util.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
   #                                  prior_hparams)
 
 #   split_idx_ = np.arange(num_samples_chunk, smi_eta['profiles'].shape[0],
 #                          num_samples_chunk).tolist() # list of idxs multiple of num_samples_chunk up to tot samples
-#   smi_eta_chunked_ = jax.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
+#   smi_eta_chunked_ = jax.tree_util.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
 #                                   smi_eta) # turns into {key: list of arrays of num_samples_chunk samples}
 #   # dict of lists -> list of dicts
 #   smi_eta_chunked_ = [
@@ -522,14 +522,14 @@ def sample_lalme_az(
 
       gamma_sample.append(gamma_sample_)
 
-  global_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+  global_sample = jax.tree_util.tree_map(  # pylint: disable=no-value-for-parameter
       lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
       *global_sample)
-  locations_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+  locations_sample = jax.tree_util.tree_map(  # pylint: disable=no-value-for-parameter
       lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
       *locations_sample)
   if include_gamma:
-    gamma_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+    gamma_sample = jax.tree_util.tree_map(  # pylint: disable=no-value-for-parameter
         lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
         *gamma_sample)
   else:
@@ -875,7 +875,7 @@ def error_locations_vector_estimate(
             # batch=batch,
         ))
 
-  error_loc_dict = jax.tree_map(lambda *x: jnp.stack(x, axis=0), *error_grid)  # pylint: disable=no-value-for-parameter
+  error_loc_dict = jax.tree_util.tree_map(lambda *x: jnp.stack(x, axis=0), *error_grid)  # pylint: disable=no-value-for-parameter
 
   return error_loc_dict
 
@@ -981,7 +981,7 @@ def log_images(
         return_location_samples=True,
     )
 
-    locations_sample = jax.tree_map(lambda x: jnp.squeeze(x, axis=0), locations_sample)
+    locations_sample = jax.tree_util.tree_map(lambda x: jnp.squeeze(x, axis=0), locations_sample)
     # get per-profile MSEs
     _, MSEs_pointwise = error_locations_estimate(
       locations_sample=locations_sample, #Dict[str, Any],
@@ -1081,7 +1081,7 @@ def log_images(
         prior_hparams_str_list.append(fr'$\sigma_a$: {prior_hparams_i[0]}, $\sigma_w$: {prior_hparams_i[1]}, $\sigma_K$: {prior_hparams_i[-2]}, $ls_K$: {prior_hparams_i[-1]}')
 
 
-        locations_sample_ = jax.tree_map(lambda x: jnp.squeeze(x, axis=0), locations_sample_)
+        locations_sample_ = jax.tree_util.tree_map(lambda x: jnp.squeeze(x, axis=0), locations_sample_)
         # get per-profile MSEs
         _, MSEs_pointwise = error_locations_estimate(
           locations_sample=locations_sample_, #Dict[str, Any],
@@ -2182,7 +2182,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         cond_hparams_names=config.cond_hparams_names,
         # show_mu=True,
         # show_zeta=True, 
-        show_basis_fields=False,
+        show_basis_fields=True,  # Gaussian/basis fields (lalme_basis_fields); needs ~2000 plot samples
         # show_W_items=lalme_dataset['items'],
         # show_a_items=lalme_dataset['items'],
         # lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
@@ -2206,7 +2206,9 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         mcmc_img=(config.path_mcmc_img if config.dataset_id=='coarsen_8_items' else None),
         loc_inducing=train_ds['loc_inducing'],
         show_location_priorhp_compare=False,
-        show_eval_metric=False, 
+        show_eval_metric=True,  # produce eta-vs-distance curves at end of run:
+        # lalme_vmp_mean_dist_anchor_val (E||sample-truth||) and
+        # lalme_vmp_dist_mean_anchor_val (||posterior_mean - truth||), + floating variants
         eta_eval_grid=jnp.linspace(0, 1, 21),
         num_samples_chunk=config.num_samples_chunk_plot,
         summary_writer=summary_writer,
@@ -2462,12 +2464,139 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           with open(workdir + f"/hp_info_{'eta' if 'eta' in cond_hparams_names else 'only'}priorhps_{init_type}_{optimiser_name}_{f'fixed_eta{eta_i}' if eta_i is not None else 'new'}" + ".sav", 'wb') as f:
             pickle.dump(info_dict, f)
 
+  def scan_loss_surface():
+      """Map the held-out PMSE objective on a grid of hyperparameters WITHOUT SGD.
+
+      Evaluates the SAME objective the tuner uses (sample_all_flows on the frozen
+      flow -> error_locations_estimate -> mean_dist_anchor_val) at fixed grid
+      points, to distinguish a flat (unidentified) surface from a real downhill
+      gradient. Writes workdir/loss_surface_scan.sav for plot_loss_surface.py.
+      """
+      cond_names = list(config.cond_hparams_names)
+      num_profiles_split = train_ds['num_profiles_split']
+      LPs = train_ds['LP']
+      LPs_split = np.split(LPs, np.cumsum(num_profiles_split))[:-1]
+      floating_anchor_copies = config.floating_anchor_copies
+      train_idxs = (jnp.where(jnp.isin(LPs_split[3], LPs_split[0] * 1000))[0]
+                    if floating_anchor_copies else None)
+      ad_hoc_val_profiles = config.ad_hoc_val_profiles
+      val_idxs = (jnp.where(jnp.isin(LPs_split[1], jnp.array(config.ad_hoc_val_list)))[0]
+                  if ad_hoc_val_profiles else None)
+
+      err_jit = jax.jit(lambda locations_sample, loc: error_locations_estimate(
+          locations_sample=locations_sample, num_profiles_split=num_profiles_split,
+          loc=loc, floating_anchor_copies=floating_anchor_copies,
+          train_idxs=train_idxs, ad_hoc_val_profiles=ad_hoc_val_profiles,
+          val_idxs=val_idxs))
+
+      NS = config.num_samples_hparams_optim
+      params_tuple = tuple(s.params for s in state_list)
+      KM = 200.0  # region 200km x 180km rescaled to [0,1]x[0,0.9] -> 200 km per scaled unit
+
+      @jax.jit
+      def metrics(cond_values, prng_key):
+          q = sample_all_flows(
+              params_tuple=params_tuple, prng_key=prng_key,
+              flow_name=config.flow_name, flow_kwargs=config.flow_kwargs,
+              cond_values=jnp.broadcast_to(cond_values, (NS, cond_values.shape[0])),
+              include_random_anchor=config.include_random_anchor, num_samples=NS)
+          e = err_jit(locations_sample=q['locations_sample'], loc=train_ds['loc'])
+          # E||X-x|| (mean dist), E||X-x||^2 (=PMSE, the paper's metric), ||E[X]-x|| (mean-est)
+          return (e['mean_dist_anchor_val'], e['mean_sq_dist_anchor_val'], e['dist_mean_anchor_val'])
+
+      # Common random numbers: a fixed set of keys reused at EVERY grid point, so
+      # differences reflect the hyperparameters, not Monte-Carlo noise.
+      keys = jax.random.split(jax.random.PRNGKey(config.seed), 3)
+
+      def eval_at(d):
+          vec = jnp.array([float(d[n]) for n in cond_names])
+          md, ms, dm = [], [], []
+          for k in keys:
+              a, b, c = metrics(vec, k)
+              md.append(float(a)); ms.append(float(b)); dm.append(float(c))
+          return {'mean_dist': float(np.mean(md)), 'mean_dist_sd': float(np.std(md)),
+                  'mean_sq': float(np.mean(ms)), 'mean_sq_sd': float(np.std(ms)),
+                  'dist_mean': float(np.mean(dm))}
+
+      # Confirm the coordinate scaling empirically (expect ~[0,1] x [0,0.9]).
+      _lc = np.asarray(train_ds['loc'])
+      logging.info('loc bounds (scaled): min=%s max=%s -> %.0f km per unit',
+                   np.round(_lc.min(0), 3), np.round(_lc.max(0), 3), KM)
+
+      # Reference point: prior-hparam defaults (central, inside the rho support) + eta=0.42.
+      pj = jnp.stack(PriorHparams())
+      pf = list(PriorHparams()._fields)
+      ref = {n: float(pj[pf.index(n)]) for n in cond_names if n in pf}
+      if 'eta' in cond_names:
+          ref['eta'] = 0.42
+      logging.info('Loss-surface scan reference point: %s', ref)
+
+      # rho training-support ranges (for shading in the plots).
+      support = {'w_prior_scale': (0., None), 'a_prior_scale': (None, None),
+                 'kernel_amplitude': (0.1, 0.4), 'kernel_length_scale': (0.2, 0.5),
+                 'eta': (0., 1.)}
+      grids = {'w_prior_scale': np.linspace(0.1, 20., 21),
+               'a_prior_scale': np.linspace(1., 19., 21),
+               'kernel_amplitude': np.linspace(0.02, 1.0, 21),
+               'kernel_length_scale': np.linspace(0.05, 0.9, 21),
+               'eta': np.linspace(0., 1., 21)}
+
+      results = {'cond_names': cond_names, 'ref': ref, 'support': support,
+                 'num_samples': NS, 'km_per_unit': KM, 'sweeps': {}}
+      for name in cond_names:
+          if name not in grids:
+              continue
+          rows = {'x': [], 'mean_dist': [], 'mean_dist_sd': [],
+                  'mean_sq': [], 'mean_sq_sd': [], 'dist_mean': []}
+          for v in grids[name]:
+              d = dict(ref); d[name] = float(v)
+              r = eval_at(d)
+              rows['x'].append(float(v))
+              for kk in ('mean_dist', 'mean_dist_sd', 'mean_sq', 'mean_sq_sd', 'dist_mean'):
+                  rows[kk].append(r[kk])
+              logging.info('scan 1D %-20s = %8.4f -> meandist_km %.2f  rootPMSE_km %.2f',
+                           name, v, KM * r['mean_dist'], KM * (r['mean_sq'] ** 0.5))
+          results['sweeps'][name] = rows
+
+      # 2-D (kernel_amplitude, w_prior_scale) sheet, stored as root-PMSE in km.
+      if ('kernel_amplitude' in cond_names) and ('w_prior_scale' in cond_names):
+          sk_grid = np.linspace(0.02, 1.0, 13)
+          sw_grid = np.linspace(0.1, 20., 13)
+          Z = np.full((len(sk_grid), len(sw_grid)), np.nan)
+          for i, sk in enumerate(sk_grid):
+              for j, sw in enumerate(sw_grid):
+                  d = dict(ref); d['kernel_amplitude'] = float(sk); d['w_prior_scale'] = float(sw)
+                  Z[i, j] = KM * (eval_at(d)['mean_sq'] ** 0.5)
+              logging.info('scan 2D row %d/%d (sigma_k=%.3f) done', i + 1, len(sk_grid), sk)
+          results['grid_sk_sw'] = {'sigma_k': sk_grid.tolist(), 'sigma_w': sw_grid.tolist(),
+                                   'rootpmse_km': Z.tolist()}
+
+      # Summary: root-PMSE (km) along eta, and the optimisation gain (cf. paper's "7km").
+      if 'eta' in results['sweeps']:
+          s = results['sweeps']['eta']
+          xe = np.asarray(s['x']); rp = KM * np.sqrt(np.asarray(s['mean_sq']))
+          iopt = int(np.argmin(rp))
+          at = lambda e: float(rp[int(np.argmin(np.abs(xe - e)))])
+          logging.info('root-PMSE(km) vs eta: eta=0 %.2f | eta=0.42 %.2f | eta=1 %.2f | min(eta=%.2f) %.2f',
+                       at(0.), at(0.42), at(1.), float(xe[iopt]), float(rp[iopt]))
+          logging.info('root-PMSE GAIN(km): (eta=1)-(min)=%.2f  (eta=0)-(min)=%.2f',
+                       at(1.) - rp[iopt], at(0.) - rp[iopt])
+
+      out = workdir + '/loss_surface_scan.sav'
+      with open(out, 'wb') as f:
+          pickle.dump(results, f)
+      logging.info('Loss-surface scan written to %s', out)
+
+  if config.scan_loss_surface:
+      logging.info('Scanning hyperparameter loss surface...')
+      scan_loss_surface()
+
   if config.tune_vmp_hparams_fix_eta:
     for eta_i in config.eta_plot:
       logging.info(f'Finding best hyperparameters for eta={eta_i}...')
-      tune_vmp_hparams(eta_i=eta_i, 
+      tune_vmp_hparams(eta_i=eta_i,
                        cond_hparams_names=[i for i in config.cond_hparams_names if i != 'eta'])
-      
+
   if config.tune_vmp_hparams:
       logging.info('Finding best hyperparameters...')
       tune_vmp_hparams(cond_hparams_names=config.cond_hparams_names)
