@@ -24,7 +24,7 @@ FLAGS(sys.argv)
 
 #########################################################################################################################################################
 #%%
-path = FLAGS.path
+path = FLAGS.path + '/tune_all_hparams'  # hp_info_*.sav and hp_tuning_*.png live here
 init_names = ['default', 'mixed','low', 'high']
 optimisers = [ 'elbo_opt', 'plain_lr1', 'plain_lr2']
 init_eta_vals = [1.00, 0.50, 0.00]

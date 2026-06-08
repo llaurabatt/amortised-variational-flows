@@ -35,7 +35,7 @@ optimisers = ['elbo_opt', 'plain_lr1', 'plain_lr2']
 rows = []  # (init, opt, sigma_w, sigma_a, sigma_k, ell_k, eta, product)
 for opt in optimisers:
     for init in init_names:
-        fp = f'{path}/hp_info_etapriorhps_{init}_{opt}_new.sav'
+        fp = f'{path}/tune_all_hparams/hp_info_etapriorhps_{init}_{opt}_new.sav'
         if not os.path.exists(fp):
             print(f'  [skip] missing: {os.path.basename(fp)}')
             continue

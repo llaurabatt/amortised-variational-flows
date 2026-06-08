@@ -2269,6 +2269,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
       if not os.path.exists(workdir + f'/hparam_tuning'):
         os.makedirs(workdir + f'/hparam_tuning', exist_ok=True)
+      if not os.path.exists(workdir + '/tune_all_hparams'):
+        os.makedirs(workdir + '/tune_all_hparams', exist_ok=True)
 
 
       # optim_kwargs_old = config.optim_kwargs.to_dict().copy()
@@ -2461,7 +2463,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                   step=hp_star_state.step - 1,
               )
 
-          with open(workdir + f"/hp_info_{'eta' if 'eta' in cond_hparams_names else 'only'}priorhps_{init_type}_{optimiser_name}_{f'fixed_eta{eta_i}' if eta_i is not None else 'new'}" + ".sav", 'wb') as f:
+          with open(workdir + f"/tune_all_hparams/hp_info_{'eta' if 'eta' in cond_hparams_names else 'only'}priorhps_{init_type}_{optimiser_name}_{f'fixed_eta{eta_i}' if eta_i is not None else 'new'}" + ".sav", 'wb') as f:
             pickle.dump(info_dict, f)
 
   def scan_loss_surface():
