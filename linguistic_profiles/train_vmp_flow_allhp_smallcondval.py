@@ -581,6 +581,12 @@ def hparams_tag(cond_hparams_names):
   return '_'.join(_HP_CODES[h] for h in canonicalise_hparams(cond_hparams_names))
 
 
+def _hp_slot(name):
+  """Index of a hparam in the full (8 prior-scale + eta) vector: field order, eta last."""
+  fields = PriorHparams()._fields
+  return len(fields) if name == 'eta' else fields.index(name)
+
+
 def get_cond_values(
     cond_hparams_names: List,
     num_samples: float,
@@ -2258,7 +2264,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
 
   def tune_vmp_hparams(cond_hparams_names,
-                       eta_i:float = None):
+                       fixed_hparams_values=None):
       # Canonicalise the tuned-hparam list to PriorHparams field order, eta last.
       # This is the SAME order optim_mask builds the SGD param vector in, so the
       # clipping/logging index() lookups (and the output names below) stay
@@ -2298,23 +2304,37 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                   'low':jnp.hstack([jnp.array([1., 4., 1., 0.5, 1., 1., 0.1, 0.2]), init_eta_vals['low']]),
                   'high':jnp.hstack([jnp.array([8., 14., 1., 0.5, 1., 1., 0.4, 0.5]), init_eta_vals['high']]),}
 
-      # eta-only mode: hold ALL prior-scale hparams at their elicited defaults
-      # (PriorHparams defaults; the loss-surface scan shows PMSE is flat in them)
-      # and vary only the eta starting point across inits.
-      eta_only = (cond_hparams_names == ['eta'])
-      if eta_only:
-        pdef = jnp.stack(PriorHparams())
-        init_vals = {k: jnp.hstack([pdef, init_eta_vals[k]]) for k in init_vals}
-      # Output folder named for the tuned subset: tune_<tag> (e.g. tune_w_a_k_lk_eta
-      # for the full set, tune_eta for eta-only, tune_w_eta for w+eta).
-      hp_tag = hparams_tag(cond_hparams_names)
-      subdir = f'tune_{hp_tag}'                                       # hp_info + plots
-      tb_base = f'{subdir}/tensorboard_logs'                          # tensorboard summaries (nested inside subdir)
+      # Fixed values for the NON-tuned hparams: PriorHparams (set_defaults) for the
+      # 8 prior scales and eta=1.0, with any caller overrides applied. The flow is
+      # evaluated with the tuned hparams varying (per init) and the rest held here.
+      fixed_full = jnp.concatenate([jnp.stack(PriorHparams()), jnp.array([1.0])])
+      for name, val in (fixed_hparams_values or {}).items():
+        fixed_full = fixed_full.at[_hp_slot(name)].set(float(val))
 
       # optim_mask = jnp.array([1, 1, 0, 0, 0, 0, 1, 1, 1])
       optim_mask = jnp.array([1 if i in cond_hparams_names else 0 for i in PriorHparams()._fields ] + ([1] if 'eta' in cond_hparams_names else [0]))
       print('optim mask:', optim_mask)
       optim_mask_indices = (tuple(i for i, x in enumerate(optim_mask) if x == 0),tuple(i for i, x in enumerate(optim_mask) if x == 1))
+
+      # Each init keeps its OWN starting value for the TUNED slots and takes the
+      # fixed values for the rest. No-op for the full conditioning set (its non-tuned
+      # mu/zeta already sit at defaults); pins all 8 scales at defaults for eta-only;
+      # pins eta at the requested value for fix-eta.
+      init_vals = {k: jnp.where(optim_mask == 1, iv, fixed_full) for k, iv in init_vals.items()}
+
+      # eta is "fixed" (not tuned) and explicitly overridden -> drives the FIXED_ETA
+      # tensorboard/file suffixes (the fix-eta grid). None otherwise.
+      eta_i = None if 'eta' in cond_hparams_names else (fixed_hparams_values or {}).get('eta', None)
+
+      # Report what is tuned vs fixed (conditioned hparams only) and to which values.
+      fixed_cond = {h: float(fixed_full[_hp_slot(h)]) for h in config.cond_hparams_names if h not in cond_hparams_names}
+      logging.info('hp-tuning: tuning %s; fixing (conditioned) %s', cond_hparams_names, fixed_cond)
+
+      # Output folder named for the tuned subset: tune_<tag> (e.g. tune_w_a_k_lk_eta
+      # for the full set, tune_eta for eta-only, tune_w_eta for w+eta).
+      hp_tag = hparams_tag(cond_hparams_names)
+      subdir = f'tune_{hp_tag}'                                       # hp_info + plots
+      tb_base = f'{subdir}/tensorboard_logs'                          # tensorboard summaries (nested inside subdir)
 
       if not os.path.exists(workdir + f'/{tb_base}'):
         os.makedirs(workdir + f'/{tb_base}', exist_ok=True)
@@ -2661,13 +2681,13 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   if config.tune_vmp_hparams_fix_eta:
     for eta_i in config.eta_plot:
       logging.info(f'Finding best hyperparameters for eta={eta_i}...')
-      tune_vmp_hparams(eta_i=eta_i,
-                       cond_hparams_names=[i for i in config.cond_hparams_names if i != 'eta'])
+      tune_vmp_hparams(cond_hparams_names=[i for i in config.cond_hparams_names if i != 'eta'],
+                       fixed_hparams_values={'eta': eta_i})
 
   if config.tune_vmp_hparams:
+      # config.tune_vmp_hparams is the LIST of hparams to tune (e.g. the full
+      # conditioning set, or ['eta'] for eta-only). Legacy True -> full set.
+      tune_set = config.cond_hparams_names if config.tune_vmp_hparams is True else list(config.tune_vmp_hparams)
       logging.info('Finding best hyperparameters...')
-      tune_vmp_hparams(cond_hparams_names=config.cond_hparams_names)
-
-  if config.get('tune_vmp_eta_only', False):
-      logging.info('Finding best eta (prior scales held at PriorHparams defaults)...')
-      tune_vmp_hparams(cond_hparams_names=['eta'])
+      tune_vmp_hparams(cond_hparams_names=tune_set,
+                       fixed_hparams_values=config.get('tune_vmp_fixed_values', None))

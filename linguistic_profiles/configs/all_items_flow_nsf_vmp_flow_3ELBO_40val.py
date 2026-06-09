@@ -18,13 +18,17 @@ def get_config():
   config.checkpoint_dir_path = ''
   config.eta_fixed = 1.0
   config.optim_prior_hparams_dir_fixed_eta = ''# '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
-  config.tune_vmp_hparams = True
+  # Tuple of hparams to SGD-tune against held-out PMSE; the rest are held at
+  # tune_vmp_fixed_values (defaults: PriorHparams/set_defaults + eta=1.0).
+  # Full conditioning set here; override from CLI, e.g. eta-only via
+  # `--config.tune_vmp_hparams=eta`, or off via `--config.tune_vmp_hparams='()'`.
+  # (Tuple, not list: ml_collections only allows CLI-overriding tuple fields.)
+  # Outputs go to tune_<tag>/ (e.g. tune_w_a_k_lk_eta/, tune_eta/).
+  config.tune_vmp_hparams = ('w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta')
   config.tune_vmp_hparams_fix_eta = False
-  # eta-only SGD: optimise ONLY eta against held-out PMSE, holding the prior
-  # scales at their PriorHparams (set_defaults) values. Writes to tune_eta/
-  # (with tensorboard_logs/ nested inside) so it won't clobber the full-tune
-  # artifacts in tune_w_a_k_lk_eta/. Off by default.
-  config.tune_vmp_eta_only = False
+  # Optional dict overriding the fixed value of any NON-tuned hparam (else
+  # PriorHparams defaults / eta=1.0). e.g. {'eta': 0.42}.
+  config.tune_vmp_fixed_values = None
   # Map the held-out PMSE objective on a grid of hyperparameters (no SGD) to
   # diagnose flat (unidentified) vs sharp (identified) directions. Independent
   # of tune_vmp_hparams; restores the checkpoint and evaluates the frozen flow.
