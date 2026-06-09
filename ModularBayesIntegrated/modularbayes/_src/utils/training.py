@@ -147,13 +147,13 @@ def update_state(
 
   # Check that all gradients are finite
   finite = jnp.array(True)
-  for g in jax.tree_leaves(grads):
+  for g in jax.tree_util.tree_leaves(grads):
     finite &= jnp.all(lax.is_finite(g))
 
   # If the gradients are not finite, keep previous params and opt_state
   new_state = TrainState(
-      jax.tree_map(functools.partial(jnp.where, finite), new_params, params),
-      jax.tree_map(
+      jax.tree_util.tree_map(functools.partial(jnp.where, finite), new_params, params),
+      jax.tree_util.tree_map(
           functools.partial(jnp.where, finite), new_opt_state, opt_state),
       step + 1,
   )
@@ -185,18 +185,18 @@ def update_states(
 
     # Check that all gradients are finite
     finite = jnp.array(True)
-    for g in jax.tree_leaves(grads):
+    for g in jax.tree_util.tree_leaves(grads):
       finite &= jnp.all(jax.lax.is_finite(g))
 
     # If the gradients are not finite, keep previous params and opt_state
     new_state_list.append(
         TrainState(
-            params=jax.tree_map(
+            params=jax.tree_util.tree_map(
                 functools.partial(jnp.where, finite),
                 new_params,
                 params_tuple[i],
             ),
-            opt_state=jax.tree_map(
+            opt_state=jax.tree_util.tree_map(
                 functools.partial(jnp.where, finite),
                 new_opt_state,
                 opt_state_tuple[i],

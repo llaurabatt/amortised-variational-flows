@@ -525,14 +525,14 @@ def sample_lalme_az(
           )
       gamma_sample.append(gamma_sample_)
 
-  global_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+  global_sample = jax.tree_util.tree_map(  # pylint: disable=no-value-for-parameter
       lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
       *global_sample)
-  locations_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+  locations_sample = jax.tree_util.tree_map(  # pylint: disable=no-value-for-parameter
       lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
       *locations_sample)
   if include_gamma:
-    gamma_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+    gamma_sample = jax.tree_util.tree_map(  # pylint: disable=no-value-for-parameter
         lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
         *gamma_sample)
   else:

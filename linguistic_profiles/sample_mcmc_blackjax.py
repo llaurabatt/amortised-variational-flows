@@ -365,7 +365,7 @@ def init_param_fn_stg1(
   samples_shapes['loc_floating_aux'] = (num_profiles_floating, 2)
 
   # Get a sample for all parameters
-  samples_ = jax.tree_map(
+  samples_ = jax.tree_util.tree_map(
       lambda shape_i: distrax.Normal(0., 1.).sample(
           seed=next(prng_seq), sample_shape=shape_i),
       tree=samples_shapes,
@@ -499,8 +499,8 @@ def logprob_lalme(
   log_prob = jnp.mean(log_prob)
 
   # globals().update(dict(prior_hparams))
-  # model_params_gamma_profiles = jax.tree_map(lambda x: x[0], model_params_gamma_profiles_sample)
-  # gamma_profiles_logprob = jax.tree_map(lambda x: x[0], gamma_profiles_logprob_sample)
+  # model_params_gamma_profiles = jax.tree_util.tree_map(lambda x: x[0], model_params_gamma_profiles_sample)
+  # gamma_profiles_logprob = jax.tree_util.tree_map(lambda x: x[0], gamma_profiles_logprob_sample)
 
   return log_prob + log_det_jacob_transformed
 
@@ -760,10 +760,10 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     #   times_data['end_mcmc_stg_1'] = time.perf_counter()
 
     #   # Concatenate samples from each chunk, across samples dimension
-    #   model_params_stg1_unb_samples = jax.tree_map(  # pylint: disable=no-value-for-parameter
+    #   model_params_stg1_unb_samples = jax.tree_util.tree_map(  # pylint: disable=no-value-for-parameter
     #       lambda *x: jnp.concatenate(x, axis=0), *chunks_positions)
     #   # swap axes to have shape (num_chains, num_samples, ...)
-    #   model_params_stg1_unb_samples = jax.tree_map(lambda x: x.swapaxes(0, 1),
+    #   model_params_stg1_unb_samples = jax.tree_util.tree_map(lambda x: x.swapaxes(0, 1),
     #                                                model_params_stg1_unb_samples)
 
 ####################################################################################################
@@ -780,7 +780,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
 
       # Save samples from stage 1
       # swap position axes to have shape (num_chains, num_samples, ...)
-      model_params_stg1_unb_samples = jax.tree_map(lambda x: x.swapaxes(0, 1),
+      model_params_stg1_unb_samples = jax.tree_util.tree_map(lambda x: x.swapaxes(0, 1),
                                                    states_stg1.position)
 ####################################################################################################
       jax.debug.print("Create InferenceData object") # {x}",x=var_name)
@@ -876,7 +876,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
             loc_floating_aux=None,
             loc_random_anchor=None,
         ),
-        jax.tree_map(lambda x: x[:, 0, ...], model_params_global_unb_samples),
+        jax.tree_util.tree_map(lambda x: x[:, 0, ...], model_params_global_unb_samples),
     )
 
     # The number of samples is large and often it does not fit into GPU memory
@@ -926,7 +926,7 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     logging.info('\t sampling stage 2...')
     chunks_positions = []
     for i in range(num_chunks_stg2):
-      cond_i = jax.tree_map(
+      cond_i = jax.tree_util.tree_map(
           lambda x: x[:, (i * config.num_samples_perchunk_stg2):(
               (i + 1) * config.num_samples_perchunk_stg2), ...].swapaxes(0, 1),
           model_params_global_unb_samples)
@@ -953,10 +953,10 @@ def sample_and_evaluate(config: ConfigDict, workdir: str) -> Mapping[str, Any]:
     times_data['end_mcmc_stg_2'] = time.perf_counter()
 
     # Concatenate samples from each chunk, across samples dimension
-    model_params_stg2_unb_samples = jax.tree_map(  # pylint: disable=no-value-for-parameter
+    model_params_stg2_unb_samples = jax.tree_util.tree_map(  # pylint: disable=no-value-for-parameter
         lambda *x: jnp.concatenate(x, axis=0), *chunks_positions)
     # swap axes to have shape (num_chains, num_samples, ...)
-    model_params_stg2_unb_samples = jax.tree_map(lambda x: x.swapaxes(0, 1),
+    model_params_stg2_unb_samples = jax.tree_util.tree_map(lambda x: x.swapaxes(0, 1),
                                                  model_params_stg2_unb_samples)
 
     # Transform unbounded parameters to model parameters

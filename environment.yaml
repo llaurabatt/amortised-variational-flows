@@ -1,11 +1,18 @@
+# NOTE: run the project with PYTHONNOUSERSITE=1 so the env ignores ~/.local
+# (a stray tensorflow_probability/libtpu in ~/.local otherwise shadows the env).
+# On this machine the env is built on the external disk:
+#   CONDA_PKGS_DIRS=/mnt/disks/geoff/.mamba/pkgs \
+#   micromamba create -p /mnt/disks/geoff/envs/spatial-smi-oldv-micromamba -f environment.yaml
 name: spatial-smi-oldv-micromamba
 channels:
   - conda-forge
   - defaults
 dependencies:
   - python >=3.9, <3.11
+  - setuptools <81        # setuptools >=81 removed pkg_resources, which data/load.py imports
   - pip:
     - jax[tpu]
+    - libtpu==0.0.17        # pin: jax[tpu] did not land libtpu into the env here; needed for TPU
   - absl-py
   - arviz==0.17.0
   - blackjax =1.0.0
@@ -34,3 +41,10 @@ dependencies:
   - pip:
     # - pre-commit
     - --editable ./ModularBayesIntegrated/
+    # TF is required by linguistic_profiles/main.py (tf.config) and flax SummaryWriter logging.
+    # The TPU is driven by JAX, not TF — main.py hides the TPU from TF. Full `tensorflow` is used
+    # (not tensorflow-cpu) so tf-keras resolves without a duplicate-TF conflict; it runs on CPU here.
+    # tf-keras is required by tensorflow_probability 0.25 whenever real TF is importable.
+    # (The live env was built with tensorflow-cpu==2.21.0 + `tf-keras==2.21.0 --no-deps`.)
+    - tensorflow==2.21.0
+    - tf-keras==2.21.0

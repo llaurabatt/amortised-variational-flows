@@ -15,6 +15,13 @@ from absl import flags
 from absl import logging
 
 import jax
+# Reproducibility: JAX flipped the default of `jax_threefry_partitionable`
+# from False to True in newer releases, which changes the bits jax.random.*
+# emits for the same PRNGKey. The original experiment (and the hardcoded
+# anchor_val plotting grids) were produced under the old default. Pin it to
+# False so PRNGKey(0) reproduces the original anchor/floating data split on
+# JAX 0.6.2. MUST be set before any jax.random op. See .claude/errors.md.
+jax.config.update('jax_threefry_partitionable', False)
 from ml_collections import config_flags, ConfigDict
 from functools import partial
 import os
@@ -106,13 +113,15 @@ def main(_):
     raise ValueError(f'Unknown method {FLAGS.config.method}')
 
 
-# TODO: Remove when Haiku stop producing "jax.tree_leaves is deprecated" warning
+# TODO: Remove when Haiku stop producing "jax.tree_util.tree_leaves is deprecated" warning
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-# On GPU this may be needed for jax to find the accelerator
-os.environ["PATH"] = '/usr/local/cuda/bin:' + os.environ["PATH"]
-os.environ["LD_LIBRARY_PATH"] = '/usr/local/cuda/lib64:' + os.environ[
-    "LD_LIBRARY_PATH"]
+# On GPU this may be needed for jax to find the accelerator.
+# Disabled for TPU: these CUDA paths are unnecessary here, and LD_LIBRARY_PATH
+# may be unset, which crashed startup with KeyError.
+# os.environ["PATH"] = '/usr/local/cuda/bin:' + os.environ["PATH"]
+# os.environ["LD_LIBRARY_PATH"] = '/usr/local/cuda/lib64:' + os.environ[
+#     "LD_LIBRARY_PATH"]
 
 if __name__ == '__main__':
   flags.mark_flags_as_required(['config', 'workdir'])

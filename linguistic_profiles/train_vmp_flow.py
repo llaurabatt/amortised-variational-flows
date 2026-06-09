@@ -328,7 +328,7 @@ def sample_lalme_az(
   # Split etas into chunks
   split_idx_ = np.arange(num_samples_chunk, smi_eta['profiles'].shape[0],
                          num_samples_chunk).tolist()
-  smi_eta_chunked_ = jax.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
+  smi_eta_chunked_ = jax.tree_util.tree_map(lambda x: jnp.split(x, split_idx_, axis=0),
                                   smi_eta)
   # dict of lists -> list of dicts
   smi_eta_chunked_ = [
@@ -371,14 +371,14 @@ def sample_lalme_az(
 
       gamma_sample.append(gamma_sample_)
 
-  global_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+  global_sample = jax.tree_util.tree_map(  # pylint: disable=no-value-for-parameter
       lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
       *global_sample)
-  locations_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+  locations_sample = jax.tree_util.tree_map(  # pylint: disable=no-value-for-parameter
       lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
       *locations_sample)
   if include_gamma:
-    gamma_sample = jax.tree_map(  # pylint: disable=no-value-for-parameter
+    gamma_sample = jax.tree_util.tree_map(  # pylint: disable=no-value-for-parameter
         lambda *x: jnp.concatenate([xi[None, ...] for xi in x], axis=1),
         *gamma_sample)
   else:
@@ -616,7 +616,7 @@ def error_locations_vector_estimate(
             batch=batch,
         ))
 
-  error_loc_dict = jax.tree_map(lambda *x: jnp.stack(x, axis=0), *error_grid)  # pylint: disable=no-value-for-parameter
+  error_loc_dict = jax.tree_util.tree_map(lambda *x: jnp.stack(x, axis=0), *error_grid)  # pylint: disable=no-value-for-parameter
 
   return error_loc_dict
 
