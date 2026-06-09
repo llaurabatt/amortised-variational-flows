@@ -20,6 +20,11 @@ def get_config():
   config.optim_prior_hparams_dir_fixed_eta = ''# '/home/llaurabat/spatial-smi-output-integrated-allhps-40val-smallcondval/all_items/nsf/vmp_flow'
   config.tune_vmp_hparams = True
   config.tune_vmp_hparams_fix_eta = False
+  # eta-only SGD: optimise ONLY eta against held-out PMSE, holding the prior
+  # scales at their PriorHparams (set_defaults) values. Writes to tune_eta/
+  # (with tensorboard_logs/ nested inside) so it won't clobber the full-tune
+  # artifacts in tune_w_a_k_lk_eta/. Off by default.
+  config.tune_vmp_eta_only = False
   # Map the held-out PMSE objective on a grid of hyperparameters (no SGD) to
   # diagnose flat (unidentified) vs sharp (identified) directions. Independent
   # of tune_vmp_hparams; restores the checkpoint and evaluates the frozen flow.

@@ -551,6 +551,36 @@ def sample_lalme_az(
   else:
     return lalme_az
 
+# Short codes for tuned-hparam folder / filename tags. Canonical order is
+# PriorHparams field order, with eta last (matches the order optim_mask builds
+# the SGD param vector in, so index() lookups stay consistent).
+_HP_CODES = {
+    'w_prior_scale': 'w',
+    'a_prior_scale': 'a',
+    'mu_prior_concentration': 'mc',
+    'mu_prior_rate': 'mr',
+    'zeta_prior_a': 'za',
+    'zeta_prior_b': 'zb',
+    'kernel_amplitude': 'k',
+    'kernel_length_scale': 'lk',
+    'eta': 'eta',
+}
+
+
+def canonicalise_hparams(cond_hparams_names):
+  """Reorder a tuned-hparam list to canonical order: PriorHparams field order, eta last."""
+  ordered = [f for f in PriorHparams()._fields if f in cond_hparams_names]
+  if 'eta' in cond_hparams_names:
+    ordered = ordered + ['eta']
+  return ordered
+
+
+def hparams_tag(cond_hparams_names):
+  """Short tag for a tuned-hparam list, e.g. ['eta','w_prior_scale'] -> 'w_eta'.
+  Used for the tune_<tag>/ output folder and hp_info_<tag>_*.sav filenames."""
+  return '_'.join(_HP_CODES[h] for h in canonicalise_hparams(cond_hparams_names))
+
+
 def get_cond_values(
     cond_hparams_names: List,
     num_samples: float,
@@ -2229,6 +2259,12 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
   def tune_vmp_hparams(cond_hparams_names,
                        eta_i:float = None):
+      # Canonicalise the tuned-hparam list to PriorHparams field order, eta last.
+      # This is the SAME order optim_mask builds the SGD param vector in, so the
+      # clipping/logging index() lookups (and the output names below) stay
+      # consistent no matter what order the caller passed the list in. No-op for
+      # the already-ordered callers (full tune / fix-eta / eta-only).
+      cond_hparams_names = canonicalise_hparams(cond_hparams_names)
       num_profiles_split = train_ds['num_profiles_split']
       LPs = train_ds['LP']
       LPs_split = np.split(
@@ -2262,15 +2298,28 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                   'low':jnp.hstack([jnp.array([1., 4., 1., 0.5, 1., 1., 0.1, 0.2]), init_eta_vals['low']]),
                   'high':jnp.hstack([jnp.array([8., 14., 1., 0.5, 1., 1., 0.4, 0.5]), init_eta_vals['high']]),}
 
+      # eta-only mode: hold ALL prior-scale hparams at their elicited defaults
+      # (PriorHparams defaults; the loss-surface scan shows PMSE is flat in them)
+      # and vary only the eta starting point across inits.
+      eta_only = (cond_hparams_names == ['eta'])
+      if eta_only:
+        pdef = jnp.stack(PriorHparams())
+        init_vals = {k: jnp.hstack([pdef, init_eta_vals[k]]) for k in init_vals}
+      # Output folder named for the tuned subset: tune_<tag> (e.g. tune_w_a_k_lk_eta
+      # for the full set, tune_eta for eta-only, tune_w_eta for w+eta).
+      hp_tag = hparams_tag(cond_hparams_names)
+      subdir = f'tune_{hp_tag}'                                       # hp_info + plots
+      tb_base = f'{subdir}/tensorboard_logs'                          # tensorboard summaries (nested inside subdir)
+
       # optim_mask = jnp.array([1, 1, 0, 0, 0, 0, 1, 1, 1])
       optim_mask = jnp.array([1 if i in cond_hparams_names else 0 for i in PriorHparams()._fields ] + ([1] if 'eta' in cond_hparams_names else [0]))
       print('optim mask:', optim_mask)
       optim_mask_indices = (tuple(i for i, x in enumerate(optim_mask) if x == 0),tuple(i for i, x in enumerate(optim_mask) if x == 1))
 
-      if not os.path.exists(workdir + f'/hparam_tuning'):
-        os.makedirs(workdir + f'/hparam_tuning', exist_ok=True)
-      if not os.path.exists(workdir + '/tune_all_hparams'):
-        os.makedirs(workdir + '/tune_all_hparams', exist_ok=True)
+      if not os.path.exists(workdir + f'/{tb_base}'):
+        os.makedirs(workdir + f'/{tb_base}', exist_ok=True)
+      if not os.path.exists(workdir + f'/{subdir}'):
+        os.makedirs(workdir + f'/{subdir}', exist_ok=True)
 
 
       # optim_kwargs_old = config.optim_kwargs.to_dict().copy()
@@ -2291,7 +2340,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           print(f"optimiser: {optimiser_name}, init type: {init_type}")
 
           if jax.process_index() == 0:
-              summary_writer_hp = tensorboard.SummaryWriter(workdir + f'/hparam_tuning{"_FIXED_ETA" if eta_i is not None else ""}/{init_type}_{optimiser_name}')
+              summary_writer_hp = tensorboard.SummaryWriter(workdir + f'/{tb_base}{"_FIXED_ETA" if eta_i is not None else ""}/{init_type}_{optimiser_name}')
               summary_writer_hp.hparams({init_type:hp_star_init, optimiser_name:my_optimiser})
 
           error_locations_estimate_jit = lambda locations_sample, loc: error_locations_estimate(
@@ -2350,17 +2399,33 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
             # cond_values = jnp.hstack([hp_params_all[:-1],
             #                           eta_profiles, eta_items,
             #                           ]) #(n_samples, n_hps+367+71)
+            # Rebuild the full (8 prior-scale + eta) vector: optimised entries
+            # (hp_params, the SGD variable -> carry gradient) scattered to their
+            # slots, held-fixed entries (hp_fixed_values) to theirs. Then let
+            # get_cond_values select + order EXACTLY the hparams the flow was
+            # trained to condition on (config.cond_hparams_names): PriorHparams
+            # field order, eta last. Irrelevant scales are dropped automatically,
+            # so this works when the optimised set != the conditioning set
+            # (e.g. eta-only tuning) and reduces to the old behaviour otherwise.
+            n_hp = len(hp_optim_mask_indices[0]) + len(hp_optim_mask_indices[1])
+            hp_all = jnp.zeros(n_hp)
+            hp_all = hp_all.at[(hp_optim_mask_indices[1],)].set(hp_params)
+            hp_all = hp_all.at[(hp_optim_mask_indices[0],)].set(hp_fixed_values)
             if eta_fixed is not None:
-              cond_values = jnp.hstack([hp_params, eta_fixed])
-            else:
-              cond_values = hp_params
+              hp_all = hp_all.at[-1].set(eta_fixed)
+            cond_values = get_cond_values(
+                cond_hparams_names=config.cond_hparams_names,
+                num_samples=num_samples,
+                eta_init=hp_all[-1],
+                prior_hparams_init=PriorHparams(*hp_all[:-1]),
+            )
 
             q_distr_out = sample_all_flows(
                 params_tuple=[state.params for state in state_list],
                 prng_key=prng_key,
                 flow_name=flow_name,
                 flow_kwargs=flow_kwargs,
-                cond_values=jnp.broadcast_to(cond_values, (num_samples, len(cond_values))),
+                cond_values=cond_values,
                 # smi_eta=smi_eta_,
                 include_random_anchor=include_random_anchor,
                 num_samples=num_samples,
@@ -2463,7 +2528,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                   step=hp_star_state.step - 1,
               )
 
-          with open(workdir + f"/tune_all_hparams/hp_info_{'eta' if 'eta' in cond_hparams_names else 'only'}priorhps_{init_type}_{optimiser_name}_{f'fixed_eta{eta_i}' if eta_i is not None else 'new'}" + ".sav", 'wb') as f:
+          with open(workdir + f"/{subdir}/hp_info_{hp_tag}_{init_type}_{optimiser_name}_{f'fixed_eta{eta_i}' if eta_i is not None else 'new'}" + ".sav", 'wb') as f:
             pickle.dump(info_dict, f)
 
   def scan_loss_surface():
@@ -2602,3 +2667,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
   if config.tune_vmp_hparams:
       logging.info('Finding best hyperparameters...')
       tune_vmp_hparams(cond_hparams_names=config.cond_hparams_names)
+
+  if config.get('tune_vmp_eta_only', False):
+      logging.info('Finding best eta (prior scales held at PriorHparams defaults)...')
+      tune_vmp_hparams(cond_hparams_names=['eta'])
