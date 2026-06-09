@@ -24,12 +24,12 @@ FLAGS(sys.argv)
 
 #########################################################################################################################################################
 #%%
-path = FLAGS.path + '/tune_all_hparams'  # hp_info_*.sav and hp_tuning_*.png live here
+path = FLAGS.path + '/tune_w_a_k_lk_eta'  # hp_info_*.sav and hp_tuning_*.png live here
 init_names = ['default', 'mixed','low', 'high']
 optimisers = [ 'elbo_opt', 'plain_lr1', 'plain_lr2']
 init_eta_vals = [1.00, 0.50, 0.00]
 #%%
-with open(path + f'/hp_info_etapriorhps_{init_names[0]}_{optimisers[0]}_new.sav', 'rb') as fr:
+with open(path + f'/hp_info_w_a_k_lk_eta_{init_names[0]}_{optimisers[0]}_new.sav', 'rb') as fr:
     res = pickle.load(fr)
 hp_names = res['hp_names'].copy()
 
@@ -60,13 +60,13 @@ for optimiser_name in optimisers:
     fig, ax = plt.subplots(int(n_plots/3)+int(n_plots%3>0), 3, figsize=(10,3.5*(int(n_plots/3)+int(n_plots%3>0))))
     last_losses = []
     for init_ix, init_type in enumerate(init_names):
-        with open(path + f'/hp_info_etapriorhps_{init_type}_{optimiser_name}_new.sav', 'rb') as fr:
+        with open(path + f'/hp_info_w_a_k_lk_eta_{init_type}_{optimiser_name}_new.sav', 'rb') as fr:
             res = pickle.load(fr)
         last_loss = np.array(res['loss'])[-20:].mean()
         last_losses.append(last_loss)
     best_init_ix = np.argmin(last_losses) 
     for init_ix, init_type in enumerate(init_names):
-        with open(path + f'/hp_info_etapriorhps_{init_type}_{optimiser_name}_new.sav', 'rb') as fr:
+        with open(path + f'/hp_info_w_a_k_lk_eta_{init_type}_{optimiser_name}_new.sav', 'rb') as fr:
             res = pickle.load(fr)
         for a_ix, a in enumerate(ax.flatten()):
             color = colors[init_ix]
@@ -94,7 +94,7 @@ for optimiser_name in optimisers:
 
     plt.tight_layout()
     plt.subplots_adjust(left=None, bottom=0.2, right=None, top=0.93, wspace=0.2, hspace=0.4)
-    plt.savefig(path + f'/hp_tuning_all_hparams_{optimiser_name}_4000.png')
+    plt.savefig(path + f'/hp_tuning_w_a_k_lk_eta_{optimiser_name}_4000.png')
     plt.show()
 
 # #%%
