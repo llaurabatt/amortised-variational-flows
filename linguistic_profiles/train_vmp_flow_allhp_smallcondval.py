@@ -2374,6 +2374,13 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           )
           error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
 
+          # Held-out-anchor error to minimise: 'mean_dist' (MD, mean Euclidean
+          # distance of each posterior draw to the truth -- the original/default
+          # objective) or 'mean_sq_dist' (PMSE). Both are keys of error_loc_dict
+          # via the '<metric>_anchor_val' suffix. Stamped into info_dict below so
+          # readers/plotters are self-describing (see plot_eta_tune.py).
+          tune_loss_metric = getattr(config, 'tune_loss_metric', 'mean_dist')
+
           def mse_fixedhp(
             hp_params:Array,
             hp_optim_mask_indices:Tuple,
@@ -2455,7 +2462,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                     locations_sample=q_distr_out['locations_sample'],
                     loc=batch['loc'],
                 )
-            return error_loc_dict['mean_dist_anchor_val'] #- logprobs_rho.sum()
+            return error_loc_dict[f'{tune_loss_metric}_anchor_val'] #- logprobs_rho.sum()
           
           # Jit optimization of hparams 
             
@@ -2498,7 +2505,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
 
           info_dict = {'init':hp_star_init, 'init_type':init_type, 'hp_names':cond_hparams_names,
-          'loss':[], 'params':[], 'step':[]}
+          'loss_metric':tune_loss_metric, 'loss':[], 'params':[], 'step':[]}
 
           # key_search = next(prng_seq)
 

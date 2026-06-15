@@ -33,6 +33,19 @@ with open(path + f'/hp_info_w_a_k_lk_eta_{init_names[0]}_{optimisers[0]}_new.sav
     res = pickle.load(fr)
 hp_names = res['hp_names'].copy()
 
+# Self-describing loss-panel title: the tuning objective is stamped into each
+# .sav as 'loss_metric' (see train_vmp_flow_allhp_smallcondval.py). Map it to a
+# title + display transform. 'mean_sq_dist' stores the mean of SQUARED distances,
+# so plot its sqrt (RPMSE) -> distance units. Default 'mean_dist' covers pre-stamp
+# .sav files (all of which used the MD objective).
+METRIC_DISPLAY = {
+    'mean_dist':    {'title': 'Mean posterior distance to held-out anchors',
+                     'transform': lambda x: x},
+    'mean_sq_dist': {'title': 'Root posterior mean squared error (RPMSE)',
+                     'transform': np.sqrt},
+}
+disp = METRIC_DISPLAY[res.get('loss_metric', 'mean_dist')]
+
 #########################################################################################################################################################
 #%%|
 # chosen optimum: default sigma_a=5.5 sigma_w=11 sigma_k=0.4 ell_k=0.2
@@ -79,10 +92,10 @@ for optimiser_name in optimisers:
                 color = 'black'
             a.grid(True, linestyle='--', alpha=0.7)
             if a_ix==0:
-                a.plot(np.array(res['loss'])[:4001], alpha=alpha, color=color, 
+                a.plot(disp['transform'](np.array(res['loss'])[:4001]), alpha=alpha, color=color,
                            label=f'Init {init_ix + 1}', linestyle=linestyle)
                 a.set_xlabel('Iterations')
-                a.set_title('Posterior Mean Squared Error')
+                a.set_title(disp['title'])
             elif a_ix < (n_plots):  
                 a.plot(np.array(res['params'])[:4001,rolled_indices][:,a_ix-1], alpha=alpha, 
                            color=color, label=f'Init {init_ix + 1}', linestyle=linestyle)

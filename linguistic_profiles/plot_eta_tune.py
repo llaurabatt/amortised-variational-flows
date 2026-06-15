@@ -29,6 +29,18 @@ mpl.rcParams['xtick.labelsize'] = 13
 mpl.rcParams['ytick.labelsize'] = 13
 mpl.rcParams['text.usetex'] = True  # uses SYSTEM /usr/bin latex (PATH set at top)
 
+# Self-describing titles: the tuning objective is stamped into each .sav as
+# 'loss_metric' (see train_vmp_flow_allhp_smallcondval.py). Map it to a panel
+# title and a display transform. 'mean_sq_dist' stores the mean of SQUARED
+# distances, so we plot its sqrt (RPMSE) -> distance units. Default 'mean_dist'
+# covers pre-stamp .sav files (all of which used the MD objective).
+METRIC_DISPLAY = {
+    'mean_dist':    {'title': 'Mean posterior distance to held-out anchors',
+                     'transform': lambda x: x},
+    'mean_sq_dist': {'title': 'Root posterior mean squared error (RPMSE)',
+                     'transform': np.sqrt},
+}
+
 
 def _load(init_type, optimiser_name):
   fname = path + f'/hp_info_eta_{init_type}_{optimiser_name}_new.sav'
@@ -48,10 +60,11 @@ for optimiser_name in optimisers:
 
   fig, ax = plt.subplots(1, 2, figsize=(9, 3.5))
   eta_hat = None
+  disp = METRIC_DISPLAY[_load(init_names[0], optimiser_name).get('loss_metric', 'mean_dist')]
   for init_ix, init_type in enumerate(init_names):
     res = _load(init_type, optimiser_name)
     eta_idx = list(np.array(res['hp_names'])).index('eta')
-    loss = np.array(res['loss'])
+    loss = disp['transform'](np.array(res['loss']))
     eta_trace = np.array(res['params'])[:, eta_idx]
 
     if init_ix == best_init_ix:
@@ -68,7 +81,7 @@ for optimiser_name in optimisers:
   for a in ax:
     a.grid(True, linestyle='--', alpha=0.7)
     a.set_xlabel('Iterations')
-  ax[0].set_title('Posterior Mean Squared Error')
+  ax[0].set_title(disp['title'])
   ax[1].set_title(r'Trace for $\eta$')
   ax[1].axhline(eta_hat, color='black', linestyle=':', alpha=0.5)
 
