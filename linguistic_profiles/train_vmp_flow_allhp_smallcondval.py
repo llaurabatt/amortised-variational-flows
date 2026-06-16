@@ -2330,10 +2330,17 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       fixed_cond = {h: float(fixed_full[_hp_slot(h)]) for h in config.cond_hparams_names if h not in cond_hparams_names}
       logging.info('hp-tuning: tuning %s; fixing (conditioned) %s', cond_hparams_names, fixed_cond)
 
-      # Output folder named for the tuned subset: tune_<tag> (e.g. tune_w_a_k_lk_eta
-      # for the full set, tune_eta for eta-only, tune_w_eta for w+eta).
+      # Held-out-anchor error to minimise: 'mean_dist' (MD, mean Euclidean distance
+      # of each posterior draw to the truth -- the original/default objective) or
+      # 'mean_sq_dist' (PMSE). Both are keys of error_loc_dict via '<metric>_anchor_val'.
+      tune_loss_metric = getattr(config, 'tune_loss_metric', 'mean_dist')
+
+      # Output folder named for the tuned subset AND the loss: tune_<tag>/<loss>
+      # (e.g. tune_w_a_k_lk_eta/mean_dist, tune_eta/mean_sq_dist) so runs under
+      # different objectives don't collide. hp_info .sav + convergence plots +
+      # tensorboard all live under this loss subfolder.
       hp_tag = hparams_tag(cond_hparams_names)
-      subdir = f'tune_{hp_tag}'                                       # hp_info + plots
+      subdir = f'tune_{hp_tag}/{tune_loss_metric}'                    # hp_info + plots
       tb_base = f'{subdir}/tensorboard_logs'                          # tensorboard summaries (nested inside subdir)
 
       if not os.path.exists(workdir + f'/{tb_base}'):
@@ -2374,13 +2381,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
           )
           error_locations_estimate_jit = jax.jit(error_locations_estimate_jit)
 
-          # Held-out-anchor error to minimise: 'mean_dist' (MD, mean Euclidean
-          # distance of each posterior draw to the truth -- the original/default
-          # objective) or 'mean_sq_dist' (PMSE). Both are keys of error_loc_dict
-          # via the '<metric>_anchor_val' suffix. Stamped into info_dict below so
-          # readers/plotters are self-describing (see plot_eta_tune.py).
-          tune_loss_metric = getattr(config, 'tune_loss_metric', 'mean_dist')
-
+          # tune_loss_metric is defined once above (used for the output subfolder);
+          # mse_fixedhp closes over it for the '<metric>_anchor_val' objective key.
           def mse_fixedhp(
             hp_params:Array,
             hp_optim_mask_indices:Tuple,
@@ -2652,18 +2654,37 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                            name, v, KM * r['mean_dist'], KM * (r['mean_sq'] ** 0.5))
           results['sweeps'][name] = rows
 
-      # 2-D (kernel_amplitude, w_prior_scale) sheet, stored as root-PMSE in km.
-      if ('kernel_amplitude' in cond_names) and ('w_prior_scale' in cond_names):
-          sk_grid = np.linspace(0.02, 1.0, 13)
-          sw_grid = np.linspace(0.1, 20., 13)
-          Z = np.full((len(sk_grid), len(sw_grid)), np.nan)
-          for i, sk in enumerate(sk_grid):
-              for j, sw in enumerate(sw_grid):
-                  d = dict(ref); d['kernel_amplitude'] = float(sk); d['w_prior_scale'] = float(sw)
-                  Z[i, j] = KM * (eval_at(d)['mean_sq'] ** 0.5)
-              logging.info('scan 2D row %d/%d (sigma_k=%.3f) done', i + 1, len(sk_grid), sk)
-          results['grid_sk_sw'] = {'sigma_k': sk_grid.tolist(), 'sigma_w': sw_grid.tolist(),
-                                   'rootpmse_km': Z.tolist()}
+      # 2-D sheets over arbitrary axis pairs. Each pair is reordered to canonical
+      # hparam order (PriorHparams field order, eta last) and keyed by its _HP_CODES
+      # tag (e.g. 'w_k', 'k_eta', 'w_eta') so names/order match the project convention.
+      # Each grid stores BOTH mean-distance and root-PMSE (km); x_name is canonical-first
+      # (-> horizontal axis in plot_loss_surface), y_name canonical-second. 1-D `grids`
+      # ranges define each axis (subsampled to 13 points).
+      default_pairs = [('w_prior_scale', 'kernel_amplitude'),
+                       ('kernel_amplitude', 'eta'),
+                       ('w_prior_scale', 'eta'),
+                       ('a_prior_scale', 'eta')]
+      pairs = [tuple(canonicalise_hparams(list(p)))
+               for p in config.get('scan_2d_pairs', default_pairs)]
+      results['grids'] = {}
+      for nx, ny in pairs:  # (nx, ny) already in canonical order
+          if not all((n in cond_names) and (n in grids) for n in (nx, ny)):
+              logging.info('scan 2D skip (%s, %s): not both in cond_hparams', nx, ny)
+              continue
+          gx = np.linspace(grids[nx][0], grids[nx][-1], 13)
+          gy = np.linspace(grids[ny][0], grids[ny][-1], 13)
+          Zmd = np.full((len(gx), len(gy)), np.nan)
+          Zpm = np.full((len(gx), len(gy)), np.nan)
+          for i, vx in enumerate(gx):
+              for j, vy in enumerate(gy):
+                  d = dict(ref); d[nx] = float(vx); d[ny] = float(vy)
+                  r = eval_at(d)
+                  Zmd[i, j] = KM * r['mean_dist']
+                  Zpm[i, j] = KM * (r['mean_sq'] ** 0.5)
+              logging.info('scan 2D %s row %d/%d done', hparams_tag([nx, ny]), i + 1, len(gx))
+          results['grids'][hparams_tag([nx, ny])] = {
+              'x_name': nx, 'y_name': ny, 'x': gx.tolist(), 'y': gy.tolist(),
+              'meandist_km': Zmd.tolist(), 'rootpmse_km': Zpm.tolist()}
 
       # Summary: root-PMSE (km) along eta, and the optimisation gain (cf. paper's "7km").
       if 'eta' in results['sweeps']:

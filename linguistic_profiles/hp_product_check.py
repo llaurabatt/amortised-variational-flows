@@ -24,6 +24,7 @@ import sys
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('path', None, 'Path to hyperparameter optimisation results.')
+flags.DEFINE_string('loss', 'mean_dist', 'Loss-metric subfolder (mean_dist | mean_sq_dist).')
 flags.DEFINE_integer('tail', 20, 'Number of final iterations to average over.')
 flags.mark_flags_as_required(['path'])
 FLAGS(sys.argv)
@@ -35,7 +36,7 @@ optimisers = ['elbo_opt', 'plain_lr1', 'plain_lr2']
 rows = []  # (init, opt, sigma_w, sigma_a, sigma_k, ell_k, eta, product)
 for opt in optimisers:
     for init in init_names:
-        fp = f'{path}/tune_w_a_k_lk_eta/hp_info_w_a_k_lk_eta_{init}_{opt}_new.sav'
+        fp = f'{path}/tune_w_a_k_lk_eta/{FLAGS.loss}/hp_info_w_a_k_lk_eta_{init}_{opt}_new.sav'
         if not os.path.exists(fp):
             print(f'  [skip] missing: {os.path.basename(fp)}')
             continue

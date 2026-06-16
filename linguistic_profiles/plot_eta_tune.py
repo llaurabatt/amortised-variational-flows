@@ -12,12 +12,13 @@ import sys
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('path', None, 'Workdir of the VMP run (contains tune_eta/).')
+flags.DEFINE_string('loss', 'mean_dist', 'Loss-metric subfolder (mean_dist | mean_sq_dist).')
 flags.mark_flags_as_required(['path'])
 FLAGS(sys.argv)
 #%%
 # Eta-only SGD traces produced by tune_vmp_hparams(['eta']); see launch_eta_only.sh.
-# .sav files: hp_info_eta_{init}_{optimiser}_new.sav  (one per init x optimiser)
-path = FLAGS.path + '/tune_eta'
+# .sav files live under tune_eta/<loss>/hp_info_eta_{init}_{optimiser}_new.sav.
+path = FLAGS.path + f'/tune_eta/{FLAGS.loss}'
 init_names = ['default', 'mixed', 'low', 'high']
 optimisers = ['elbo_opt', 'plain_lr1', 'plain_lr2']
 colors = ['purple', 'orange', 'green', 'red']

@@ -14,6 +14,7 @@ import sys
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('path', None, 'Path to hyperparameter optimisation results.')
+flags.DEFINE_string('loss', 'mean_dist', 'Loss-metric subfolder (mean_dist | mean_sq_dist).')
 flags.mark_flags_as_required(['path'])
 FLAGS(sys.argv)
 #%%
@@ -24,7 +25,7 @@ FLAGS(sys.argv)
 
 #########################################################################################################################################################
 #%%
-path = FLAGS.path + '/tune_w_a_k_lk_eta'  # hp_info_*.sav and hp_tuning_*.png live here
+path = FLAGS.path + f'/tune_w_a_k_lk_eta/{FLAGS.loss}'  # hp_info_*.sav and hp_tuning_*.png live here
 init_names = ['default', 'mixed','low', 'high']
 optimisers = [ 'elbo_opt', 'plain_lr1', 'plain_lr2']
 init_eta_vals = [1.00, 0.50, 0.00]
