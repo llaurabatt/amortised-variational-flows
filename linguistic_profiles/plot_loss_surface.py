@@ -72,6 +72,13 @@ RHO = {'w_prior_scale': ('gamma', 5., 1.), 'a_prior_scale': ('gamma', 10., 1.),
        'kernel_amplitude': ('uniform', 0.1, 0.4), 'kernel_length_scale': ('uniform', 0.2, 0.5),
        'eta': ('uniform', 0., 1.)}
 
+# Hard box the SGD-optimised hparams are clipped to each step (jnp.clip in
+# tune_vmp_hparams) -- distinct from the rho training distribution above. Drawn
+# as red lines; for sigma_k/ell_k it coincides with the uniform rho range.
+CLIP = {'w_prior_scale': (0., 10.), 'a_prior_scale': (3., 19.),
+        'kernel_amplitude': (0.1, 0.4), 'kernel_length_scale': (0.2, 0.5),
+        'eta': (0., 1.)}
+
 def rho_band(name):
     spec = RHO.get(name)
     if spec is None:
@@ -107,6 +114,11 @@ for mkey, M in METRICS.items():
         if name in ref:
             ax.axvline(ref[name], color='grey', ls=':', lw=1.2,
                        label='value held in other panels')
+        clip = CLIP.get(name)
+        if clip is not None:
+            for bi, b in enumerate(clip):
+                ax.axvline(b, color='red', lw=1.0, alpha=0.8,
+                           label='clip bounds' if bi == 0 else None)
         ax.set_title(M['name'] + ' vs ' + LATEX.get(name, name))
         ax.set_xlabel(LATEX.get(name, name)); ax.set_ylabel(M['ylabel'])
         ax.grid(True, ls='--', alpha=0.6)
@@ -137,6 +149,16 @@ def plot_surface(code, xname, yname, xvals, yvals, Z, mkey, M):
         cs = ax.contour(xv, yv, PROD, levels=levels, colors='white', linewidths=1, alpha=0.8)
         ax.clabel(cs, fmt=r'$\sigma_w\sigma_k$=%.2f', fontsize=8)
         title += '\n(loss flat along white product-contours: ratio unidentified)'
+    # clip box (red): the hard SGD-optimiser bounds on each axis (data NOT clipped)
+    cx, cy = CLIP.get(xname), CLIP.get(yname)
+    if cx is not None:
+        for bi, b in enumerate(cx):
+            ax.axvline(b, color='red', lw=1.0, alpha=0.8, label='clip bounds' if bi == 0 else None)
+    if cy is not None:
+        for b in cy:
+            ax.axhline(b, color='red', lw=1.0, alpha=0.8)
+    if cx is not None or cy is not None:
+        ax.legend(fontsize=8, loc='upper right')
     ax.set_xlabel(LATEX.get(xname, xname)); ax.set_ylabel(LATEX.get(yname, yname))
     ax.set_title(title)
     fig.tight_layout()

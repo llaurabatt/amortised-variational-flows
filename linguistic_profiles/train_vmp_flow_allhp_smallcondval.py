@@ -2663,7 +2663,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       default_pairs = [('w_prior_scale', 'kernel_amplitude'),
                        ('kernel_amplitude', 'eta'),
                        ('w_prior_scale', 'eta'),
-                       ('a_prior_scale', 'eta')]
+                       ('a_prior_scale', 'eta'),
+                       ('kernel_length_scale', 'eta')]
       pairs = [tuple(canonicalise_hparams(list(p)))
                for p in config.get('scan_2d_pairs', default_pairs)]
       results['grids'] = {}
