@@ -273,7 +273,9 @@ def plot_basis_fields_az(
   matplotlib.rcParams['axes.labelsize'] = 12
   matplotlib.rcParams['xtick.labelsize'] = 10
   matplotlib.rcParams['ytick.labelsize'] = 10
-  matplotlib.rcParams['text.usetex'] = True
+  # usetex disabled: this env has no working LaTeX (mktexfmt can't build latex.fmt),
+  # which crashes basis-field rendering. mathtext handles labels fine without it.
+  matplotlib.rcParams['text.usetex'] = False
   axs_nrows = 2
   axs_ncols = num_basis_gps//2 + num_basis_gps % 2
   # fig, ax = plt.subplots()
@@ -314,16 +316,18 @@ def plot_basis_fields_az(
         
   for ax in axs.flatten()[num_basis_gps:]:
     ax.remove()
-  
+
   plt.tight_layout()
 
-  fig.subplots_adjust(right=0.9) 
-
-  cbar_ax = fig.add_axes([0.93, 0.15, 0.02, 0.7])  # x, y, width, height
-  cbar = fig.colorbar(cntr2, cax=cbar_ax)
-  
-  cbar.formatter = ticker.FormatStrFormatter('%.2f')
-  cbar.update_ticks()
+  # global_legend: one shared colorbar (all fields on a common scale).
+  # else: one colorbar per field (added per-axis in the loop above) -- skip the
+  # global bar so we don't get a spurious extra colorbar.
+  if global_legend:
+    fig.subplots_adjust(right=0.9)
+    cbar_ax = fig.add_axes([0.93, 0.15, 0.02, 0.7])  # x, y, width, height
+    cbar = fig.colorbar(cntr2, cax=cbar_ax)
+    cbar.formatter = ticker.FormatStrFormatter('%.2f')
+    cbar.update_ticks()
   # fig.colorbar(cntr2, ax=axs, orientation='vertical', fraction=.02) 
   
 
@@ -705,6 +709,7 @@ def lalme_plots_arviz(
         lalme_az=lalme_az,
         lalme_dataset=lalme_dataset,
         loc_inducing=loc_inducing,
+        global_legend=False,  # one colorbar per field
     )
     plot_name = "lalme_basis_fields"
     plot_name += suffix
@@ -1643,6 +1648,7 @@ def lalme_priorhparam_compare_plots_arviz(
           lalme_az=lalme_az_j,
           lalme_dataset=lalme_dataset,
           loc_inducing=loc_inducing,
+          global_legend=False,  # one colorbar per field
       )
       plot_name = f"lalme_basis_fields_{prior_hparams_j}"
       plot_name += suffix
