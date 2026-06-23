@@ -2322,6 +2322,17 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       # pins eta at the requested value for fix-eta.
       init_vals = {k: jnp.where(optim_mask == 1, iv, fixed_full) for k, iv in init_vals.items()}
 
+      # Optional warmstart: replace the 4 standard inits with a single 'warmstart'
+      # init. config.tune_init_custom is a tuple of floats in canonical tuned-hparam
+      # order (same order as hp_names in the .sav, i.e. PriorHparams field order with
+      # eta last). Used for the σ_k stability probe and similar one-off diagnostics.
+      custom_init = getattr(config, 'tune_init_custom', ())
+      if custom_init:
+          warmstart_full = jnp.array(fixed_full)
+          for name, val in zip(cond_hparams_names, custom_init):
+              warmstart_full = warmstart_full.at[_hp_slot(name)].set(float(val))
+          init_vals = {'warmstart': warmstart_full}
+
       # eta is "fixed" (not tuned) and explicitly overridden -> drives the FIXED_ETA
       # tensorboard/file suffixes (the fix-eta grid). None otherwise.
       eta_i = None if 'eta' in cond_hparams_names else (fixed_hparams_values or {}).get('eta', None)
@@ -2340,7 +2351,8 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       # different objectives don't collide. hp_info .sav + convergence plots +
       # tensorboard all live under this loss subfolder.
       hp_tag = hparams_tag(cond_hparams_names)
-      subdir = f'tune_{hp_tag}/{tune_loss_metric}'                    # hp_info + plots
+      tag_suffix = getattr(config, 'tune_tag_suffix', '')
+      subdir = f'tune_{hp_tag}{tag_suffix}/{tune_loss_metric}'        # hp_info + plots
       tb_base = f'{subdir}/tensorboard_logs'                          # tensorboard summaries (nested inside subdir)
 
       if not os.path.exists(workdir + f'/{tb_base}'):
@@ -2619,12 +2631,18 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       logging.info('loc bounds (scaled): min=%s max=%s -> %.0f km per unit',
                    np.round(_lc.min(0), 3), np.round(_lc.max(0), 3), KM)
 
-      # Reference point: prior-hparam defaults (central, inside the rho support) + eta=0.42.
+      # Reference point: prior-hparam defaults + eta=0.42, overridden by
+      # config.scan_ref_hparams if provided ("name=val,name=val" string).
       pj = jnp.stack(PriorHparams())
       pf = list(PriorHparams()._fields)
       ref = {n: float(pj[pf.index(n)]) for n in cond_names if n in pf}
       if 'eta' in cond_names:
           ref['eta'] = 0.42
+      ref_str = getattr(config, 'scan_ref_hparams', '')
+      if ref_str:
+          for item in ref_str.split(','):
+              k, v = item.strip().split('=')
+              ref[k.strip()] = float(v)
       logging.info('Loss-surface scan reference point: %s', ref)
 
       # rho training-support ranges (for shading in the plots).
@@ -2718,5 +2736,10 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
       # conditioning set, or ['eta'] for eta-only). Legacy True -> full set.
       tune_set = config.cond_hparams_names if config.tune_vmp_hparams is True else list(config.tune_vmp_hparams)
       logging.info('Finding best hyperparameters...')
+      fixed_str = config.get('tune_vmp_fixed_values', '')
+      fixed_hparams_values = (
+          {k: float(v) for k, v in (item.split('=') for item in fixed_str.split(','))}
+          if fixed_str else None
+      )
       tune_vmp_hparams(cond_hparams_names=tune_set,
-                       fixed_hparams_values=config.get('tune_vmp_fixed_values', None))
+                       fixed_hparams_values=fixed_hparams_values)

@@ -26,13 +26,29 @@ def get_config():
   # Outputs go to tune_<tag>/ (e.g. tune_w_a_k_lk_eta/, tune_eta/).
   config.tune_vmp_hparams = ('w_prior_scale', 'a_prior_scale', 'kernel_amplitude', 'kernel_length_scale', 'eta')
   config.tune_vmp_hparams_fix_eta = False
-  # Optional dict overriding the fixed value of any NON-tuned hparam (else
-  # PriorHparams defaults / eta=1.0). e.g. {'eta': 0.42}.
-  config.tune_vmp_fixed_values = None
+  # Optional overrides for NON-tuned hparam fixed values (else PriorHparams
+  # defaults / eta=1.0). Passed as "name=val,name=val" string so it is
+  # CLI-overridable, e.g. --config.tune_vmp_fixed_values="kernel_amplitude=0.4".
+  config.tune_vmp_fixed_values = ''
+  # Warmstart init for the tuning SGD: tuple of floats in canonical tuned-hparam
+  # order (PriorHparams field order, eta last). When non-empty, replaces the 4
+  # standard inits with a single 'warmstart' run. E.g. "(10.0,19.0,0.2,0.411)".
+  config.tune_init_custom = ()
+  # Suffix appended to the auto-generated tune_<tag> folder name, used to
+  # namespace probe runs without colliding with main results. E.g. "_probe".
+  config.tune_tag_suffix = ''
+  # Held-out error to MINIMISE in tuning: 'mean_dist' (mean Euclidean distance,
+  # default) or 'mean_sq_dist' (PMSE, mean of SQUARED distances). Selects the
+  # error_loc_dict['<metric>_anchor_val'] objective and the tune_<tag>/<loss>/
+  # output subfolder. Override from CLI: --config.tune_loss_metric=mean_sq_dist.
+  config.tune_loss_metric = 'mean_dist'
   # Map the held-out PMSE objective on a grid of hyperparameters (no SGD) to
   # diagnose flat (unidentified) vs sharp (identified) directions. Independent
   # of tune_vmp_hparams; restores the checkpoint and evaluates the frozen flow.
   config.scan_loss_surface = False
+  # Reference point for the loss-surface scan (other params held here while one
+  # axis varies). "name=val,name=val" string; empty = PriorHparams defaults+eta=0.42.
+  config.scan_ref_hparams = ''
 
   # kwargs to be passed to the flow
   config.flow_kwargs = ml_collections.ConfigDict()
