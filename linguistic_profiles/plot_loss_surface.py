@@ -2,8 +2,7 @@
 """Plot the loss-surface scan written by train_vmp_flow_allhp_smallcondval's
 scan_loss_surface() (workdir/loss_surface_scan.sav).
 
-For each held-out error metric (mean distance and root-PMSE, both in km) it
-produces:
+For each held-out error metric (mean distance and root-PMSE) it produces:
   - hp_loss_surface_1d_<metric>.png : metric vs each hyperparameter (1-D sweeps),
     rho training-support shaded and the reference point marked. Flat curve =>
     weakly identified; clear U with an interior minimum => identified.
@@ -49,21 +48,20 @@ HP_CODES = {'w_prior_scale': 'w', 'a_prior_scale': 'a', 'kernel_amplitude': 'k',
             'kernel_length_scale': 'lk', 'eta': 'eta'}
 ref = R['ref']
 
-# Held-out error metrics, both expressed in km. Each maps a sweep-row dict to a
-# plotted series + an error band. root-PMSE = sqrt(E||X-x||^2); its SD is taken
-# by the delta method, sd(sqrt(m)) ~= sd(m) / (2 sqrt(m)).
+# Held-out error metrics in raw (non-km) units, matching the tune convergence
+# plot scale. The 2D grids are stored as *_km in the .sav; divide by KM there.
 METRICS = {
     'meandist': dict(
         name='Mean posterior distance',
-        ylabel='held-out mean distance (km)',
-        y=lambda s: KM * np.asarray(s['mean_dist']),
-        sd=lambda s: KM * np.asarray(s['mean_dist_sd']),
+        ylabel='held-out mean distance',
+        y=lambda s: np.asarray(s['mean_dist']),
+        sd=lambda s: np.asarray(s['mean_dist_sd']),
         grid_key='meandist_km'),
     'rootpmse': dict(
-        name='Root posterior mean squared error',
-        ylabel='held-out root-PMSE (km)',
-        y=lambda s: KM * np.sqrt(np.asarray(s['mean_sq'])),
-        sd=lambda s: KM * np.asarray(s['mean_sq_sd']) /
+        name='Root posterior MSE',
+        ylabel='held-out root-PMSE',
+        y=lambda s: np.sqrt(np.asarray(s['mean_sq'])),
+        sd=lambda s: np.asarray(s['mean_sq_sd']) /
                      (2.0 * np.sqrt(np.maximum(np.asarray(s['mean_sq']), 1e-12))),
         grid_key='rootpmse_km'),
 }
@@ -93,6 +91,15 @@ def rho_band(name):
         m, sd = a / b, (a ** 0.5) / b
         return m - 1.2816 * sd, m + 1.2816 * sd
 
+def _fixed_subtitle(exclude):
+    """LaTeX string listing ref values of all hparams except those in exclude."""
+    bits = ', '.join(
+        f'${LATEX.get(k, k).strip("$")}={v:.3g}$'
+        for k, v in sorted(ref.items())
+        if k not in exclude
+    )
+    return bits
+
 # ---- 1-D sweeps (one figure per metric) ----------------------------------
 names = [n for n in R['cond_names'] if n in R['sweeps']]
 ncol = 3
@@ -119,7 +126,12 @@ for mkey, M in METRICS.items():
             for bi, b in enumerate(clip):
                 ax.axvline(b, color='red', lw=1.0, alpha=0.8,
                            label='clip bounds' if bi == 0 else None)
-        ax.set_title(M['name'] + ' vs ' + LATEX.get(name, name))
+        fixed_str = _fixed_subtitle({name})
+        ax.set_title(
+            M['name'] + ' vs ' + LATEX.get(name, name) + '\n' +
+            r'{\small fixed: ' + fixed_str + r'}',
+            fontsize=9
+        )
         ax.set_xlabel(LATEX.get(name, name)); ax.set_ylabel(M['ylabel'])
         ax.grid(True, ls='--', alpha=0.6)
         if k == 0:
@@ -132,10 +144,10 @@ for mkey, M in METRICS.items():
     print('wrote', out1)
 
 # ---- 2-D sheets ----------------------------------------------------------
-# Grids are keyed by their _HP_CODES tag (e.g. 'w_k', 'k_eta'); x_name is the
-# canonical-first hparam (horizontal axis), y_name canonical-second (vertical).
-def plot_surface(code, xname, yname, xvals, yvals, Z, mkey, M):
-    xv = np.asarray(xvals); yv = np.asarray(yvals); Z = np.asarray(Z)  # Z[i_x, j_y]
+# Grids are stored in km; divide by KM to recover raw units matching 1-D plots.
+def plot_surface(code, xname, yname, xvals, yvals, Z_km, mkey, M):
+    xv = np.asarray(xvals); yv = np.asarray(yvals)
+    Z = np.asarray(Z_km) / KM  # convert to raw (non-km) units
     fig, ax = plt.subplots(figsize=(6.5, 5))
     pcm = ax.pcolormesh(xv, yv, Z.T, shading='auto', cmap='viridis')  # x horizontal, y vertical
     fig.colorbar(pcm, ax=ax, label=M['ylabel'])
@@ -149,6 +161,10 @@ def plot_surface(code, xname, yname, xvals, yvals, Z, mkey, M):
         cs = ax.contour(xv, yv, PROD, levels=levels, colors='white', linewidths=1, alpha=0.8)
         ax.clabel(cs, fmt=r'$\sigma_w\sigma_k$=%.2f', fontsize=8)
         title += '\n(loss flat along white product-contours: ratio unidentified)'
+    # fixed-value subtitle for non-plotted params
+    fixed_str = _fixed_subtitle({xname, yname})
+    if fixed_str:
+        title += '\n' + r'{\small fixed: ' + fixed_str + r'}'
     # clip box (red): the hard SGD-optimiser bounds on each axis (data NOT clipped)
     cx, cy = CLIP.get(xname), CLIP.get(yname)
     if cx is not None:
@@ -160,7 +176,7 @@ def plot_surface(code, xname, yname, xvals, yvals, Z, mkey, M):
     if cx is not None or cy is not None:
         ax.legend(fontsize=8, loc='upper right')
     ax.set_xlabel(LATEX.get(xname, xname)); ax.set_ylabel(LATEX.get(yname, yname))
-    ax.set_title(title)
+    ax.set_title(title, fontsize=9)
     fig.tight_layout()
     out = path + f'/hp_loss_surface_2d_{code}_{mkey}.png'
     fig.savefig(out, dpi=150, bbox_inches='tight')
