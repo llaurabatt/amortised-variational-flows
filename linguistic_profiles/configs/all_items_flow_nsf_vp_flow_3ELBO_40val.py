@@ -226,7 +226,7 @@ def get_config():
   config.use_wandb = True
   config.sweep = False
   config.wandb_evaleta  = 1.0
-  config.wandb_project_name = 'LP-VMP-all-allitems'
+  config.wandb_project_name = 'LP-VMP-all-allitems-AoAS'
   config.fixed_configs_wandb = {
                 # "kernel_amplitude": 0.2,
                 # "kernel_length_scale": 0.3,
