@@ -163,6 +163,103 @@ def plot_linguistic_field(
   return fig, axs
 
 
+def plot_item_locations(
+    lalme_dataset: Dict[str, Any],
+    item: str,
+    forms: List[str],
+    lalme_az: Optional[InferenceData] = None,
+    hdi_probs: Optional[List[float]] = None,
+    nrows: Optional[int] = None,
+    suptitle: Optional[str] = None,
+) -> Tuple[Figure, Axes]:
+  """Locations of anchor and floating profiles displaying forms of one item.
+
+  One panel per form (paper Fig 1b): anchors shown as red circles, floating
+  profiles at their Atlas fit-technique locations as blue crosses. If lalme_az
+  is given, overlays posterior HDI level curves of loc_floating for each
+  floating profile displaying the form.
+
+  Locations are read from lalme_dataset['loc'] as-is, so pass them already
+  scaled to the unit box if paper coordinates are wanted.
+  """
+
+  item_idx = int(np.where(lalme_dataset['items'] == item)[0][0])
+  forms_item = lalme_dataset['forms'][item_idx]
+  num_profiles_anchor = lalme_dataset['num_profiles_anchor']
+  is_anchor = np.arange(lalme_dataset['num_profiles']) < num_profiles_anchor
+
+  if nrows is None:
+    nrows = int(np.ceil(np.sqrt(len(forms))))
+  ncols = int(np.ceil(len(forms) / nrows))
+
+  fig, axs = plt.subplots(
+      nrows,
+      ncols,
+      figsize=(ncols * 3 + 1, nrows * 3),
+      squeeze=False,
+      sharex=True,
+      sharey=True,
+  )
+
+  for i, form in enumerate(forms):
+    ax = axs[i // ncols, i % ncols]
+    f_ = int(np.where(forms_item == form)[0][0])
+    has_form = lalme_dataset['y'][item_idx][f_].astype(bool)
+
+    anchors_with_f = np.where(has_form & is_anchor)[0]
+    floating_with_f = np.where(has_form & ~is_anchor)[0]
+
+    if lalme_az is not None:
+      for p_ in floating_with_f:
+        az.plot_pair(
+            lalme_az,
+            var_names=['loc_floating'],
+            coords={'LP_floating': lalme_dataset['LP'][p_]},
+            kind=["kde"],
+            kde_kwargs={
+                "fill_last": False,
+                "hdi_probs": hdi_probs if hdi_probs is not None else [0.95],
+            },
+            ax=ax,
+        )
+
+    ax.scatter(
+        x=lalme_dataset['loc'][anchors_with_f, 0],
+        y=lalme_dataset['loc'][anchors_with_f, 1],
+        facecolors='none',
+        edgecolors='red',
+        marker='o',
+        s=25,
+        label='anchor',
+    )
+    ax.scatter(
+        x=lalme_dataset['loc'][floating_with_f, 0],
+        y=lalme_dataset['loc'][floating_with_f, 1],
+        c='blue',
+        marker='+',
+        s=25,
+        label='fit-location',
+    )
+
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1])
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    ax.set_title(f"{item} {form}")
+    if i == 0:
+      ax.legend(loc='upper left', fontsize=8)
+
+  # Hide unused panels
+  for j in range(len(forms), nrows * ncols):
+    axs[j // ncols, j % ncols].axis('off')
+
+  if suptitle:
+    fig.suptitle(suptitle)
+  fig.tight_layout()
+
+  return fig, axs
+
+
 def plot_basis_fields(
     posterior_sample_dict: Dict[str, Any],
     data: Dict[str, Any],
@@ -427,6 +524,7 @@ def profile_locations_grid(
     lalme_az_list: Optional[List] = None,
     prior_hparams_str_list: Optional[List] = None,
     MSEs_dict: Optional[Dict] = None,
+    hdi_probs: Optional[List[float]] = None,
 
 ):
 
@@ -472,14 +570,23 @@ def profile_locations_grid(
           ax=axs[i // ncols, i % ncols],
       )
     if lalme_az_2 is not None:
+      probs_ = hdi_probs if hdi_probs is not None else [0.05, 0.5, 0.95]
       az.plot_pair(
           lalme_az_2,
           var_names=[var_name],
           coords={coord: lp_},
           kind=["kde"],
           kde_kwargs={
-              "fill_last": False,
-              "hdi_probs": [0.05, 0.5, 0.95]
+              # fill_last=False crashes on matplotlib>=3.8 (ContourSet.collections
+              # removed, still indexed by this arviz); fill_last=True skips that
+              # path, and alpha=0 fill keeps only the contour lines so the
+              # scatter underneath stays visible. arviz draws levels
+              # [0, *hdi, max]; zero linewidth hides the jagged density-floor
+              # line and the mode dot, leaving only the HDI contours.
+              "fill_last": True,
+              "contourf_kwargs": {"alpha": 0},
+              "contour_kwargs": {"linewidths": [0.] + [1.5] * len(probs_) + [0.]},
+              "hdi_probs": probs_,
           },
           ax=axs[i // ncols, i % ncols],
       )
@@ -1089,6 +1196,8 @@ def lalme_plots_arviz(
         nrows=(len(lp_anchor_val) // 5 + (1 if len(lp_anchor_val) % 5 else 0)),
         scatter_kwargs=scatter_kwargs,
         MSEs_dict=MSEs_anchor_val_dict,
+        lalme_az_2=lalme_az,
+        hdi_probs=[0.95],
     )
     if workdir_png:
       plot_name = "lalme_lp_anchor_val_grid"
@@ -1119,6 +1228,8 @@ def lalme_plots_arviz(
         nrows=10,
         scatter_kwargs=scatter_kwargs,
         MSEs_dict=MSEs_anchor_val_dict,
+        lalme_az_2=lalme_az,
+        hdi_probs=[0.95],
     )
     if workdir_png:
       plot_name = "lalme_lp_anchor_val_grid30"
@@ -1146,6 +1257,8 @@ def lalme_plots_arviz(
         nrows=4,
         scatter_kwargs=scatter_kwargs,
         MSEs_dict=MSEs_anchor_val_dict,
+        lalme_az_2=lalme_az,
+        hdi_probs=[0.95],
     )
     if workdir_png:
       plot_name = "lalme_lp_anchor_val_grid28"
@@ -1173,6 +1286,8 @@ def lalme_plots_arviz(
         nrows=3,
         scatter_kwargs=scatter_kwargs,
         MSEs_dict=MSEs_anchor_val_dict,
+        lalme_az_2=lalme_az,
+        hdi_probs=[0.95],
     )
     if workdir_png:
       plot_name = "lalme_lp_anchor_val_grid21"
@@ -1200,6 +1315,8 @@ def lalme_plots_arviz(
         nrows=2,
         scatter_kwargs=scatter_kwargs,
         MSEs_dict=MSEs_anchor_val_dict,
+        lalme_az_2=lalme_az,
+        hdi_probs=[0.95],
     )
     if workdir_png:
       plot_name = "lalme_lp_anchor_val_grid10"
@@ -1229,6 +1346,8 @@ def lalme_plots_arviz(
         nrows=1,
         scatter_kwargs=scatter_kwargs,
         MSEs_dict=MSEs_anchor_val_dict,
+        lalme_az_2=lalme_az,
+        hdi_probs=[0.95],
     )
     if workdir_png:
       plot_name = "lalme_lp_anchor_val_grid4"
