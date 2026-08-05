@@ -1070,7 +1070,7 @@ def log_images(
         loc_inducing=loc_inducing,
         workdir_png=workdir_png,
         summary_writer=summary_writer,
-        suffix=f"_eta_floating_{float(eta_i):.3f}_sigma_a_{prior_hparams_init_vals[0]:.3f}_sigma_w_{prior_hparams_init_vals[1]:.3f}_sigma_K_{prior_hparams_init_vals[-2]:.3f}_ls_K_{prior_hparams_init_vals[-1]:.3f}",
+        suffix=f"_eta_floating_{float(eta_i):.3f}_sigma_w_{prior_hparams_init_vals[0]:.3f}_sigma_a_{prior_hparams_init_vals[1]:.3f}_sigma_K_{prior_hparams_init_vals[-2]:.3f}_ls_K_{prior_hparams_init_vals[-1]:.3f}",
         scatter_kwargs={"alpha": 0.10},
         MSEs_anchor_val_dict=MSEs_anchor_val_dict,
         MSEs_float_dict=MSEs_float_dict,
@@ -2218,7 +2218,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         cond_hparams_names=config.cond_hparams_names,
         # show_mu=True,
         # show_zeta=True, 
-        show_basis_fields=True,  # Gaussian/basis fields (lalme_basis_fields); needs ~2000 plot samples
+        show_basis_fields=False,  # Gaussian/basis fields (lalme_basis_fields); needs ~2000 plot samples
         # show_W_items=lalme_dataset['items'],
         # show_a_items=lalme_dataset['items'],
         # lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
@@ -2544,7 +2544,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
 
             # Clip eta_star to [0,1] hypercube and hp_star to [0.000001,..]
             hp_star_state = TrainState(
-                params=jnp.hstack([jnp.clip(hp_star_state.params[cond_hparams_names.index('w_prior_scale')],0., 10.) if 'w_prior_scale' in cond_hparams_names else [],# w_prior_scale
+                params=jnp.hstack([jnp.clip(hp_star_state.params[cond_hparams_names.index('w_prior_scale')],0., 15.) if 'w_prior_scale' in cond_hparams_names else [],# w_prior_scale
                                   jnp.clip(hp_star_state.params[cond_hparams_names.index('a_prior_scale')],3., 19.) if 'a_prior_scale' in cond_hparams_names else [],# a_prior_scale
                                   jnp.clip(hp_star_state.params[cond_hparams_names.index('kernel_amplitude')],0.1, 0.4) if 'kernel_amplitude' in cond_hparams_names else [],# kernel_amplitude
                                   jnp.clip(hp_star_state.params[cond_hparams_names.index('kernel_length_scale')],0.2, 0.5) if 'kernel_length_scale' in cond_hparams_names else [],# kernel_length_scale
