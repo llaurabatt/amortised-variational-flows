@@ -15,6 +15,9 @@ import sys
 FLAGS = flags.FLAGS
 flags.DEFINE_string('path', None, 'Path to hyperparameter optimisation results.')
 flags.DEFINE_string('loss', 'mean_dist', 'Loss-metric subfolder (mean_dist | mean_sq_dist).')
+flags.DEFINE_string('tag', 'w_a_k_lk_eta',
+                    'Tuned-hparam tag = tune_<tag>/ subfolder and hp_info_<tag>_* files '
+                    '(e.g. w_a_lk_eta for the sigma_k=1 runs).')
 flags.mark_flags_as_required(['path'])
 FLAGS(sys.argv)
 #%%
@@ -25,12 +28,12 @@ FLAGS(sys.argv)
 
 #########################################################################################################################################################
 #%%
-path = FLAGS.path + f'/tune_w_a_k_lk_eta/{FLAGS.loss}'  # hp_info_*.sav and hp_tuning_*.png live here
+path = FLAGS.path + f'/tune_{FLAGS.tag}/{FLAGS.loss}'  # hp_info_*.sav and hp_tuning_*.png live here
 init_names = ['default', 'mixed','low', 'high']
 optimisers = [ 'elbo_opt', 'plain_lr1', 'plain_lr2']
 init_eta_vals = [1.00, 0.50, 0.00]
 #%%
-with open(path + f'/hp_info_w_a_k_lk_eta_{init_names[0]}_{optimisers[0]}_new.sav', 'rb') as fr:
+with open(path + f'/hp_info_{FLAGS.tag}_{init_names[0]}_{optimisers[0]}_new.sav', 'rb') as fr:
     res = pickle.load(fr)
 hp_names = res['hp_names'].copy()
 
@@ -74,13 +77,13 @@ for optimiser_name in optimisers:
     fig, ax = plt.subplots(int(n_plots/3)+int(n_plots%3>0), 3, figsize=(10,3.5*(int(n_plots/3)+int(n_plots%3>0))))
     last_losses = []
     for init_ix, init_type in enumerate(init_names):
-        with open(path + f'/hp_info_w_a_k_lk_eta_{init_type}_{optimiser_name}_new.sav', 'rb') as fr:
+        with open(path + f'/hp_info_{FLAGS.tag}_{init_type}_{optimiser_name}_new.sav', 'rb') as fr:
             res = pickle.load(fr)
         last_loss = np.array(res['loss'])[-20:].mean()
         last_losses.append(last_loss)
     best_init_ix = np.argmin(last_losses) 
     for init_ix, init_type in enumerate(init_names):
-        with open(path + f'/hp_info_w_a_k_lk_eta_{init_type}_{optimiser_name}_new.sav', 'rb') as fr:
+        with open(path + f'/hp_info_{FLAGS.tag}_{init_type}_{optimiser_name}_new.sav', 'rb') as fr:
             res = pickle.load(fr)
         for a_ix, a in enumerate(ax.flatten()):
             color = colors[init_ix]
@@ -108,7 +111,9 @@ for optimiser_name in optimisers:
 
     plt.tight_layout()
     plt.subplots_adjust(left=None, bottom=0.2, right=None, top=0.93, wspace=0.2, hspace=0.4)
-    plt.savefig(path + f'/hp_tuning_w_a_k_lk_eta_{optimiser_name}_4000.png')
+    # metric label in filename: rpmse for the mean_sq_dist objective (plotted as sqrt)
+    metric_label = 'rpmse' if res.get('loss_metric') == 'mean_sq_dist' else 'mean_dist'
+    plt.savefig(path + f'/hp_tuning_{FLAGS.tag}_{metric_label}_{optimiser_name}.png')
     plt.show()
 
 # #%%
