@@ -18,6 +18,13 @@ flags.DEFINE_string('loss', 'mean_dist', 'Loss-metric subfolder (mean_dist | mea
 flags.DEFINE_string('tag', 'w_a_k_lk_eta',
                     'Tuned-hparam tag = tune_<tag>/ subfolder and hp_info_<tag>_* files '
                     '(e.g. w_a_lk_eta for the sigma_k=1 runs).')
+flags.DEFINE_string('tag_suffix', '',
+                    'Appended to the tune_<tag> FOLDER name only, not the file names '
+                    '(e.g. _extended for warmstart probe runs).')
+flags.DEFINE_list('inits', ['default', 'mixed', 'low', 'high'],
+                  'Init names to plot (e.g. warmstart for probe runs).')
+flags.DEFINE_integer('max_iters', 4001,
+                     'Iteration window to plot (probe runs go to 15k).')
 flags.mark_flags_as_required(['path'])
 FLAGS(sys.argv)
 #%%
@@ -28,8 +35,8 @@ FLAGS(sys.argv)
 
 #########################################################################################################################################################
 #%%
-path = FLAGS.path + f'/tune_{FLAGS.tag}/{FLAGS.loss}'  # hp_info_*.sav and hp_tuning_*.png live here
-init_names = ['default', 'mixed','low', 'high']
+path = FLAGS.path + f'/tune_{FLAGS.tag}{FLAGS.tag_suffix}/{FLAGS.loss}'  # hp_info_*.sav and hp_tuning_*.png live here
+init_names = list(FLAGS.inits)
 optimisers = [ 'elbo_opt', 'plain_lr1', 'plain_lr2']
 init_eta_vals = [1.00, 0.50, 0.00]
 #%%
@@ -96,12 +103,12 @@ for optimiser_name in optimisers:
                 color = 'black'
             a.grid(True, linestyle='--', alpha=0.7)
             if a_ix==0:
-                a.plot(disp['transform'](np.array(res['loss'])[:4001]), alpha=alpha, color=color,
+                a.plot(disp['transform'](np.array(res['loss'])[:FLAGS.max_iters]), alpha=alpha, color=color,
                            label=f'Init {init_ix + 1}', linestyle=linestyle)
                 a.set_xlabel('Iterations')
                 a.set_title(disp['title'])
             elif a_ix < (n_plots):  
-                a.plot(np.array(res['params'])[:4001,rolled_indices][:,a_ix-1], alpha=alpha, 
+                a.plot(np.array(res['params'])[:FLAGS.max_iters,rolled_indices][:,a_ix-1], alpha=alpha, 
                            color=color, label=f'Init {init_ix + 1}', linestyle=linestyle)
                 hp_name = np.array(res['hp_names'])[rolled_indices][a_ix-1]
                 a.set_title('Trace for '+ names_latex[hp_name])
@@ -113,7 +120,7 @@ for optimiser_name in optimisers:
     plt.subplots_adjust(left=None, bottom=0.2, right=None, top=0.93, wspace=0.2, hspace=0.4)
     # metric label in filename: rpmse for the mean_sq_dist objective (plotted as sqrt)
     metric_label = 'rpmse' if res.get('loss_metric') == 'mean_sq_dist' else 'mean_dist'
-    plt.savefig(path + f'/hp_tuning_{FLAGS.tag}_{metric_label}_{optimiser_name}.png')
+    plt.savefig(path + f'/hp_tuning_{FLAGS.tag}{FLAGS.tag_suffix}_{metric_label}_{optimiser_name}.png')
     plt.show()
 
 # #%%

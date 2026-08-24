@@ -2218,7 +2218,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
         cond_hparams_names=config.cond_hparams_names,
         # show_mu=True,
         # show_zeta=True, 
-        show_basis_fields=False,  # Gaussian/basis fields (lalme_basis_fields); needs ~2000 plot samples
+        show_basis_fields=True,  # Gaussian/basis fields (lalme_basis_fields); needs ~2000 plot samples
         # show_W_items=lalme_dataset['items'],
         # show_a_items=lalme_dataset['items'],
         # lp_floating=lalme_dataset['LP'][lalme_dataset['num_profiles_anchor']:],
@@ -2547,7 +2547,7 @@ def train_and_evaluate(config: ConfigDict, workdir: str) -> None:
                 params=jnp.hstack([jnp.clip(hp_star_state.params[cond_hparams_names.index('w_prior_scale')],0., 15.) if 'w_prior_scale' in cond_hparams_names else [],# w_prior_scale
                                   jnp.clip(hp_star_state.params[cond_hparams_names.index('a_prior_scale')],3., 19.) if 'a_prior_scale' in cond_hparams_names else [],# a_prior_scale
                                   jnp.clip(hp_star_state.params[cond_hparams_names.index('kernel_amplitude')],0.1, 0.4) if 'kernel_amplitude' in cond_hparams_names else [],# kernel_amplitude
-                                  jnp.clip(hp_star_state.params[cond_hparams_names.index('kernel_length_scale')],0.2, 0.5) if 'kernel_length_scale' in cond_hparams_names else [],# kernel_length_scale
+                                  jnp.clip(hp_star_state.params[cond_hparams_names.index('kernel_length_scale')],0.1, 0.5) if 'kernel_length_scale' in cond_hparams_names else [],# kernel_length_scale (floor 0.1: only in-support for flows whose lengthscale sampling range includes it, e.g. the 22x22 configs)
                                   jnp.clip(hp_star_state.params[cond_hparams_names.index('eta')], 0., 1.) if 'eta' in cond_hparams_names else []]),
                 opt_state=hp_star_state.opt_state,
                 step=hp_star_state.step,
