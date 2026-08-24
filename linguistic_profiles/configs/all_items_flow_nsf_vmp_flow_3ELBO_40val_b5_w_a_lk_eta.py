@@ -157,6 +157,12 @@ def get_config():
   config.log_img_steps = 0 #config.training_steps // 5 
   config.log_img_at_end = False
   config.save_samples = False # FLIPPED
+  # etas for save_samples dumps: 0.335 = this run's PMSE-tuned eta_hat + endpoints.
+  # NOTE: the dump conditions on PriorHparams DEFAULTS -> when dumping, override
+  # the tuned values that differ from defaults:
+  # --config.prior_hparams.w_prior_scale=10 --config.prior_hparams.a_prior_scale=3
+  # --config.kernel_kwargs.length_scale=0.2
+  config.eta_save = [0.001, 0.335, 1.0]
   config.path_MCMC_samples = ''
   config.path_mcmc_img = ''
 

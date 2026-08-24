@@ -210,6 +210,7 @@ def plot_item_locations(
     floating_with_f = np.where(has_form & ~is_anchor)[0]
 
     if lalme_az is not None:
+      probs_ = hdi_probs if hdi_probs is not None else [0.95]
       for p_ in floating_with_f:
         az.plot_pair(
             lalme_az,
@@ -217,8 +218,13 @@ def plot_item_locations(
             coords={'LP_floating': lalme_dataset['LP'][p_]},
             kind=["kde"],
             kde_kwargs={
-                "fill_last": False,
-                "hdi_probs": hdi_probs if hdi_probs is not None else [0.95],
+                # same matplotlib>=3.8 workaround as profile_locations_grid:
+                # fill_last=True dodges the removed ContourSet.collections,
+                # zero-alpha fill + per-level linewidths leave only HDI lines.
+                "fill_last": True,
+                "contourf_kwargs": {"alpha": 0},
+                "contour_kwargs": {"linewidths": [0.] + [1.] * len(probs_) + [0.]},
+                "hdi_probs": probs_,
             },
             ax=ax,
         )

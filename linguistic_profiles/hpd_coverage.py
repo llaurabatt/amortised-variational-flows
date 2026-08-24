@@ -118,6 +118,9 @@ def main():
 
   assert FLAGS.az_path and FLAGS.output_dir and FLAGS.config is not None
   import jax
+  # Same pin as main.py: the anchor split must reproduce the training runs
+  # (threefry_partitionable flips jax.random.choice results).
+  jax.config.update('jax_threefry_partitionable', False)
   import arviz as az
   from train_flow_allhp import load_data
 
@@ -148,7 +151,10 @@ def main():
   out = pathlib.Path(FLAGS.output_dir)
   out.mkdir(parents=True, exist_ok=True)
   import csv
-  fname = out / f'hpd_coverage_{int(FLAGS.hdi_prob * 100)}_anchor_val.csv'
+  # stem of the samples file (e.g. lalme_az_eta_0.315) keeps runs at different
+  # etas from overwriting each other
+  az_stem = pathlib.Path(FLAGS.az_path).stem
+  fname = out / f'hpd_coverage_{int(FLAGS.hdi_prob * 100)}_anchor_val_{az_stem}.csv'
   with open(fname, 'w', newline='') as f:
     w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
     w.writeheader()
